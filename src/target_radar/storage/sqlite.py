@@ -23,6 +23,7 @@ from target_radar.domain import (
     SearchProfile,
     StatusLog,
     Target,
+    TargetPage,
     TargetStatus,
 )
 from target_radar.storage.schema import init_db
@@ -440,6 +441,54 @@ class SQLiteStore:
             created_at=evidence.created_at,
         )
 
+    def create_target_page(self, page: TargetPage) -> TargetPage:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO target_pages (
+                target_id, url, page_type, http_status, title, text,
+                error_message, metadata_json, fetched_at, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                page.target_id,
+                page.url,
+                page.page_type,
+                page.http_status,
+                page.title,
+                page.text,
+                page.error_message,
+                _json_dumps(page.metadata),
+                _format_optional_dt(page.fetched_at),
+                _format_dt(page.created_at),
+            ),
+        )
+        self.connection.commit()
+        return TargetPage(
+            id=int(cursor.lastrowid),
+            target_id=page.target_id,
+            url=page.url,
+            page_type=page.page_type,
+            http_status=page.http_status,
+            title=page.title,
+            text=page.text,
+            error_message=page.error_message,
+            metadata=dict(page.metadata),
+            fetched_at=page.fetched_at,
+            created_at=page.created_at,
+        )
+
+    def list_target_pages(self, target_id: int) -> list[TargetPage]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM target_pages
+            WHERE target_id = ?
+            ORDER BY id ASC
+            """,
+            (target_id,),
+        ).fetchall()
+        return [_target_page_from_row(row) for row in rows]
+
     def save_rating(self, rating: RatingResult) -> RatingResult:
         cursor = self.connection.execute(
             """
@@ -596,6 +645,22 @@ def _target_from_row(row: sqlite3.Row) -> Target:
         metadata=_json_loads(row["metadata_json"], {}),
         created_at=_parse_dt(row["created_at"]),
         updated_at=_parse_dt(row["updated_at"]),
+    )
+
+
+def _target_page_from_row(row: sqlite3.Row) -> TargetPage:
+    return TargetPage(
+        id=int(row["id"]),
+        target_id=int(row["target_id"]),
+        url=row["url"],
+        page_type=row["page_type"],
+        http_status=row["http_status"],
+        title=row["title"],
+        text=row["text"],
+        error_message=row["error_message"],
+        metadata=_json_loads(row["metadata_json"], {}),
+        fetched_at=_parse_optional_dt(row["fetched_at"]),
+        created_at=_parse_dt(row["created_at"]),
     )
 
 

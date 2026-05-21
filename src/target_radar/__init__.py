@@ -16,6 +16,7 @@ from target_radar.domain import (
     StatusLog,
     Target,
     TargetCandidate,
+    TargetPage,
     TargetStatus,
 )
 
@@ -35,5 +36,6 @@ __all__ = [
     "StatusLog",
     "Target",
     "TargetCandidate",
+    "TargetPage",
     "TargetStatus",
 ]

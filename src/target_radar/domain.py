@@ -307,6 +307,27 @@ class Evidence:
 
 
 @dataclass(slots=True)
+class TargetPage:
+    target_id: int
+    url: str
+    page_type: str = "other"
+    http_status: int | None = None
+    title: str | None = None
+    text: str | None = None
+    error_message: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    id: int | None = None
+    fetched_at: datetime | None = None
+    created_at: datetime = field(default_factory=utc_now)
+
+    def __post_init__(self) -> None:
+        if self.target_id <= 0:
+            raise ValueError("target_id must be positive")
+        self.url = ensure_non_empty(self.url, "url")
+        self.page_type = ensure_non_empty(self.page_type, "page_type")
+
+
+@dataclass(slots=True)
 class RatingResult:
     target_id: int
     recommended_action: RecommendedAction

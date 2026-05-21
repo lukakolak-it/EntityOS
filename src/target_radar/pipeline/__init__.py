@@ -1,5 +1,7 @@
 """Pipeline orchestration package."""
 
+from target_radar.pipeline.extractor import ExtractedPage, HtmlExtractor, classify_page_type
+from target_radar.pipeline.fetcher import FetchConfig, FetchedPage, FakeFetcher, HttpFetcher
 from target_radar.pipeline.importer import TargetImporter, TargetImportResult
 from target_radar.pipeline.orchestrator import (
     PipelineExecutionError,
@@ -9,10 +11,17 @@ from target_radar.pipeline.orchestrator import (
 )
 
 __all__ = [
+    "ExtractedPage",
+    "FetchConfig",
+    "FetchedPage",
+    "FakeFetcher",
+    "HtmlExtractor",
+    "HttpFetcher",
     "PipelineExecutionError",
     "PipelineOrchestrator",
     "PipelineRunRequest",
     "PipelineRunResult",
     "TargetImporter",
     "TargetImportResult",
+    "classify_page_type",
 ]
