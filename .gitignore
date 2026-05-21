@@ -1,0 +1,46 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+.venv/
+venv/
+env/
+ENV/
+
+# Test and quality output
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build output
+build/
+dist/
+*.egg-info/
+
+# Local runtime data
+data/*
+!data/.gitkeep
+logs/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+
+# Local profiles and exports
+profiles.local.*
+exports/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
