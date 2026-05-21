@@ -8,6 +8,7 @@ Der aktuelle Stand besteht aus Architektur- und Konzeptdokumenten. Die Verzeichn
 
 - `docs/architecture/`: Architekturentscheidungen und ADRs
 - `docs/concepts/`: fachliche Konzepte fuer Pipeline, Engines und Konfiguration
+- `docs/planning/`: Sprint- und Slice-Planung
 - `src/target_radar/`: spaeterer Anwendungscode
 - `src/target_radar/engines/`: LeadEngine, RatingEngine und DraftEngine
 - `src/target_radar/pipeline/`: Orchestrierung und Statusfluss
@@ -22,6 +23,15 @@ Der aktuelle Stand besteht aus Architektur- und Konzeptdokumenten. Die Verzeichn
 1. `.env.example` nach `.env` kopieren.
 2. Lokale Werte wie API Keys und Datenbank-URL in `.env` eintragen.
 3. `.env`, Datenbanken, Logs und echte Profile bleiben ausserhalb von Git.
+
+## Entwicklung
+
+Tests laufen aktuell ohne externe Services:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m unittest discover -s tests
+```
 
 ## Git
 

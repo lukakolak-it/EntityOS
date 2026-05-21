@@ -243,7 +243,20 @@ Treffer werden nicht zwingend geloescht. Sie koennen mit einem Status markiert w
 - `duplicate_domain`
 - `imported`
 - `existing`
+- `blacklisted`
 - `invalid`
+
+Status-Abgrenzung:
+
+- `candidate`: SERP-Ergebnis ist grundsaetzlich brauchbar und kann an den Target Import gehen.
+- `blocked_source`: SERP-Ergebnis wurde durch Denylist oder Source-Regel blockiert, z. B. Jobportal, Aggregator oder Social-Media-Profil.
+- `duplicate_domain`: dieselbe normalisierte Domain wurde im Discovery-Lauf bereits durch ein besseres SERP-Ergebnis vertreten.
+- `imported`: der Target Import hat daraus ein neues lokales Target erzeugt.
+- `existing`: der Target Import hat ein vorhandenes lokales Target wiederverwendet.
+- `blacklisted`: der Target Import hat die Domain wegen einer Nutzer-Blacklist abgewiesen.
+- `invalid`: URL oder Domain ist nicht sinnvoll normalisierbar.
+
+Damit unterscheiden sich Source-Filter (`blocked_source`) von Nutzerentscheidungen (`blacklisted`) und LeadEngine-Dedupe (`duplicate_domain`) von Import-Payload-Dubletten (`duplicate_input` im Target Import).
 
 ## 12. Dedupe
 

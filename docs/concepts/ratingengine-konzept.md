@@ -311,6 +311,7 @@ MVP-Entscheidung:
 - Der zentrale Pipeline-Orchestrator schreibt `target_status_log`.
 - Die RatingEngine liefert ein Ergebnisobjekt mit `from_status`, `to_status`, `phase`, `reason` und Fehlerdetails.
 - Wenn RatingEngine direkt per API fuer ein einzelnes Target aufgerufen wird, uebernimmt der API-Service die Orchestrator-Rolle und schreibt den Log.
+- Bei einzelnen API-Aktionen darf `target_status_log.pipeline_run_id` NULL sein; der Trigger wird dann in `metadata_json` dokumentiert.
 
 Grund:
 

@@ -86,8 +86,19 @@ Moegliche Importstatus:
 - `imported`
 - `existing`
 - `duplicate_input`
+- `blocked_source`
 - `blacklisted`
 - `invalid`
+
+Abgrenzung:
+
+- `duplicate_input`: dieselbe URL oder normalisierte Domain kommt mehrfach im selben Import-Payload vor.
+- `blocked_source`: die Domain ist durch eine systemische Denylist oder Source-Regel blockiert, z. B. Jobboerse oder Aggregator.
+- `blacklisted`: die Domain wurde durch eine Nutzerentscheidung ausgeschlossen und soll auch in kuenftigen Laeufen nicht importiert werden.
+- `existing`: das Target existiert bereits lokal und wird wiederverwendet.
+- `invalid`: URL oder Domain kann nicht sinnvoll normalisiert werden.
+
+`duplicate_domain` ist kein Target-Importstatus, sondern ein LeadEngine-Status fuer SERP-Ergebnisse innerhalb eines Discovery-Laufs. Wenn der deduplizierte Kandidat an den Target Import uebergeben wird, wird daraus je nach lokaler Lage `imported`, `existing`, `blocked_source`, `blacklisted` oder `invalid`.
 
 ## 4. Target
 
@@ -219,6 +230,7 @@ Das Statusmodell macht den Fortschritt pro Target sichtbar.
 Beispiele:
 
 - `candidate`
+- `blocked_source`
 - `imported`
 - `existing`
 - `fetch_pending`
@@ -254,7 +266,7 @@ MVP-Spalten:
 
 - `id`
 - `target_id`
-- `pipeline_run_id`
+- `pipeline_run_id` nullable
 - `from_status`
 - `to_status`
 - `phase`
@@ -278,6 +290,15 @@ Regel:
 ```text
 Jede automatische Statusaenderung und jede Nutzerentscheidung schreibt einen Logeintrag.
 ```
+
+`pipeline_run_id` ist nullable.
+
+Regel fuer die Zuordnung:
+
+- Statuswechsel innerhalb eines Pipeline Runs setzen `pipeline_run_id`.
+- Einzelne API-Aktionen wie `POST /targets/{id}/rerate`, `POST /targets/{id}/refetch` oder Nutzerentscheidungen duerfen `pipeline_run_id = NULL` schreiben.
+- In diesem Fall dokumentiert `metadata_json` mindestens den Trigger, z. B. `api_rerate`, `api_refetch`, `review_action`, den Endpoint und relevante Request-Parameter.
+- Wenn eine Einzelaktion spaeter als laenger laufender, beobachtbarer Reprocessing-Lauf umgesetzt wird, darf sie intern einen Pipeline Run mit passendem Scope erzeugen und dann dessen ID setzen.
 
 Die UI zeigt standardmaessig nur den aktuellen Status. In der Target-Detailansicht kann die Status-Historie aufgeklappt werden.
 

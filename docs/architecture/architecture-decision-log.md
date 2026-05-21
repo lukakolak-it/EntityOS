@@ -329,3 +329,24 @@ Konsequenzen:
 - `target_scores.input_snapshot_json` speichert Rating-Kontext.
 - `action_drafts.used_context_json` speichert Draft-Kontext.
 
+## ADR-015: Status-Logs duerfen ohne Pipeline Run entstehen
+
+Status: `accepted`
+
+Datum: 2026-05-21
+
+Entscheidung:
+
+`target_status_log.pipeline_run_id` ist nullable. Statuswechsel aus einem Pipeline Run setzen die ID. Statuswechsel aus einzelnen API-Aktionen oder Nutzerentscheidungen duerfen ohne Pipeline Run geloggt werden.
+
+Begruendung:
+
+- Einzelaktionen wie `POST /targets/{id}/rerate` oder `POST /targets/{id}/refetch` sollen keinen kuenstlichen Pipeline Run brauchen.
+- Nutzerentscheidungen wie Reject, Approve oder Blacklist sind echte Statuswechsel, aber keine Pipeline-Laeufe.
+- Die API kann trotzdem die Orchestrator-Rolle uebernehmen und nach derselben Logging-Regel schreiben.
+
+Konsequenzen:
+
+- `pipeline_run_id = NULL` ist fuer Einzelaktionen gueltig.
+- `metadata_json` dokumentiert Trigger, Endpoint und relevante Request-Parameter.
+- Wenn eine Einzelaktion spaeter als beobachtbarer Reprocessing-Lauf mit Fortschritt umgesetzt wird, darf sie intern einen Pipeline Run erzeugen und dessen ID setzen.
