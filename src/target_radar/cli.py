@@ -18,9 +18,12 @@ from target_radar.web.server import serve
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    database_url = args.database_url or load_app_config().infrastructure.database_url
+    config = load_app_config()
+    database_url = args.database_url or config.infrastructure.database_url
+    log_level = args.log_level or config.infrastructure.log_level
+    log_file = args.log_file or config.infrastructure.log_file
     if args.command == "serve" or args.log_file:
-        configure_logging(level=args.log_level, log_file=args.log_file)
+        configure_logging(level=log_level, log_file=log_file)
 
     if args.command == "init-db":
         store = SQLiteStore.open(database_url)
@@ -35,7 +38,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _review_queue(args, database_url)
 
     if args.command == "serve":
-        serve(database_url=database_url, host=args.host, port=args.port)
+        serve(
+            database_url=database_url,
+            host=args.host or config.infrastructure.host,
+            port=args.port or config.infrastructure.port,
+        )
         return 0
 
     if args.command == "diagnose":
@@ -54,7 +61,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="target-radar")
     parser.add_argument("--database-url", help="SQLite URL or path")
-    parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--log-level")
     parser.add_argument("--log-file", help="Optional JSON-lines log file")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -74,10 +81,8 @@ def _build_parser() -> argparse.ArgumentParser:
     review_queue.add_argument("--offset", type=int, default=0)
 
     serve_parser = subparsers.add_parser("serve", help="Run local web UI")
-    serve_parser.add_argument("--host", default="127.0.0.1")
-    serve_parser.add_argument("--port", type=int, default=8765)
-    serve_parser.add_argument("--log-level", default="INFO")
-    serve_parser.add_argument("--log-file", help="Optional JSON-lines log file")
+    serve_parser.add_argument("--host")
+    serve_parser.add_argument("--port", type=int)
 
     subparsers.add_parser("diagnose", help="Print local diagnostic snapshot")
 

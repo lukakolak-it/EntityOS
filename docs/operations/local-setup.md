@@ -66,7 +66,7 @@ Der Fake-Lauf nutzt keine externen Provider und keine API Keys.
 
 ```powershell
 $env:PYTHONPATH='src'
-py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 serve --host 127.0.0.1 --port 8765 --log-file logs/target-radar.jsonl
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 --log-file logs/target-radar.jsonl serve --host 127.0.0.1 --port 8765
 ```
 
 Browser:

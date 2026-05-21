@@ -19,20 +19,39 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.rating.hard_stop_action, "skip")
         self.assertEqual(config.lead_budget.request_budget, 100)
         self.assertEqual(config.review_queue.page_size, 50)
+        self.assertEqual(config.infrastructure.host, "127.0.0.1")
+        self.assertEqual(config.infrastructure.port, 8765)
+        self.assertEqual(config.llm.provider, "local")
+        self.assertEqual(config.llm.local_base_url, "http://127.0.0.1:11434")
+        self.assertEqual(config.search_provider.provider, "mock")
 
     def test_environment_overrides_defaults(self) -> None:
         config = load_app_config(
             env_file=None,
             environ={
                 "DATABASE_URL": "sqlite:///:memory:",
+                "TARGET_RADAR_HOST": "127.0.0.2",
+                "TARGET_RADAR_PORT": "9000",
                 "TARGET_RADAR_REQUEST_BUDGET": "25",
                 "TARGET_RADAR_MIN_CONFIDENCE_FOR_DRAFT": "0.75",
+                "GITHUB_TOKEN": "ghp",
+                "LLM_PROVIDER": "openai",
+                "OPENAI_API_KEY": "sk",
+                "SEARCH_PROVIDER": "brave",
+                "BRAVE_API_KEY": "bv",
             },
         )
 
         self.assertEqual(config.infrastructure.database_url, "sqlite:///:memory:")
+        self.assertEqual(config.infrastructure.host, "127.0.0.2")
+        self.assertEqual(config.infrastructure.port, 9000)
         self.assertEqual(config.lead_budget.request_budget, 25)
         self.assertEqual(config.rating.min_confidence_for_draft, 0.75)
+        self.assertEqual(config.github.token, "ghp")
+        self.assertEqual(config.llm.provider, "openai")
+        self.assertEqual(config.llm.openai_api_key, "sk")
+        self.assertEqual(config.search_provider.provider, "brave")
+        self.assertEqual(config.search_provider.brave_api_key, "bv")
 
     def test_env_file_overrides_process_environment(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

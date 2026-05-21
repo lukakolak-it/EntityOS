@@ -20,8 +20,46 @@ class InfrastructureSettings:
     environment: str = "local"
     log_level: str = "INFO"
     database_url: str = "sqlite:///data/target-radar.local.sqlite3"
-    brave_api_key: str | None = None
+    host: str = "127.0.0.1"
+    port: int = 8765
+    log_file: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GitHubSettings:
+    token: str | None = None
+    owner: str | None = None
+    repo: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LLMSettings:
+    provider: str = "local"
+    model: str = "llama3.1:8b"
     openai_api_key: str | None = None
+    openai_model: str | None = None
+    anthropic_api_key: str | None = None
+    anthropic_model: str | None = None
+    gemini_api_key: str | None = None
+    gemini_model: str | None = None
+    mistral_api_key: str | None = None
+    mistral_model: str | None = None
+    local_provider: str = "ollama"
+    local_base_url: str = "http://127.0.0.1:11434"
+    local_openai_base_url: str = "http://127.0.0.1:11434/v1"
+    local_model: str = "llama3.1:8b"
+    local_api_key: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SearchProviderSettings:
+    provider: str = "mock"
+    search_engine_token: str | None = None
+    brave_api_key: str | None = None
+    serpapi_api_key: str | None = None
+    google_cse_api_key: str | None = None
+    google_cse_id: str | None = None
+    searxng_base_url: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +108,9 @@ class DraftConfig:
 @dataclass(frozen=True, slots=True)
 class AppConfig:
     infrastructure: InfrastructureSettings = field(default_factory=InfrastructureSettings)
+    github: GitHubSettings = field(default_factory=GitHubSettings)
+    llm: LLMSettings = field(default_factory=LLMSettings)
+    search_provider: SearchProviderSettings = field(default_factory=SearchProviderSettings)
     rating: RatingConfig = field(default_factory=RatingConfig)
     lead_budget: LeadBudgetConfig = field(default_factory=LeadBudgetConfig)
     fetch: FetchConfig = field(default_factory=FetchConfig)
@@ -121,8 +162,44 @@ def load_app_config(
                 "DATABASE_URL",
                 "sqlite:///data/target-radar.local.sqlite3",
             ),
-            brave_api_key=_get_optional_str(values, "BRAVE_API_KEY"),
+            host=_get_str(values, "TARGET_RADAR_HOST", "127.0.0.1"),
+            port=_get_int(values, "TARGET_RADAR_PORT", 8765),
+            log_file=_get_optional_str(values, "LOG_FILE"),
+        ),
+        github=GitHubSettings(
+            token=_get_optional_str(values, "GITHUB_TOKEN"),
+            owner=_get_optional_str(values, "GITHUB_OWNER"),
+            repo=_get_optional_str(values, "GITHUB_REPO"),
+        ),
+        llm=LLMSettings(
+            provider=_get_str(values, "LLM_PROVIDER", "local"),
+            model=_get_str(values, "LLM_MODEL", "llama3.1:8b"),
             openai_api_key=_get_optional_str(values, "OPENAI_API_KEY"),
+            openai_model=_get_optional_str(values, "OPENAI_MODEL"),
+            anthropic_api_key=_get_optional_str(values, "ANTHROPIC_API_KEY"),
+            anthropic_model=_get_optional_str(values, "ANTHROPIC_MODEL"),
+            gemini_api_key=_get_optional_str(values, "GEMINI_API_KEY"),
+            gemini_model=_get_optional_str(values, "GEMINI_MODEL"),
+            mistral_api_key=_get_optional_str(values, "MISTRAL_API_KEY"),
+            mistral_model=_get_optional_str(values, "MISTRAL_MODEL"),
+            local_provider=_get_str(values, "LOCAL_AI_PROVIDER", "ollama"),
+            local_base_url=_get_str(values, "LOCAL_AI_BASE_URL", "http://127.0.0.1:11434"),
+            local_openai_base_url=_get_str(
+                values,
+                "LOCAL_AI_OPENAI_BASE_URL",
+                "http://127.0.0.1:11434/v1",
+            ),
+            local_model=_get_str(values, "LOCAL_AI_MODEL", "llama3.1:8b"),
+            local_api_key=_get_optional_str(values, "LOCAL_AI_API_KEY"),
+        ),
+        search_provider=SearchProviderSettings(
+            provider=_get_str(values, "SEARCH_PROVIDER", "mock"),
+            search_engine_token=_get_optional_str(values, "SEARCH_ENGINE_TOKEN"),
+            brave_api_key=_get_optional_str(values, "BRAVE_API_KEY"),
+            serpapi_api_key=_get_optional_str(values, "SERPAPI_API_KEY"),
+            google_cse_api_key=_get_optional_str(values, "GOOGLE_CSE_API_KEY"),
+            google_cse_id=_get_optional_str(values, "GOOGLE_CSE_ID"),
+            searxng_base_url=_get_optional_str(values, "SEARXNG_BASE_URL"),
         ),
         rating=RatingConfig(
             min_rule_score_for_ai=_get_int(
