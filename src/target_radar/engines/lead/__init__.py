@@ -10,6 +10,12 @@ from target_radar.engines.lead.provider import (
     SearchResult,
 )
 from target_radar.engines.lead.query import QueryBuilder, QueryCandidate
+from target_radar.engines.lead.source_quality import (
+    SourceImportAction,
+    SourceQualityClassifier,
+    SourceQualityResult,
+    SourceType,
+)
 
 __all__ = [
     "BraveSearchProvider",
@@ -21,6 +27,10 @@ __all__ = [
     "QueryCandidate",
     "SearchProviderError",
     "SearchResult",
+    "SourceImportAction",
+    "SourceQualityClassifier",
+    "SourceQualityResult",
+    "SourceType",
     "create_lead_engine",
     "create_search_provider",
 ]

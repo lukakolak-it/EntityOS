@@ -258,6 +258,46 @@ Status-Abgrenzung:
 
 Damit unterscheiden sich Source-Filter (`blocked_source`) von Nutzerentscheidungen (`blacklisted`) und LeadEngine-Dedupe (`duplicate_domain`) von Import-Payload-Dubletten (`duplicate_input` im Target Import).
 
+### Source Quality Heuristik
+
+Jeder SERP-Treffer bekommt vor dem Import transparente Qualitaets-Metadaten:
+
+- `source_type`
+- `source_quality_score`
+- `recommended_import_action`
+- `source_signals`
+- `source_risks`
+
+Erste Source Types:
+
+- `company_site`
+- `directory`
+- `job_board`
+- `social`
+- `repository`
+- `news`
+- `registry`
+- `marketplace`
+- `unknown`
+
+Positive Signale:
+
+- direkte Domain ohne bekannten Aggregator-Kontext
+- relevante Pfade wie `karriere`, `jobs`, `kontakt`, `impressum`, `about`, `team`
+- konkreter Titel statt generischer Ergebnisliste
+- guter Provider-Rang
+
+Negative Signale:
+
+- bekannte Jobboerse, Social-Media- oder Marketplace-Domain
+- Such-, Listing-, Login- oder Tracking-Seite
+- generische Titel wie reine Stellenangebots- oder Jobsuche-Seiten
+- lokal konfigurierte Source-Denylist
+
+Die LeadEngine nutzt diese Heuristik nur fuer Discovery-Priorisierung und
+Import-Entscheidung. Die finale fachliche Passung bleibt Aufgabe der
+RatingEngine.
+
 ## 12. Dedupe
 
 Die wichtigste Dedupe-Einheit ist die normalisierte Domain.

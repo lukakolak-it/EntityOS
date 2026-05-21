@@ -10,6 +10,9 @@ from target_radar.engines.lead import (
     LeadEngineConfig,
     QueryBuilder,
     SearchResult,
+    SourceImportAction,
+    SourceQualityClassifier,
+    SourceType,
     create_search_provider,
 )
 from target_radar.storage import SQLiteStore
@@ -77,6 +80,14 @@ class LeadEngineTests(unittest.TestCase):
             serp_result_count = store.connection.execute(
                 "SELECT COUNT(*) AS count FROM serp_results"
             ).fetchone()["count"]
+            alpha_metadata = store.connection.execute(
+                """
+                SELECT metadata_json FROM serp_results
+                WHERE domain = 'alpha.example'
+                ORDER BY id ASC
+                LIMIT 1
+                """
+            ).fetchone()["metadata_json"]
         finally:
             store.close()
 
@@ -90,6 +101,69 @@ class LeadEngineTests(unittest.TestCase):
         )
         self.assertEqual(source_query_count, 1)
         self.assertEqual(serp_result_count, 3)
+        self.assertIn("source_quality", alpha_metadata)
+
+    def test_source_quality_blocks_job_boards_and_scores_direct_domains(self) -> None:
+        classifier = SourceQualityClassifier()
+
+        job_board = classifier.classify(
+            SearchResult(
+                url="https://www.studentjob.de/stellenangebote/123",
+                title="Werkstudent IT Jobs in Essen",
+                snippet="Jobsuche und Stellenangebote",
+                metadata={"provider_rank": 1},
+            )
+        )
+        company = classifier.classify(
+            SearchResult(
+                url="https://alpha.example/karriere",
+                title="Alpha GmbH Karriere",
+                snippet="IT Projekte und Kontakt in Essen",
+                metadata={"provider_rank": 2},
+            )
+        )
+
+        self.assertEqual(job_board.source_type, SourceType.JOB_BOARD)
+        self.assertEqual(job_board.recommended_action, SourceImportAction.BLOCK)
+        self.assertEqual(company.source_type, SourceType.COMPANY_SITE)
+        self.assertEqual(company.recommended_action, SourceImportAction.IMPORT)
+        self.assertGreater(company.score, job_board.score)
+
+    def test_lead_engine_prioritizes_direct_domains_before_portals(self) -> None:
+        search_profile = SearchProfile(
+            profile_id=1,
+            name="Werkstudent IT Essen",
+            roles=("Werkstudent IT",),
+            regions=("Essen",),
+            tech_keywords=("Python",),
+        )
+        provider = FakeSearchProvider(
+            results_by_query={
+                "Werkstudent IT Python Essen": [
+                    SearchResult(
+                        url="https://www.studentjob.de/stellenangebote/123",
+                        title="Werkstudent IT Jobs in Essen",
+                        metadata={"provider_rank": 1},
+                    ),
+                    SearchResult(
+                        url="https://alpha.example/karriere",
+                        title="Alpha GmbH Karriere",
+                        metadata={"provider_rank": 2},
+                    ),
+                ]
+            }
+        )
+        engine = LeadEngine(
+            provider=provider,
+            config=LeadEngineConfig(request_budget=1, results_per_query=2),
+        )
+
+        candidates = engine.discover(search_profile)
+
+        self.assertEqual(candidates[0].domain, "alpha.example")
+        self.assertEqual(candidates[0].status, LeadResultStatus.CANDIDATE)
+        self.assertEqual(candidates[1].domain, "studentjob.de")
+        self.assertEqual(candidates[1].status, LeadResultStatus.BLOCKED_SOURCE)
 
     def test_search_provider_factory_uses_configured_provider(self) -> None:
         from target_radar.config import SearchProviderSettings

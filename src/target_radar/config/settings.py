@@ -82,6 +82,8 @@ class LeadBudgetConfig:
     results_per_query: int = 10
     max_raw_results: int = 1000
     default_provider: str = "mock"
+    source_block_threshold: int = 35
+    blocked_source_domains: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -247,6 +249,15 @@ def load_app_config(
             results_per_query=_get_int(values, "TARGET_RADAR_RESULTS_PER_QUERY", 10),
             max_raw_results=_get_int(values, "TARGET_RADAR_MAX_RAW_RESULTS", 1000),
             default_provider=_get_str(values, "TARGET_RADAR_DEFAULT_PROVIDER", "mock"),
+            source_block_threshold=_get_int(
+                values,
+                "TARGET_RADAR_SOURCE_BLOCK_THRESHOLD",
+                35,
+            ),
+            blocked_source_domains=_get_tuple(
+                values,
+                "TARGET_RADAR_BLOCKED_SOURCE_DOMAINS",
+            ),
         ),
         fetch=FetchConfig(
             timeout_seconds=_get_float(values, "TARGET_RADAR_FETCH_TIMEOUT_SECONDS", 10),
@@ -294,3 +305,10 @@ def _get_int(values: Mapping[str, str], key: str, default: int) -> int:
 def _get_float(values: Mapping[str, str], key: str, default: float) -> float:
     value = _get_optional_str(values, key)
     return float(value) if value is not None else default
+
+
+def _get_tuple(values: Mapping[str, str], key: str) -> tuple[str, ...]:
+    value = _get_optional_str(values, key)
+    if value is None:
+        return ()
+    return tuple(item.strip() for item in value.split(",") if item.strip())

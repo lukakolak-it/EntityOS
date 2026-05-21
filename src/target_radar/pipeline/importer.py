@@ -141,6 +141,7 @@ class TargetImporter:
                     metadata={
                         "title": candidate.title,
                         "snippet": candidate.snippet,
+                        "lead_metadata": dict(candidate.metadata),
                     },
                 )
             )

@@ -57,6 +57,8 @@ Fuer die aktuelle lokale Aufteilung sind diese Variablen relevant:
 - `LLM_LIGHT_PROVIDER=ollama`
 - `LLM_LIGHT_MODEL`: Qwen-Modell fuer Light Thinking
 - `SEARCH_PROVIDER=brave`, wenn echte Brave-Suche statt Mock genutzt werden soll
+- `TARGET_RADAR_SOURCE_BLOCK_THRESHOLD`: Score-Grenze fuer Discovery-Quellen
+- `TARGET_RADAR_BLOCKED_SOURCE_DOMAINS`: kommagetrennte lokale Source-Denylist
 
 Konfigurierter Discovery-Lauf:
 

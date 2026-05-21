@@ -13,6 +13,11 @@ from target_radar.domain import (
 )
 from target_radar.engines.lead.provider import SearchProvider, SearchResult
 from target_radar.engines.lead.query import QueryBuilder, hash_query
+from target_radar.engines.lead.source_quality import (
+    SourceImportAction,
+    SourceQualityClassifier,
+    SourceQualityResult,
+)
 from target_radar.storage import SQLiteStore
 
 
@@ -21,6 +26,7 @@ class LeadEngineConfig:
     request_budget: int = 100
     results_per_query: int = 10
     template_set: str | None = None
+    source_block_threshold: int = 35
 
 
 @dataclass(slots=True)
@@ -28,6 +34,9 @@ class LeadEngine:
     provider: SearchProvider
     config: LeadEngineConfig = field(default_factory=LeadEngineConfig)
     query_builder: QueryBuilder = field(default_factory=QueryBuilder)
+    source_quality_classifier: SourceQualityClassifier = field(
+        default_factory=SourceQualityClassifier
+    )
     blocked_domains: set[str] = field(default_factory=set)
     store: SQLiteStore | None = None
     pipeline_run_id: int | None = None
@@ -36,6 +45,12 @@ class LeadEngine:
         self.blocked_domains = {
             normalize_domain(domain) for domain in self.blocked_domains
         }
+        if self.source_quality_classifier.block_threshold != self.config.source_block_threshold:
+            self.source_quality_classifier = SourceQualityClassifier(
+                extra_blocked_domains=self.source_quality_classifier.extra_blocked_domains,
+                block_threshold=self.config.source_block_threshold,
+                blocked_source_types=self.source_quality_classifier.blocked_source_types,
+            )
 
     def discover(
         self,
@@ -68,27 +83,61 @@ class LeadEngine:
                 query.text,
                 limit=self.config.results_per_query,
             )
-            for result in results:
-                candidate = self._candidate_from_result(result, seen_domains)
+            classified_results = self._prioritize_results(results)
+            for result, source_quality in classified_results:
+                candidate = self._candidate_from_result(
+                    result,
+                    seen_domains,
+                    source_quality,
+                )
                 candidates.append(candidate)
                 if candidate.status == LeadResultStatus.CANDIDATE:
                     seen_domains.add(candidate.domain or "")
-                self._record_serp_result(source_query_id, candidate, result)
+                self._record_serp_result(
+                    source_query_id,
+                    candidate,
+                    result,
+                    source_quality,
+                )
 
         return candidates
+
+    def _prioritize_results(
+        self,
+        results: list[SearchResult],
+    ) -> list[tuple[SearchResult, SourceQualityResult]]:
+        classified = [
+            (result, self.source_quality_classifier.classify(result))
+            for result in results
+        ]
+        return sorted(
+            classified,
+            key=lambda item: (
+                item[1].blocked,
+                -item[1].score,
+                _provider_rank(item[0]),
+            ),
+        )
 
     def _candidate_from_result(
         self,
         result: SearchResult,
         seen_domains: set[str],
+        source_quality: SourceQualityResult,
     ) -> TargetCandidate:
         domain = domain_from_url(result.url)
         if domain in self.blocked_domains:
+            status = LeadResultStatus.BLOCKED_SOURCE
+        elif source_quality.recommended_action == SourceImportAction.BLOCK:
             status = LeadResultStatus.BLOCKED_SOURCE
         elif domain in seen_domains:
             status = LeadResultStatus.DUPLICATE_DOMAIN
         else:
             status = LeadResultStatus.CANDIDATE
+        metadata = {
+            **dict(result.metadata),
+            "source_quality": source_quality.to_metadata(),
+        }
 
         return TargetCandidate(
             url=result.url,
@@ -97,7 +146,7 @@ class LeadEngine:
             snippet=result.snippet,
             domain=domain,
             status=status,
-            metadata=dict(result.metadata),
+            metadata=metadata,
         )
 
     def _record_source_query(
@@ -126,9 +175,14 @@ class LeadEngine:
         source_query_id: int | None,
         candidate: TargetCandidate,
         result: SearchResult,
+        source_quality: SourceQualityResult,
     ) -> None:
         if self.store is None or source_query_id is None:
             return
+        metadata = {
+            **dict(result.metadata),
+            "source_quality": source_quality.to_metadata(),
+        }
         self.store.create_serp_result(
             source_query_id=source_query_id,
             url=result.url,
@@ -136,5 +190,13 @@ class LeadEngine:
             title=result.title,
             snippet=result.snippet,
             status=candidate.status,
-            metadata=dict(result.metadata),
+            metadata=metadata,
         )
+
+
+def _provider_rank(result: SearchResult) -> int:
+    rank = result.metadata.get("provider_rank")
+    try:
+        return int(rank)
+    except (TypeError, ValueError):
+        return 999_999

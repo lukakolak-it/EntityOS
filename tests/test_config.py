@@ -18,6 +18,8 @@ class ConfigTests(unittest.TestCase):
         )
         self.assertEqual(config.rating.hard_stop_action, "skip")
         self.assertEqual(config.lead_budget.request_budget, 100)
+        self.assertEqual(config.lead_budget.source_block_threshold, 35)
+        self.assertEqual(config.lead_budget.blocked_source_domains, ())
         self.assertEqual(config.review_queue.page_size, 50)
         self.assertEqual(config.infrastructure.host, "127.0.0.1")
         self.assertEqual(config.infrastructure.port, 8765)
@@ -38,6 +40,8 @@ class ConfigTests(unittest.TestCase):
                 "TARGET_RADAR_HOST": "127.0.0.2",
                 "TARGET_RADAR_PORT": "9000",
                 "TARGET_RADAR_REQUEST_BUDGET": "25",
+                "TARGET_RADAR_SOURCE_BLOCK_THRESHOLD": "45",
+                "TARGET_RADAR_BLOCKED_SOURCE_DOMAINS": "jobs.example, social.example",
                 "TARGET_RADAR_MIN_CONFIDENCE_FOR_DRAFT": "0.75",
                 "GITHUB_TOKEN": "ghp",
                 "LLM_PROVIDER": "openai",
@@ -55,6 +59,11 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.infrastructure.host, "127.0.0.2")
         self.assertEqual(config.infrastructure.port, 9000)
         self.assertEqual(config.lead_budget.request_budget, 25)
+        self.assertEqual(config.lead_budget.source_block_threshold, 45)
+        self.assertEqual(
+            config.lead_budget.blocked_source_domains,
+            ("jobs.example", "social.example"),
+        )
         self.assertEqual(config.rating.min_confidence_for_draft, 0.75)
         self.assertEqual(config.github.token, "ghp")
         self.assertEqual(config.llm.provider, "openai")

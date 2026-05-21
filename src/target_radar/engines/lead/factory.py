@@ -9,6 +9,7 @@ from target_radar.engines.lead.provider import (
     FakeSearchProvider,
     SearchProvider,
 )
+from target_radar.engines.lead.source_quality import SourceQualityClassifier
 from target_radar.storage import SQLiteStore
 
 
@@ -35,6 +36,11 @@ def create_lead_engine(
         config=LeadEngineConfig(
             request_budget=config.lead_budget.request_budget,
             results_per_query=config.lead_budget.results_per_query,
+            source_block_threshold=config.lead_budget.source_block_threshold,
+        ),
+        source_quality_classifier=SourceQualityClassifier(
+            extra_blocked_domains=config.lead_budget.blocked_source_domains,
+            block_threshold=config.lead_budget.source_block_threshold,
         ),
         store=store,
         pipeline_run_id=pipeline_run_id,
