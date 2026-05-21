@@ -4,11 +4,16 @@ import unittest
 
 from target_radar.config import load_app_config
 from target_radar.domain import RecommendedAction
-from target_radar.engines.rating import AIRatingRequest, LLMAIRatingProvider
+from target_radar.engines.rating import (
+    AIRatingRequest,
+    LLMAIRatingProvider,
+    create_rating_engine,
+)
 from target_radar.llm import (
     FakeLLMClient,
     LLMRequest,
     LLMRouter,
+    OllamaGenerateClient,
     OpenAIResponsesClient,
     create_llm_router,
 )
@@ -46,20 +51,36 @@ class LLMRouterTests(unittest.TestCase):
         self.assertEqual(router.client_for("heavy").model, "fake-heavy")
         self.assertEqual(router.client_for("light").model, "fake-light")
 
+    def test_light_only_router_does_not_require_heavy_credentials(self) -> None:
+        config = load_app_config(
+            env_file=None,
+            environ={
+                "LLM_HEAVY_PROVIDER": "openai",
+                "LLM_HEAVY_MODEL": "gpt-5.5",
+                "LLM_LIGHT_PROVIDER": "fake",
+                "LLM_LIGHT_MODEL": "fake-light",
+            },
+        )
+
+        router = create_llm_router(config, enabled_tasks=("light",))
+
+        self.assertEqual(router.client_for("light").model, "fake-light")
+        self.assertEqual(router.client_for("heavy").provider, "unavailable")
+
     def test_llm_ai_rating_provider_parses_json_response(self) -> None:
         router = LLMRouter(
-            heavy=FakeLLMClient(
+            heavy=FakeLLMClient(text="{}", model="fake-heavy"),
+            light=FakeLLMClient(
                 text=(
                     '{"ai_score": 82, "confidence": 0.77, '
                     '"recommended_action": "draft", '
                     '"reasons": [{"text": "fit", "source_url": "https://example.com", '
                     '"evidence": "Werkstudent IT"}], "risks": []}'
                 ),
-                model="fake-heavy",
+                model="fake-light",
             ),
-            light=FakeLLMClient(text="{}"),
         )
-        provider = LLMAIRatingProvider(router=router, task="heavy")
+        provider = LLMAIRatingProvider(router=router)
 
         response = provider.rate(
             AIRatingRequest(
@@ -73,7 +94,46 @@ class LLMRouterTests(unittest.TestCase):
         self.assertEqual(response.ai_score, 82)
         self.assertEqual(response.confidence, 0.77)
         self.assertEqual(response.recommended_action, RecommendedAction.DRAFT)
-        self.assertEqual(response.model_name, "fake-heavy")
+        self.assertEqual(response.model_name, "fake-light")
+
+    def test_llm_ai_rating_provider_normalizes_invalid_action(self) -> None:
+        router = LLMRouter(
+            heavy=FakeLLMClient(text="{}"),
+            light=FakeLLMClient(
+                text=(
+                    '{"ai_score": 51, "confidence": 0.62, '
+                    '"recommended_action": "proceed with caution", '
+                    '"reasons": [], "risks": []}'
+                )
+            ),
+        )
+        provider = LLMAIRatingProvider(router=router)
+
+        response = provider.rate(
+            AIRatingRequest(
+                target_domain="example.com",
+                search_terms=("Werkstudent IT",),
+                context_text="Werkstudent IT",
+                rule_score=55,
+            )
+        )
+
+        self.assertEqual(response.recommended_action, RecommendedAction.REVIEW)
+
+    def test_rating_engine_factory_defaults_to_light_task(self) -> None:
+        config = load_app_config(
+            env_file=None,
+            environ={
+                "LLM_HEAVY_PROVIDER": "openai",
+                "LLM_HEAVY_MODEL": "gpt-5.5",
+                "LLM_LIGHT_PROVIDER": "fake",
+                "LLM_LIGHT_MODEL": "fake-light",
+            },
+        )
+
+        engine = create_rating_engine(config)
+
+        self.assertIsNotNone(engine.ai_provider)
 
     def test_openai_gpt5_request_omits_temperature(self) -> None:
         captured_payloads = []
@@ -91,6 +151,27 @@ class LLMRouterTests(unittest.TestCase):
             clients._post_json = original_post_json
 
         self.assertNotIn("temperature", captured_payloads[0])
+
+    def test_ollama_client_uses_extended_timeout(self) -> None:
+        captured_timeouts = []
+        captured_payloads = []
+        original_post_json = clients._post_json
+
+        def fake_post_json(url, payload, *, headers=None, timeout=60):
+            captured_timeouts.append(timeout)
+            captured_payloads.append(payload)
+            return {"response": "<think>notes</think>{}"}
+
+        clients._post_json = fake_post_json
+        try:
+            client = OllamaGenerateClient(model="qwen3:30b-a3b-q4_K_M")
+            response = client.complete(LLMRequest(prompt="{}"))
+        finally:
+            clients._post_json = original_post_json
+
+        self.assertEqual(captured_timeouts[0], 300)
+        self.assertEqual(captured_payloads[0]["format"], "json")
+        self.assertEqual(response.text, "{}")
 
 
 if __name__ == "__main__":

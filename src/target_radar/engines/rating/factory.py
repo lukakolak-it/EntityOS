@@ -12,9 +12,9 @@ def create_rating_engine(
     config: AppConfig,
     *,
     router: LLMRouter | None = None,
-    task: str = "heavy",
+    task: str = "light",
 ) -> RatingEngine:
-    llm_router = router or create_llm_router(config)
+    llm_router = router or create_llm_router(config, enabled_tasks=(task,))
     return RatingEngine(
         config=config.rating,
         ai_provider=LLMAIRatingProvider(router=llm_router, task=task),

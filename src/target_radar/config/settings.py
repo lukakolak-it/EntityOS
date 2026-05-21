@@ -39,7 +39,7 @@ class LLMSettings:
     heavy_provider: str = "openai"
     heavy_model: str = "gpt-5.5"
     light_provider: str = "ollama"
-    light_model: str = "qwen3:30b-a3v-q4_K_M"
+    light_model: str = "qwen3:30b-a3b-q4_K_M"
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str | None = None
@@ -189,7 +189,7 @@ def load_app_config(
             light_model=_get_str(
                 values,
                 "LLM_LIGHT_MODEL",
-                _get_str(values, "LOCAL_AI_MODEL", "qwen3:30b-a3v-q4_K_M"),
+                _get_str(values, "LOCAL_AI_MODEL", "qwen3:30b-a3b-q4_K_M"),
             ),
             openai_api_key=_get_optional_str(values, "OPENAI_API_KEY"),
             openai_base_url=_get_str(values, "OPENAI_BASE_URL", "https://api.openai.com/v1"),

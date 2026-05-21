@@ -27,7 +27,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.llm.heavy_provider, "openai")
         self.assertEqual(config.llm.heavy_model, "gpt-5.5")
         self.assertEqual(config.llm.light_provider, "ollama")
-        self.assertEqual(config.llm.light_model, "qwen3:30b-a3v-q4_K_M")
+        self.assertEqual(config.llm.light_model, "qwen3:30b-a3b-q4_K_M")
         self.assertEqual(config.search_provider.provider, "mock")
 
     def test_environment_overrides_defaults(self) -> None:

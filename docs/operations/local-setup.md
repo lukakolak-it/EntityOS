@@ -49,9 +49,9 @@ Fuer die aktuelle lokale Aufteilung sind diese Variablen relevant:
 
 - `GITHUB_TOKEN`: GitHub-Zugriff fuer spaetere Repo-/Issue-Workflows
 - `BRAVE_API_KEY`: Brave Search Discovery
-- `OPENAI_API_KEY`: Cloud-LLM fuer Heavy Thinking
-- `LLM_HEAVY_PROVIDER=openai`
-- `LLM_HEAVY_MODEL=gpt-5.5`
+- `OPENAI_API_KEY`: optionaler Cloud-LLM fuer spaeteres Heavy Thinking
+- `LLM_HEAVY_PROVIDER=openai`: bleibt konfigurierbar, wird im Default-Rating-Pfad nicht initialisiert
+- `LLM_HEAVY_MODEL=gpt-5.5`: spaeteres Heavy-Profil
 - `LOCAL_AI_PROVIDER=ollama`
 - `LOCAL_AI_MODEL`: Qwen-Modell fuer Light Thinking
 - `LLM_LIGHT_PROVIDER=ollama`
@@ -65,7 +65,9 @@ $env:PYTHONPATH='src'
 py -m target_radar.cli run-configured --role "Werkstudent IT" --region Essen --tech Python --request-budget 5
 ```
 
-`run-configured` nutzt `SEARCH_PROVIDER`; fuer lokale Tests bleibt `run-fake` deterministisch.
+`run-configured` nutzt `SEARCH_PROVIDER` und fuer Rating standardmaessig das
+Light-Profil (`LLM_LIGHT_PROVIDER`/`LLM_LIGHT_MODEL`). Fuer lokale Tests bleibt
+`run-fake` deterministisch.
 
 ## Datenbank initialisieren
 

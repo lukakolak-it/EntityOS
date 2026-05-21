@@ -12,6 +12,7 @@ from target_radar.llm.clients import (
     LLMResponse,
     OllamaGenerateClient,
     OpenAIResponsesClient,
+    UnavailableLLMClient,
 )
 
 
@@ -47,17 +48,36 @@ class LLMRouter:
         raise ValueError(f"unsupported LLM task: {task}")
 
 
-def create_llm_router(config: AppConfig) -> LLMRouter:
+def create_llm_router(
+    config: AppConfig,
+    *,
+    enabled_tasks: tuple[str, ...] = ("heavy", "light"),
+) -> LLMRouter:
+    enabled = {task.strip().lower() for task in enabled_tasks}
     return LLMRouter(
-        heavy=_create_client(
-            provider=config.llm.heavy_provider,
-            model=config.llm.heavy_model,
-            config=config,
+        heavy=(
+            _create_client(
+                provider=config.llm.heavy_provider,
+                model=config.llm.heavy_model,
+                config=config,
+            )
+            if "heavy" in enabled
+            else UnavailableLLMClient(
+                model=config.llm.heavy_model,
+                reason="heavy LLM task is disabled for this router",
+            )
         ),
-        light=_create_client(
-            provider=config.llm.light_provider,
-            model=config.llm.light_model,
-            config=config,
+        light=(
+            _create_client(
+                provider=config.llm.light_provider,
+                model=config.llm.light_model,
+                config=config,
+            )
+            if "light" in enabled
+            else UnavailableLLMClient(
+                model=config.llm.light_model,
+                reason="light LLM task is disabled for this router",
+            )
         ),
         default_task="light",
     )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
@@ -35,6 +36,16 @@ class LLMClient(Protocol):
 
 class LLMError(RuntimeError):
     """Raised when an LLM provider call fails."""
+
+
+@dataclass(frozen=True, slots=True)
+class UnavailableLLMClient:
+    provider: str = "unavailable"
+    model: str = "unavailable"
+    reason: str = "LLM task is not enabled"
+
+    def complete(self, request: LLMRequest) -> LLMResponse:
+        raise LLMError(self.reason)
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,6 +99,8 @@ class OllamaGenerateClient:
     base_url: str = "http://127.0.0.1:11434"
     api_key: str | None = None
     provider: str = "ollama"
+    timeout_seconds: int = 300
+    format_json: bool = True
 
     def complete(self, request: LLMRequest) -> LLMResponse:
         prompt = request.prompt
@@ -99,6 +112,8 @@ class OllamaGenerateClient:
             "prompt": prompt,
             "stream": False,
         }
+        if self.format_json:
+            payload["format"] = "json"
         if request.temperature is not None:
             payload["options"] = {"temperature": request.temperature}
 
@@ -110,8 +125,9 @@ class OllamaGenerateClient:
             f"{self.base_url.rstrip('/')}/api/generate",
             payload,
             headers=headers,
+            timeout=self.timeout_seconds,
         )
-        text = str(response.get("response") or "")
+        text = _strip_thinking(str(response.get("response") or ""))
         return LLMResponse(
             text=text,
             provider=self.provider,
@@ -171,6 +187,10 @@ def _extract_openai_text(payload: dict[str, object]) -> str:
                 if isinstance(text, str):
                     parts.append(text)
     return "\n".join(parts).strip()
+
+
+def _strip_thinking(text: str) -> str:
+    return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE).strip()
 
 
 def _openai_supports_temperature(model: str) -> bool:

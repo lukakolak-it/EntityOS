@@ -62,7 +62,7 @@ class FakeAIRatingProvider:
 @dataclass(frozen=True, slots=True)
 class LLMAIRatingProvider:
     router: LLMRouter
-    task: str = "heavy"
+    task: str = "light"
 
     def rate(self, request: AIRatingRequest) -> AIRatingResponse:
         response = self.router.complete(
@@ -72,11 +72,12 @@ class LLMAIRatingProvider:
             temperature=0.1,
         )
         payload = _load_json_object(response.text)
-        action = RecommendedAction(str(payload.get("recommended_action", "review")))
+        ai_score = _int_between(payload.get("ai_score"), 0, 100)
+        confidence = _float_between(payload.get("confidence"), 0, 1)
         return AIRatingResponse(
-            ai_score=_int_between(payload.get("ai_score"), 0, 100),
-            confidence=_float_between(payload.get("confidence"), 0, 1),
-            recommended_action=action,
+            ai_score=ai_score,
+            confidence=confidence,
+            recommended_action=_recommended_action(payload.get("recommended_action")),
             reasons=_list_of_dicts(payload.get("reasons")),
             risks=_list_of_dicts(payload.get("risks")),
             model_name=response.model,
@@ -85,16 +86,29 @@ class LLMAIRatingProvider:
 
 def _rating_instructions() -> str:
     return (
-        "You rate target fit for Target Radar. Return only valid JSON with keys "
-        "ai_score, confidence, recommended_action, reasons and risks. "
-        "recommended_action must be one of skip, review, draft. Every positive "
-        "reason must include source_url and evidence."
+        "You rate target fit for Target Radar. Return exactly one JSON object and "
+        "no prose. Required schema: {\"ai_score\": integer 0-100, "
+        "\"confidence\": number 0-1, \"recommended_action\": \"skip\"|\"review\"|"
+        "\"draft\", \"reasons\": array of objects, \"risks\": array of objects}. "
+        "Never return an empty object. Every positive reason must include "
+        "source_url and evidence. Example: {\"ai_score\": 72, \"confidence\": 0.68, "
+        "\"recommended_action\": \"review\", \"reasons\": [{\"text\": \"Relevant "
+        "role\", \"source_url\": \"https://example.com\", \"evidence\": \"Werkstudent "
+        "IT\"}], \"risks\": []}."
     )
 
 
 def _rating_prompt(request: AIRatingRequest) -> str:
     return json.dumps(
         {
+            "task": "Return a Target Radar rating as JSON only.",
+            "required_keys": [
+                "ai_score",
+                "confidence",
+                "recommended_action",
+                "reasons",
+                "risks",
+            ],
             "target_domain": request.target_domain,
             "search_terms": request.search_terms,
             "rule_score": request.rule_score,
@@ -120,13 +134,24 @@ def _load_json_object(text: str) -> dict[str, object]:
 
 
 def _int_between(value: object, minimum: int, maximum: int) -> int:
+    if value is None:
+        raise ValueError("LLM rating response missing integer value")
     parsed = int(value)
     return max(minimum, min(maximum, parsed))
 
 
 def _float_between(value: object, minimum: float, maximum: float) -> float:
+    if value is None:
+        raise ValueError("LLM rating response missing numeric value")
     parsed = float(value)
     return max(minimum, min(maximum, parsed))
+
+
+def _recommended_action(value: object) -> RecommendedAction:
+    try:
+        return RecommendedAction(str(value or "review").strip().lower())
+    except ValueError:
+        return RecommendedAction.REVIEW
 
 
 def _list_of_dicts(value: object) -> list[dict[str, object]]:

@@ -8,6 +8,7 @@ from target_radar.llm.clients import (
     LLMResponse,
     OllamaGenerateClient,
     OpenAIResponsesClient,
+    UnavailableLLMClient,
 )
 from target_radar.llm.router import LLMRouter, create_llm_router
 
@@ -20,5 +21,6 @@ __all__ = [
     "LLMRouter",
     "OllamaGenerateClient",
     "OpenAIResponsesClient",
+    "UnavailableLLMClient",
     "create_llm_router",
 ]
