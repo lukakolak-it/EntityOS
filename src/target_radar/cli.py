@@ -9,6 +9,7 @@ from typing import Sequence
 from target_radar.config import load_app_config
 from target_radar.domain import Profile, SearchProfile
 from target_radar.engines.lead import FakeLeadEngine
+from target_radar.ops import collect_diagnostics, configure_logging, run_privacy_check
 from target_radar.pipeline import PipelineOrchestrator, PipelineRunRequest
 from target_radar.storage import SQLiteStore
 from target_radar.web.server import serve
@@ -18,6 +19,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
     database_url = args.database_url or load_app_config().infrastructure.database_url
+    if args.command == "serve" or args.log_file:
+        configure_logging(level=args.log_level, log_file=args.log_file)
 
     if args.command == "init-db":
         store = SQLiteStore.open(database_url)
@@ -35,6 +38,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         serve(database_url=database_url, host=args.host, port=args.port)
         return 0
 
+    if args.command == "diagnose":
+        _print_json(collect_diagnostics(database_url))
+        return 0
+
+    if args.command == "privacy-check":
+        result = run_privacy_check(args.root)
+        _print_json(result)
+        return 0 if result["ok"] else 1
+
     parser.print_help()
     return 1
 
@@ -42,6 +54,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="target-radar")
     parser.add_argument("--database-url", help="SQLite URL or path")
+    parser.add_argument("--log-level", default="INFO")
+    parser.add_argument("--log-file", help="Optional JSON-lines log file")
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("init-db", help="Initialize the local database")
@@ -62,6 +76,13 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="Run local web UI")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8765)
+    serve_parser.add_argument("--log-level", default="INFO")
+    serve_parser.add_argument("--log-file", help="Optional JSON-lines log file")
+
+    subparsers.add_parser("diagnose", help="Print local diagnostic snapshot")
+
+    privacy = subparsers.add_parser("privacy-check", help="Check local privacy guardrails")
+    privacy.add_argument("--root", default=".")
     return parser
 
 

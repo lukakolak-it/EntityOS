@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
 from dataclasses import asdict
 from http import HTTPStatus
@@ -23,6 +24,7 @@ from target_radar.storage import NotFoundError, SQLiteStore
 
 
 STATIC_DIR = Path(__file__).with_name("static")
+LOGGER = logging.getLogger(__name__)
 
 
 def serve(
@@ -34,10 +36,15 @@ def serve(
     """Run the local web server until interrupted."""
 
     server = create_server(database_url=database_url, host=host, port=port)
+    LOGGER.info(
+        "local web server started",
+        extra={"extra": {"host": host, "port": port}},
+    )
     try:
         server.serve_forever()
     finally:
         server.server_close()
+        LOGGER.info("local web server stopped")
 
 
 def create_server(
@@ -278,6 +285,10 @@ def _make_handler(database_url: str):
             self.wfile.write(data)
 
         def _send_error(self, status: HTTPStatus, message: str) -> None:
+            LOGGER.warning(
+                "http error",
+                extra={"extra": {"status": status.value, "path": self.path, "message": message}},
+            )
             self._send_json({"error": message}, status=status)
 
     return TargetRadarHandler

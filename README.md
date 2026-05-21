@@ -51,6 +51,16 @@ py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 
 
 Danach im Browser `http://127.0.0.1:8765` oeffnen.
 
+Diagnose und Datenschutz-Check:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 diagnose
+py -m target_radar.cli privacy-check --root .
+```
+
+Ausfuehrliche lokale Betriebsdoku: `docs/operations/local-setup.md`.
+
 ## Git
 
 Das Repository nutzt `main` als Standard-Branch. Vor einem ersten echten Implementierungsschritt sollte der aktuelle Dokumentations- und Strukturstand committed werden.

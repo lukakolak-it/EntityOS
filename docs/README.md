@@ -16,3 +16,7 @@
 ## Planung
 
 - `planning/sprints-und-slices.md`: Sprint-Planung mit vertikalen Slices fuer den MVP
+
+## Betrieb
+
+- `operations/local-setup.md`: lokale Installation, erster Lauf, Diagnose und Datenschutz-Check

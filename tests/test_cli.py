@@ -38,6 +38,37 @@ class CliTests(unittest.TestCase):
         self.assertGreaterEqual(run_payload["review_target_count"], 1)
         self.assertGreaterEqual(len(review_payload["targets"]), 1)
 
+    def test_diagnose_and_privacy_check(self) -> None:
+        with tempfile.TemporaryDirectory() as db_tmpdir, tempfile.TemporaryDirectory() as privacy_tmpdir:
+            root = Path(privacy_tmpdir)
+            database_url = f"sqlite:///{Path(db_tmpdir) / 'target-radar.sqlite3'}"
+            _run_cli("--database-url", database_url, "init-db")
+            diagnose_payload = _run_cli("--database-url", database_url, "diagnose")
+
+            (root / ".gitignore").write_text(
+                "\n".join(
+                    [
+                        ".env",
+                        ".env.*",
+                        "data/*",
+                        "logs/",
+                        "*.sqlite",
+                        "*.sqlite3",
+                        "*.db",
+                        "*.log",
+                        "exports/",
+                        "profiles.local.*",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            (root / ".env.example").write_text("OPENAI_API_KEY=\n", encoding="utf-8")
+            privacy_payload = _run_cli("privacy-check", "--root", str(root))
+
+        self.assertEqual(diagnose_payload["database"]["status"], "ok")
+        self.assertEqual(diagnose_payload["database"]["url"], "[REDACTED]")
+        self.assertTrue(privacy_payload["ok"])
+
 
 def _run_cli(*args: str) -> dict[str, object]:
     buffer = io.StringIO()
