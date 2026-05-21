@@ -71,6 +71,16 @@ class TargetImporter:
                 continue
             seen_domains.add(domain)
 
+            if candidate.status == LeadResultStatus.DUPLICATE_DOMAIN:
+                results.append(
+                    TargetImportResult(
+                        candidate=candidate,
+                        status=ImportStatus.DUPLICATE_INPUT,
+                        reason="domain was already deduplicated by discovery",
+                    )
+                )
+                continue
+
             if candidate.status == LeadResultStatus.BLOCKED_SOURCE:
                 results.append(
                     TargetImportResult(

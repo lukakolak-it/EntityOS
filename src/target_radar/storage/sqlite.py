@@ -12,6 +12,8 @@ from target_radar.domain import (
     Draft,
     DraftStatus,
     Evidence,
+    ImportStatus,
+    LeadResultStatus,
     PipelinePhase,
     PipelineRun,
     PipelineRunStatus,
@@ -243,6 +245,81 @@ class SQLiteStore:
         )
         self.connection.commit()
         return self.get_target(int(cursor.lastrowid))
+
+    def create_source_query(
+        self,
+        *,
+        provider: str,
+        query_text: str,
+        query_hash: str,
+        pipeline_run_id: int | None = None,
+        query_template: str | None = None,
+        template_set: str | None = None,
+        query_score: int | None = None,
+        status: str = "completed",
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO source_queries (
+                pipeline_run_id, provider, query_text, query_hash,
+                query_template, template_set, query_score, status,
+                metadata_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                pipeline_run_id,
+                provider,
+                query_text,
+                query_hash,
+                query_template,
+                template_set,
+                query_score,
+                status,
+                _json_dumps(metadata or {}),
+                _format_dt(datetime.now(UTC)),
+            ),
+        )
+        self.connection.commit()
+        return int(cursor.lastrowid)
+
+    def create_serp_result(
+        self,
+        *,
+        source_query_id: int,
+        url: str,
+        domain: str,
+        status: LeadResultStatus,
+        target_id: int | None = None,
+        title: str | None = None,
+        snippet: str | None = None,
+        import_status: ImportStatus | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> int:
+        cursor = self.connection.execute(
+            """
+            INSERT INTO serp_results (
+                source_query_id, target_id, url, domain, title, snippet,
+                status, import_status, metadata_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                source_query_id,
+                target_id,
+                url,
+                domain,
+                title,
+                snippet,
+                status.value,
+                import_status.value if import_status is not None else None,
+                _json_dumps(metadata or {}),
+                _format_dt(datetime.now(UTC)),
+            ),
+        )
+        self.connection.commit()
+        return int(cursor.lastrowid)
 
     def get_target(self, target_id: int) -> Target:
         row = self.connection.execute(
