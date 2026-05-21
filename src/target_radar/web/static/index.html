@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Target Radar</title>
+    <link rel="icon" href="/static/logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="/static/logo.svg" width="32" height="32" alt="">
+        <div>
+          <h1>Target Radar</h1>
+          <span id="serverStatus">127.0.0.1</span>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button id="runFakeButton" class="primary" type="button">Run Fake</button>
+        <button id="refreshButton" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel queue-panel" aria-labelledby="queueTitle">
+        <div class="panel-head">
+          <h2 id="queueTitle">Review Queue</h2>
+          <span id="queueCount" class="count">0</span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Target</th>
+                <th>Status</th>
+                <th>Action</th>
+                <th>Score</th>
+                <th>Conf.</th>
+              </tr>
+            </thead>
+            <tbody id="queueBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel detail-panel" aria-labelledby="detailTitle">
+        <div class="panel-head">
+          <h2 id="detailTitle">Target Detail</h2>
+          <span id="detailStatus" class="status-pill muted">none</span>
+        </div>
+        <div id="detailEmpty" class="empty">Kein Target ausgewählt.</div>
+        <div id="detailContent" class="detail hidden">
+          <div class="detail-grid">
+            <div>
+              <label>Domain</label>
+              <a id="targetDomain" href="#" target="_blank" rel="noreferrer"></a>
+            </div>
+            <div>
+              <label>Quelle</label>
+              <span id="targetSource"></span>
+            </div>
+            <div>
+              <label>Aktualisiert</label>
+              <span id="targetUpdated"></span>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button data-action="approve" type="button">Approve</button>
+            <button data-action="reject" type="button">Reject</button>
+            <button data-action="blacklist" class="danger" type="button">Blacklist</button>
+            <button data-action="refetch" type="button">Refetch</button>
+            <button data-action="rerate" type="button">Rerate</button>
+            <button data-action="regenerate-draft" type="button">Draft</button>
+          </div>
+
+          <div class="split">
+            <section>
+              <h3>Ratings</h3>
+              <div id="ratingsList" class="stack"></div>
+            </section>
+            <section>
+              <h3>Drafts</h3>
+              <div id="draftsList" class="stack"></div>
+            </section>
+          </div>
+
+          <div class="split">
+            <section>
+              <h3>Evidence</h3>
+              <div id="evidenceList" class="stack"></div>
+            </section>
+            <section>
+              <h3>Status Log</h3>
+              <div id="statusLogList" class="stack"></div>
+            </section>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel runs-panel" aria-labelledby="runsTitle">
+        <div class="panel-head">
+          <h2 id="runsTitle">Runs</h2>
+        </div>
+        <div id="runsList" class="stack"></div>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -11,6 +11,7 @@ from target_radar.domain import Profile, SearchProfile
 from target_radar.engines.lead import FakeLeadEngine
 from target_radar.pipeline import PipelineOrchestrator, PipelineRunRequest
 from target_radar.storage import SQLiteStore
+from target_radar.web.server import serve
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -29,6 +30,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "review-queue":
         return _review_queue(args, database_url)
+
+    if args.command == "serve":
+        serve(database_url=database_url, host=args.host, port=args.port)
+        return 0
 
     parser.print_help()
     return 1
@@ -53,6 +58,10 @@ def _build_parser() -> argparse.ArgumentParser:
     review_queue = subparsers.add_parser("review-queue", help="Print review targets")
     review_queue.add_argument("--limit", type=int, default=50)
     review_queue.add_argument("--offset", type=int, default=0)
+
+    serve_parser = subparsers.add_parser("serve", help="Run local web UI")
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8765)
     return parser
 
 

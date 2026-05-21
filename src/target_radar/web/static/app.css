@@ -1,0 +1,314 @@
+:root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef2f6;
+  --line: #d7dee8;
+  --text: #16202a;
+  --muted: #657384;
+  --blue: #2459a6;
+  --green: #1f7a4d;
+  --red: #a33a35;
+  --amber: #9a6615;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+}
+
+a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 0 12px;
+}
+
+button:hover {
+  border-color: var(--blue);
+}
+
+button.primary {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #ffffff;
+}
+
+button.danger {
+  border-color: #d9aaa7;
+  color: var(--red);
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 12px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 18px;
+}
+
+h2 {
+  font-size: 15px;
+}
+
+h3 {
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.brand span,
+label,
+.muted,
+.empty {
+  color: var(--muted);
+}
+
+.toolbar,
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.3fr);
+  gap: 14px;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 14px;
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.runs-panel {
+  grid-column: 1 / -1;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 46px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.count,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  padding: 0 9px;
+  font-size: 12px;
+}
+
+.status-pill.approved,
+.status-pill.draft {
+  background: #e5f4ed;
+  color: var(--green);
+}
+
+.status-pill.rejected,
+.status-pill.blacklisted,
+.status-pill.skip {
+  background: #f8e9e7;
+  color: var(--red);
+}
+
+.status-pill.review,
+.status-pill.needs_review,
+.status-pill.rating_partial {
+  background: #fff2dc;
+  color: var(--amber);
+}
+
+.table-wrap {
+  overflow: auto;
+  max-height: calc(100vh - 154px);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+th,
+td {
+  height: 42px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  background: #fafbfc;
+}
+
+tr {
+  cursor: pointer;
+}
+
+tr:hover td {
+  background: #f9fbfd;
+}
+
+tr.selected td {
+  background: #eef5ff;
+}
+
+.empty {
+  padding: 18px 14px;
+}
+
+.hidden {
+  display: none;
+}
+
+.detail {
+  padding: 14px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+label {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.stack {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.detail .stack {
+  padding: 0;
+}
+
+.item {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  background: #fbfcfd;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.item-title {
+  font-weight: 600;
+}
+
+.item p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+textarea,
+input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  padding: 8px;
+}
+
+textarea {
+  min-height: 130px;
+  resize: vertical;
+}
+
+@media (max-width: 940px) {
+  .layout,
+  .split,
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .table-wrap {
+    max-height: none;
+  }
+}

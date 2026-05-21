@@ -408,6 +408,17 @@ class SQLiteStore:
         ).fetchall()
         return [_status_log_from_row(row) for row in rows]
 
+    def list_pipeline_runs(self, *, limit: int = 20) -> list[PipelineRun]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM pipeline_runs
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [_pipeline_run_from_row(row) for row in rows]
+
     def add_evidence(self, evidence: Evidence) -> Evidence:
         cursor = self.connection.execute(
             """
@@ -554,6 +565,17 @@ class SQLiteStore:
             created_at=rating.created_at,
         )
 
+    def list_ratings(self, target_id: int) -> list[RatingResult]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM target_scores
+            WHERE target_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (target_id,),
+        ).fetchall()
+        return [_rating_from_row(row) for row in rows]
+
     def save_draft(self, draft: Draft) -> Draft:
         cursor = self.connection.execute(
             """
@@ -596,6 +618,70 @@ class SQLiteStore:
             updated_at=draft.updated_at,
         )
 
+    def list_drafts(self, target_id: int) -> list[Draft]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM action_drafts
+            WHERE target_id = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            (target_id,),
+        ).fetchall()
+        return [_draft_from_row(row) for row in rows]
+
+    def update_draft(
+        self,
+        draft_id: int,
+        *,
+        subject: str | None = None,
+        body: str | None = None,
+        status: DraftStatus | None = None,
+    ) -> Draft:
+        row = self.connection.execute(
+            "SELECT * FROM action_drafts WHERE id = ?",
+            (draft_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"draft not found: {draft_id}")
+
+        current = _draft_from_row(row)
+        next_subject = subject if subject is not None else current.subject
+        next_body = body if body is not None else current.body
+        next_status = status if status is not None else current.status
+        updated_at = datetime.now(UTC)
+
+        self.connection.execute(
+            """
+            UPDATE action_drafts
+            SET subject = ?, body = ?, status = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                next_subject,
+                next_body,
+                next_status.value,
+                _format_dt(updated_at),
+                draft_id,
+            ),
+        )
+        self.connection.commit()
+
+        return Draft(
+            id=current.id,
+            target_id=current.target_id,
+            score_id=current.score_id,
+            draft_type=current.draft_type,
+            draft_version=current.draft_version,
+            language=current.language,
+            subject=next_subject,
+            body=next_body,
+            status=next_status,
+            used_context=dict(current.used_context),
+            regenerated_from_draft_id=current.regenerated_from_draft_id,
+            created_at=current.created_at,
+            updated_at=updated_at,
+        )
+
     def list_review_targets(self, *, limit: int = 50, offset: int = 0) -> list[Target]:
         rows = self.connection.execute(
             """
@@ -614,6 +700,64 @@ class SQLiteStore:
             ),
         ).fetchall()
         return [_target_from_row(row) for row in rows]
+
+    def list_review_queue_items(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                targets.id,
+                targets.domain,
+                targets.base_url,
+                targets.source,
+                targets.status,
+                targets.updated_at,
+                latest_score.rule_score,
+                latest_score.ai_score,
+                latest_score.confidence,
+                latest_score.recommended_action,
+                latest_score.rating_status
+            FROM targets
+            LEFT JOIN (
+                SELECT target_scores.*
+                FROM target_scores
+                INNER JOIN (
+                    SELECT target_id, MAX(id) AS max_id
+                    FROM target_scores
+                    GROUP BY target_id
+                ) latest
+                    ON latest.target_id = target_scores.target_id
+                    AND latest.max_id = target_scores.id
+            ) latest_score
+                ON latest_score.target_id = targets.id
+            WHERE targets.status IN (?, ?, ?, ?)
+            ORDER BY
+                CASE latest_score.recommended_action
+                    WHEN 'draft' THEN 0
+                    WHEN 'review' THEN 1
+                    WHEN 'skip' THEN 2
+                    ELSE 3
+                END,
+                COALESCE(latest_score.ai_score, latest_score.rule_score, 0) DESC,
+                COALESCE(latest_score.confidence, 0) DESC,
+                targets.updated_at DESC,
+                targets.id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (
+                TargetStatus.NEEDS_REVIEW.value,
+                TargetStatus.RATING_PARTIAL.value,
+                TargetStatus.DRAFT_PENDING.value,
+                TargetStatus.DRAFT_FAILED.value,
+                limit,
+                offset,
+            ),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def _json_dumps(value: Any) -> str:
@@ -719,4 +863,45 @@ def _status_log_from_row(row: sqlite3.Row) -> StatusLog:
         error_message=row["error_message"],
         metadata=_json_loads(row["metadata_json"], {}),
         created_at=_parse_dt(row["created_at"]),
+    )
+
+
+def _rating_from_row(row: sqlite3.Row) -> RatingResult:
+    return RatingResult(
+        id=int(row["id"]),
+        target_id=int(row["target_id"]),
+        pipeline_run_id=row["pipeline_run_id"],
+        rule_score=row["rule_score"],
+        ai_score=row["ai_score"],
+        raw_confidence=row["raw_confidence"],
+        confidence=row["confidence"],
+        recommended_action=RecommendedAction(row["recommended_action"]),
+        rating_status=row["rating_status"],
+        source_quality=row["source_quality"],
+        rating_version=row["rating_version"],
+        reasons=_json_loads(row["reasons_json"], []),
+        risks=_json_loads(row["risks_json"], []),
+        evidence=_json_loads(row["evidence_json"], []),
+        input_snapshot=_json_loads(row["input_snapshot_json"], {}),
+        error_type=row["error_type"],
+        error_message=row["error_message"],
+        created_at=_parse_dt(row["created_at"]),
+    )
+
+
+def _draft_from_row(row: sqlite3.Row) -> Draft:
+    return Draft(
+        id=int(row["id"]),
+        target_id=int(row["target_id"]),
+        score_id=row["score_id"],
+        draft_type=row["draft_type"],
+        draft_version=row["draft_version"],
+        language=row["language"],
+        subject=row["subject"],
+        body=row["body"],
+        status=DraftStatus(row["status"]),
+        used_context=_json_loads(row["used_context_json"], {}),
+        regenerated_from_draft_id=row["regenerated_from_draft_id"],
+        created_at=_parse_dt(row["created_at"]),
+        updated_at=_parse_dt(row["updated_at"]),
     )
