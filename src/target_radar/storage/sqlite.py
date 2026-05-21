@@ -183,6 +183,45 @@ class SQLiteStore:
             raise NotFoundError(f"pipeline run not found: {run_id}")
         return _pipeline_run_from_row(row)
 
+    def update_pipeline_run_status(
+        self,
+        run_id: int | None,
+        status: PipelineRunStatus,
+        *,
+        stats: dict[str, Any] | None = None,
+        error_message: str | None = None,
+        started_at: datetime | None = None,
+        finished_at: datetime | None = None,
+    ) -> PipelineRun:
+        if run_id is None:
+            raise ValueError("run_id must be set")
+
+        existing = self.get_pipeline_run(run_id)
+        next_stats = stats if stats is not None else existing.stats
+        next_started_at = started_at if started_at is not None else existing.started_at
+        next_finished_at = (
+            finished_at if finished_at is not None else existing.finished_at
+        )
+
+        self.connection.execute(
+            """
+            UPDATE pipeline_runs
+            SET status = ?, stats_json = ?, error_message = ?,
+                started_at = ?, finished_at = ?
+            WHERE id = ?
+            """,
+            (
+                status.value,
+                _json_dumps(next_stats),
+                error_message,
+                _format_optional_dt(next_started_at),
+                _format_optional_dt(next_finished_at),
+                run_id,
+            ),
+        )
+        self.connection.commit()
+        return self.get_pipeline_run(run_id)
+
     def create_target(self, target: Target) -> Target:
         cursor = self.connection.execute(
             """
