@@ -441,6 +441,17 @@ class SQLiteStore:
             created_at=evidence.created_at,
         )
 
+    def list_evidence(self, target_id: int) -> list[Evidence]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM evidence
+            WHERE target_id = ?
+            ORDER BY priority DESC, id ASC
+            """,
+            (target_id,),
+        ).fetchall()
+        return [_evidence_from_row(row) for row in rows]
+
     def create_target_page(self, page: TargetPage) -> TargetPage:
         cursor = self.connection.execute(
             """
@@ -660,6 +671,20 @@ def _target_page_from_row(row: sqlite3.Row) -> TargetPage:
         error_message=row["error_message"],
         metadata=_json_loads(row["metadata_json"], {}),
         fetched_at=_parse_optional_dt(row["fetched_at"]),
+        created_at=_parse_dt(row["created_at"]),
+    )
+
+
+def _evidence_from_row(row: sqlite3.Row) -> Evidence:
+    return Evidence(
+        id=int(row["id"]),
+        target_id=int(row["target_id"]),
+        page_id=row["page_id"],
+        source_url=row["source_url"],
+        text=row["text"],
+        context_type=row["context_type"],
+        priority=int(row["priority"]),
+        metadata=_json_loads(row["metadata_json"], {}),
         created_at=_parse_dt(row["created_at"]),
     )
 
