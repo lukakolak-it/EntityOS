@@ -5,8 +5,10 @@ from target_radar.engines.rating.ai import (
     AIRatingRequest,
     AIRatingResponse,
     FakeAIRatingProvider,
+    LLMAIRatingProvider,
 )
 from target_radar.engines.rating.engine import RatingEngine
+from target_radar.engines.rating.factory import create_rating_engine
 from target_radar.engines.rating.rules import RuleRater, RuleRatingResult
 
 __all__ = [
@@ -14,7 +16,9 @@ __all__ = [
     "AIRatingRequest",
     "AIRatingResponse",
     "FakeAIRatingProvider",
+    "LLMAIRatingProvider",
     "RatingEngine",
     "RuleRater",
     "RuleRatingResult",
+    "create_rating_engine",
 ]

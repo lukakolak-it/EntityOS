@@ -12,6 +12,7 @@ from target_radar.domain import (
     TargetStatus,
 )
 from target_radar.engines.lead import FakeLeadEngine
+from target_radar.engines.lead import FakeSearchProvider, LeadEngine, LeadEngineConfig, SearchResult
 from target_radar.pipeline import PipelineOrchestrator, PipelineRunRequest, TargetImporter
 from target_radar.storage import SQLiteStore
 
@@ -78,6 +79,27 @@ class PipelineSkeletonTests(unittest.TestCase):
         self.assertEqual([item.url for item in first], [item.url for item in second])
         self.assertEqual(len(first), 2)
         self.assertEqual(first[0].status, LeadResultStatus.CANDIDATE)
+
+    def test_orchestrator_links_lead_engine_queries_to_run(self) -> None:
+        lead_engine = LeadEngine(
+            provider=FakeSearchProvider(
+                results_by_query={
+                    "Werkstudent IT Python Essen": [
+                        SearchResult(url="https://linked.example/jobs")
+                    ]
+                }
+            ),
+            config=LeadEngineConfig(request_budget=1, results_per_query=1),
+            store=self.store,
+        )
+        orchestrator = PipelineOrchestrator(self.store, lead_engine)
+
+        result = orchestrator.run(PipelineRunRequest(search_profile=self.search_profile))
+        row = self.store.connection.execute(
+            "SELECT pipeline_run_id FROM source_queries ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+
+        self.assertEqual(row["pipeline_run_id"], result.run.id)
 
 
 if __name__ == "__main__":

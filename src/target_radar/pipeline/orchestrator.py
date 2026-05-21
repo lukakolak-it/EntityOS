@@ -76,6 +76,8 @@ class PipelineOrchestrator:
         )
 
         try:
+            if hasattr(self.lead_engine, "pipeline_run_id"):
+                self.lead_engine.pipeline_run_id = run.id
             candidates = self.lead_engine.discover(
                 request.search_profile,
                 limit=request.request_budget,

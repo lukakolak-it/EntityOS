@@ -22,6 +22,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.infrastructure.host, "127.0.0.1")
         self.assertEqual(config.infrastructure.port, 8765)
         self.assertEqual(config.llm.provider, "local")
+        self.assertEqual(config.llm.openai_base_url, "https://api.openai.com/v1")
         self.assertEqual(config.llm.local_base_url, "http://127.0.0.1:11434")
         self.assertEqual(config.llm.heavy_provider, "openai")
         self.assertEqual(config.llm.heavy_model, "gpt-5.5")

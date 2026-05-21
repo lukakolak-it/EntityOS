@@ -58,6 +58,15 @@ Fuer die aktuelle lokale Aufteilung sind diese Variablen relevant:
 - `LLM_LIGHT_MODEL`: Qwen-Modell fuer Light Thinking
 - `SEARCH_PROVIDER=brave`, wenn echte Brave-Suche statt Mock genutzt werden soll
 
+Konfigurierter Discovery-Lauf:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m target_radar.cli run-configured --role "Werkstudent IT" --region Essen --tech Python --request-budget 5
+```
+
+`run-configured` nutzt `SEARCH_PROVIDER`; fuer lokale Tests bleibt `run-fake` deterministisch.
+
 ## Datenbank initialisieren
 
 ```powershell

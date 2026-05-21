@@ -41,6 +41,7 @@ class LLMSettings:
     light_provider: str = "ollama"
     light_model: str = "qwen3:30b-a3v-q4_K_M"
     openai_api_key: str | None = None
+    openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str | None = None
     anthropic_api_key: str | None = None
     anthropic_model: str | None = None
@@ -191,6 +192,7 @@ def load_app_config(
                 _get_str(values, "LOCAL_AI_MODEL", "qwen3:30b-a3v-q4_K_M"),
             ),
             openai_api_key=_get_optional_str(values, "OPENAI_API_KEY"),
+            openai_base_url=_get_str(values, "OPENAI_BASE_URL", "https://api.openai.com/v1"),
             openai_model=_get_optional_str(values, "OPENAI_MODEL"),
             anthropic_api_key=_get_optional_str(values, "ANTHROPIC_API_KEY"),
             anthropic_model=_get_optional_str(values, "ANTHROPIC_MODEL"),

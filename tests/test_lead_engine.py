@@ -4,11 +4,13 @@ import unittest
 
 from target_radar.domain import LeadResultStatus, Profile, SearchProfile
 from target_radar.engines.lead import (
+    BraveSearchProvider,
     FakeSearchProvider,
     LeadEngine,
     LeadEngineConfig,
     QueryBuilder,
     SearchResult,
+    create_search_provider,
 )
 from target_radar.storage import SQLiteStore
 
@@ -88,6 +90,23 @@ class LeadEngineTests(unittest.TestCase):
         )
         self.assertEqual(source_query_count, 1)
         self.assertEqual(serp_result_count, 3)
+
+    def test_search_provider_factory_uses_configured_provider(self) -> None:
+        from target_radar.config import SearchProviderSettings
+
+        fake = create_search_provider(SearchProviderSettings(provider="mock"))
+        brave = create_search_provider(
+            SearchProviderSettings(provider="brave", brave_api_key="bv")
+        )
+
+        self.assertIsInstance(fake, FakeSearchProvider)
+        self.assertIsInstance(brave, BraveSearchProvider)
+
+    def test_search_provider_factory_requires_brave_key(self) -> None:
+        from target_radar.config import SearchProviderSettings
+
+        with self.assertRaises(ValueError):
+            create_search_provider(SearchProviderSettings(provider="brave"))
 
 
 if __name__ == "__main__":

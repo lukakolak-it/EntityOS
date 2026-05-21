@@ -1,6 +1,7 @@
 """LeadEngine package."""
 
 from target_radar.engines.lead.engine import LeadEngine, LeadEngineConfig
+from target_radar.engines.lead.factory import create_lead_engine, create_search_provider
 from target_radar.engines.lead.fake import FakeLeadEngine
 from target_radar.engines.lead.provider import (
     BraveSearchProvider,
@@ -20,4 +21,6 @@ __all__ = [
     "QueryCandidate",
     "SearchProviderError",
     "SearchResult",
+    "create_lead_engine",
+    "create_search_provider",
 ]

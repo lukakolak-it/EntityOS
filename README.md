@@ -42,6 +42,13 @@ py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 
 py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 review-queue
 ```
 
+Konfigurierter Provider-Lauf, z. B. mit `SEARCH_PROVIDER=brave`:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 run-configured --role "Werkstudent IT" --region Essen --tech Python --request-budget 5
+```
+
 Lokale UI starten:
 
 ```powershell

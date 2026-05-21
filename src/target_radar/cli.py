@@ -8,7 +8,7 @@ from typing import Sequence
 
 from target_radar.config import load_app_config
 from target_radar.domain import Profile, SearchProfile
-from target_radar.engines.lead import FakeLeadEngine
+from target_radar.engines.lead import FakeLeadEngine, create_lead_engine
 from target_radar.ops import collect_diagnostics, configure_logging, run_privacy_check
 from target_radar.pipeline import PipelineOrchestrator, PipelineRunRequest
 from target_radar.storage import SQLiteStore
@@ -33,6 +33,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "run-fake":
         return _run_fake(args, database_url)
+
+    if args.command == "run-configured":
+        return _run_configured(args, database_url, config)
 
     if args.command == "review-queue":
         return _review_queue(args, database_url)
@@ -68,13 +71,13 @@ def _build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("init-db", help="Initialize the local database")
 
     run_fake = subparsers.add_parser("run-fake", help="Run deterministic fake pipeline")
-    run_fake.add_argument("--profile-name", default="Local Profile")
-    run_fake.add_argument("--search-name", default="Local Search")
-    run_fake.add_argument("--role", action="append", default=[])
-    run_fake.add_argument("--region", action="append", default=[])
-    run_fake.add_argument("--tech", action="append", default=[])
-    run_fake.add_argument("--request-budget", type=int, default=10)
-    run_fake.add_argument("--results-per-query", type=int, default=5)
+    _add_run_arguments(run_fake)
+
+    run_configured = subparsers.add_parser(
+        "run-configured",
+        help="Run pipeline with configured search provider",
+    )
+    _add_run_arguments(run_configured)
 
     review_queue = subparsers.add_parser("review-queue", help="Print review targets")
     review_queue.add_argument("--limit", type=int, default=50)
@@ -89,6 +92,16 @@ def _build_parser() -> argparse.ArgumentParser:
     privacy = subparsers.add_parser("privacy-check", help="Check local privacy guardrails")
     privacy.add_argument("--root", default=".")
     return parser
+
+
+def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--profile-name", default="Local Profile")
+    parser.add_argument("--search-name", default="Local Search")
+    parser.add_argument("--role", action="append", default=[])
+    parser.add_argument("--region", action="append", default=[])
+    parser.add_argument("--tech", action="append", default=[])
+    parser.add_argument("--request-budget", type=int, default=10)
+    parser.add_argument("--results-per-query", type=int, default=5)
 
 
 def _run_fake(args, database_url: str) -> int:
@@ -115,6 +128,43 @@ def _run_fake(args, database_url: str) -> int:
             {
                 "run_id": result.run.id,
                 "status": result.run.status.value,
+                "review_target_count": result.review_target_count,
+                "import_statuses": [
+                    item.status.value for item in result.import_results
+                ],
+            }
+        )
+        return 0
+    finally:
+        store.close()
+
+
+def _run_configured(args, database_url: str, config) -> int:
+    store = SQLiteStore.open(database_url)
+    try:
+        profile = store.create_profile(Profile(name=args.profile_name))
+        search_profile = store.create_search_profile(
+            SearchProfile(
+                profile_id=profile.id,
+                name=args.search_name,
+                roles=tuple(args.role or ["Werkstudent IT"]),
+                regions=tuple(args.region or ["Essen"]),
+                tech_keywords=tuple(args.tech or ["Python"]),
+            )
+        )
+        lead_engine = create_lead_engine(config, store=store)
+        result = PipelineOrchestrator(store, lead_engine).run(
+            PipelineRunRequest(
+                search_profile=search_profile,
+                request_budget=args.request_budget,
+                results_per_query=args.results_per_query,
+            )
+        )
+        _print_json(
+            {
+                "run_id": result.run.id,
+                "status": result.run.status.value,
+                "search_provider": lead_engine.provider.name,
                 "review_target_count": result.review_target_count,
                 "import_statuses": [
                     item.status.value for item in result.import_results
