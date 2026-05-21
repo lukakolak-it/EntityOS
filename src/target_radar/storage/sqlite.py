@@ -112,6 +112,15 @@ class SQLiteStore:
             created_at=profile.created_at,
         )
 
+    def get_profile(self, profile_id: int) -> Profile:
+        row = self.connection.execute(
+            "SELECT * FROM profiles WHERE id = ?",
+            (profile_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"profile not found: {profile_id}")
+        return _profile_from_row(row)
+
     def create_search_profile(self, search_profile: SearchProfile) -> SearchProfile:
         cursor = self.connection.execute(
             """
@@ -149,6 +158,15 @@ class SQLiteStore:
             draft_language=search_profile.draft_language,
             created_at=search_profile.created_at,
         )
+
+    def get_search_profile(self, search_profile_id: int) -> SearchProfile:
+        row = self.connection.execute(
+            "SELECT * FROM search_profiles WHERE id = ?",
+            (search_profile_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"search profile not found: {search_profile_id}")
+        return _search_profile_from_row(row)
 
     def create_pipeline_run(self, run: PipelineRun) -> PipelineRun:
         cursor = self.connection.execute(
@@ -418,6 +436,36 @@ class SQLiteStore:
             (limit,),
         ).fetchall()
         return [_pipeline_run_from_row(row) for row in rows]
+
+    def get_latest_pipeline_run_for_target(self, target_id: int) -> PipelineRun | None:
+        row = self.connection.execute(
+            """
+            SELECT pipeline_runs.*
+            FROM pipeline_runs
+            INNER JOIN target_scores
+                ON target_scores.pipeline_run_id = pipeline_runs.id
+            WHERE target_scores.target_id = ?
+            ORDER BY target_scores.id DESC
+            LIMIT 1
+            """,
+            (target_id,),
+        ).fetchone()
+        if row is not None:
+            return _pipeline_run_from_row(row)
+
+        row = self.connection.execute(
+            """
+            SELECT pipeline_runs.*
+            FROM pipeline_runs
+            INNER JOIN target_status_log
+                ON target_status_log.pipeline_run_id = pipeline_runs.id
+            WHERE target_status_log.target_id = ?
+            ORDER BY target_status_log.id DESC
+            LIMIT 1
+            """,
+            (target_id,),
+        ).fetchone()
+        return _pipeline_run_from_row(row) if row is not None else None
 
     def add_evidence(self, evidence: Evidence) -> Evidence:
         cursor = self.connection.execute(
@@ -788,6 +836,33 @@ def _parse_optional_dt(value: str | None) -> datetime | None:
 
 def _tuple_enum(values: Iterable[str]) -> tuple[PipelinePhase, ...]:
     return tuple(PipelinePhase(value) for value in values)
+
+
+def _profile_from_row(row: sqlite3.Row) -> Profile:
+    return Profile(
+        id=int(row["id"]),
+        name=row["name"],
+        preset=row["preset"],
+        draft_language=row["draft_language"],
+        attributes=_json_loads(row["attributes_json"], {}),
+        created_at=_parse_dt(row["created_at"]),
+    )
+
+
+def _search_profile_from_row(row: sqlite3.Row) -> SearchProfile:
+    return SearchProfile(
+        id=int(row["id"]),
+        profile_id=int(row["profile_id"]),
+        name=row["name"],
+        roles=tuple(_json_loads(row["roles_json"], [])),
+        regions=tuple(_json_loads(row["regions_json"], [])),
+        tech_keywords=tuple(_json_loads(row["tech_keywords_json"], [])),
+        industry_keywords=tuple(_json_loads(row["industry_keywords_json"], [])),
+        exclude_keywords=tuple(_json_loads(row["exclude_keywords_json"], [])),
+        manual_query=row["manual_query"],
+        draft_language=row["draft_language"],
+        created_at=_parse_dt(row["created_at"]),
+    )
 
 
 def _target_from_row(row: sqlite3.Row) -> Target:

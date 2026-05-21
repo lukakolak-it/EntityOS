@@ -28,6 +28,16 @@ class WebServerTests(unittest.TestCase):
                 queue_payload = _http_json(f"{base_url}/api/review-queue")
                 target_id = queue_payload["items"][0]["id"]
                 detail_payload = _http_json(f"{base_url}/api/targets/{target_id}")
+                rerate_payload = _http_json(
+                    f"{base_url}/api/targets/{target_id}/rerate",
+                    method="POST",
+                    payload={},
+                )
+                draft_payload = _http_json(
+                    f"{base_url}/api/targets/{target_id}/regenerate-draft",
+                    method="POST",
+                    payload={},
+                )
                 action_payload = _http_json(
                     f"{base_url}/api/targets/{target_id}/approve",
                     method="POST",
@@ -42,6 +52,8 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(run_payload["run"]["status"], "completed")
         self.assertGreaterEqual(len(queue_payload["items"]), 1)
         self.assertEqual(detail_payload["target"]["id"], target_id)
+        self.assertEqual(rerate_payload["reprocess"]["rated_count"], 1)
+        self.assertEqual(draft_payload["reprocess"]["drafted_count"], 1)
         self.assertEqual(action_payload["status_log"]["to_status"], "approved")
 
 

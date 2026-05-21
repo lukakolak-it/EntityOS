@@ -14,6 +14,7 @@ from target_radar.pipeline.orchestrator import (
     PipelineOrchestrator,
     PipelineRunRequest,
     PipelineRunResult,
+    TargetReprocessResult,
 )
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "PipelineOrchestrator",
     "PipelineRunRequest",
     "PipelineRunResult",
+    "TargetReprocessResult",
     "TargetImporter",
     "TargetImportResult",
     "classify_page_type",

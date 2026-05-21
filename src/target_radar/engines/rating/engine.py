@@ -96,18 +96,35 @@ class RatingEngine:
                 input_snapshot=_input_snapshot(search_profile, evidence),
             )
 
-        ai_response = self.ai_provider.rate(
-            AIRatingRequest(
-                target_domain=target.domain,
-                search_terms=(
-                    search_profile.roles
-                    + search_profile.tech_keywords
-                    + search_profile.regions
-                ),
-                context_text=context_text,
-                rule_score=rule_result.score,
+        try:
+            ai_response = self.ai_provider.rate(
+                AIRatingRequest(
+                    target_domain=target.domain,
+                    search_terms=(
+                        search_profile.roles
+                        + search_profile.tech_keywords
+                        + search_profile.regions
+                    ),
+                    context_text=context_text,
+                    rule_score=rule_result.score,
+                )
             )
-        )
+        except Exception as exc:
+            return RatingResult(
+                target_id=_target_id(target),
+                pipeline_run_id=pipeline_run_id,
+                rule_score=rule_result.score,
+                recommended_action=RecommendedAction.REVIEW,
+                rating_status="rating_partial",
+                rating_version=self.rating_version,
+                reasons=rule_result.reasons,
+                risks=rule_result.risks
+                + [{"type": "ai_provider_error", "value": str(exc)}],
+                evidence=evidence_payload,
+                input_snapshot=_input_snapshot(search_profile, evidence),
+                error_type=exc.__class__.__name__,
+                error_message=str(exc),
+            )
         return self._merge(
             target=target,
             search_profile=search_profile,

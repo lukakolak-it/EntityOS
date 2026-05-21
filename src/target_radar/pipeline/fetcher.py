@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from html import escape
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +105,7 @@ def _generated_html(*, url: str, domain: str, terms: str) -> str:
     escaped_domain = escape(domain)
     escaped_terms = escape(terms)
     escaped_url = escape(url)
+    contact_url = escape(urljoin(url, "/kontakt"))
     local_part = domain.replace(".", "-").replace(":", "-")
     return (
         "<!doctype html><html><head>"
@@ -116,5 +117,6 @@ def _generated_html(*, url: str, domain: str, terms: str) -> str:
         "<p>Interessierte koennen sich direkt beim Team melden.</p>"
         f"<p>Kontakt: jobs@{escape(local_part)}.test</p>"
         f'<a href="{escaped_url}">Karriere</a>'
+        f'<a href="{contact_url}">Kontakt</a>'
         "</body></html>"
     )

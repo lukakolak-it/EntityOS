@@ -136,6 +136,15 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIsNotNone(rating.id)
         self.assertIsNotNone(draft.id)
         self.assertEqual(rating.recommended_action, RecommendedAction.DRAFT)
+        self.assertEqual(self.store.get_profile(profile.id).name, profile.name)
+        self.assertEqual(
+            self.store.get_search_profile(search_profile.id).name,
+            search_profile.name,
+        )
+        self.assertEqual(
+            self.store.get_latest_pipeline_run_for_target(target.id).id,
+            run.id,
+        )
 
     def test_review_queue_returns_actionable_targets(self) -> None:
         self.store.create_target(

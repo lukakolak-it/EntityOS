@@ -17,6 +17,7 @@ from target_radar.engines.lead import (
 from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine, create_rating_engine
 from target_radar.ops import collect_diagnostics, configure_logging, run_privacy_check
 from target_radar.pipeline import (
+    FetchConfig as PipelineFetchConfig,
     GeneratedFakeFetcher,
     HtmlExtractor,
     HttpFetcher,
@@ -147,6 +148,7 @@ def _run_fake(args, database_url: str) -> int:
             rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
             draft_engine=DraftEngine(),
             profile=profile,
+            max_pages_per_target=2,
         ).run(
             PipelineRunRequest(
                 search_profile=search_profile,
@@ -197,11 +199,17 @@ def _run_configured(args, database_url: str, config) -> int:
         result = PipelineOrchestrator(
             store,
             lead_engine,
-            fetcher=HttpFetcher(),
+            fetcher=HttpFetcher(
+                PipelineFetchConfig(
+                    timeout_seconds=config.fetch.timeout_seconds,
+                    user_agent=config.fetch.user_agent,
+                )
+            ),
             extractor=HtmlExtractor(),
             rating_engine=create_rating_engine(config),
             draft_engine=DraftEngine(),
             profile=profile,
+            max_pages_per_target=config.fetch.max_pages_per_target,
         ).run(
             PipelineRunRequest(
                 search_profile=search_profile,

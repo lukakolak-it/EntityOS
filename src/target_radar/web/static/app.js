@@ -123,7 +123,9 @@ function renderRatings(ratings) {
         ${pill(rating.recommended_action)}
       </div>
       <p>Rule ${displayNumber(rating.rule_score)} · AI ${displayNumber(rating.ai_score)} · Confidence ${formatConfidence(rating.confidence)}</p>
-      <p>${escapeHtml(JSON.stringify(rating.risks || []))}</p>
+      ${rating.error_message ? `<p class="muted">${escapeHtml(rating.error_type || "rating_error")}: ${escapeHtml(rating.error_message)}</p>` : ""}
+      ${renderFacts("Reasons", rating.reasons || [])}
+      ${renderFacts("Risks", rating.risks || [])}
     `;
     elements.ratingsList.appendChild(item);
   }
@@ -231,6 +233,15 @@ function emptyItem(text) {
   item.className = "empty";
   item.textContent = text;
   return item;
+}
+
+function renderFacts(label, facts) {
+  if (!facts.length) return "";
+  const items = facts.slice(0, 4).map((fact) => {
+    const text = fact.text || fact.value || fact.evidence || JSON.stringify(fact);
+    return `<li>${escapeHtml(String(text))}</li>`;
+  }).join("");
+  return `<div class="fact-list"><span>${escapeHtml(label)}</span><ul>${items}</ul></div>`;
 }
 
 function displayScore(aiScore, ruleScore) {

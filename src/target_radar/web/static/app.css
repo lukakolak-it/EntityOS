@@ -281,6 +281,24 @@ label {
   line-height: 1.4;
 }
 
+.fact-list {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.fact-list span {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.fact-list ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
 textarea,
 input {
   width: 100%;

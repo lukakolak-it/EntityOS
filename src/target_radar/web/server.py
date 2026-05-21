@@ -195,6 +195,7 @@ def _make_handler(database_url: str):
                     rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
                     draft_engine=DraftEngine(),
                     profile=profile,
+                    max_pages_per_target=2,
                 ).run(
                     PipelineRunRequest(
                         search_profile=search_profile,
@@ -248,6 +249,33 @@ def _make_handler(database_url: str):
 
             store = self._store()
             try:
+                if action in {"refetch", "rerate", "regenerate-draft"}:
+                    profile, search_profile = _target_context(store, target_id)
+                    store.set_target_status(
+                        target_id,
+                        action_map[action],
+                        PipelinePhase.REPROCESS,
+                        reason=f"ui action: {action}",
+                        metadata={
+                            "trigger": "ui_action",
+                            "action": action,
+                            "endpoint": f"POST /api/targets/{target_id}/{action}",
+                        },
+                    )
+                    orchestrator = _fake_reprocess_orchestrator(
+                        store=store,
+                        profile=profile,
+                        search_profile=search_profile,
+                    )
+                    if action == "refetch":
+                        result = orchestrator.refetch_target(target_id, search_profile)
+                    elif action == "rerate":
+                        result = orchestrator.rerate_target(target_id, search_profile)
+                    else:
+                        result = orchestrator.regenerate_draft(target_id, search_profile)
+                    self._send_json({"reprocess": _reprocess_result_payload(result)})
+                    return
+
                 log = store.set_target_status(
                     target_id,
                     action_map[action],
@@ -327,6 +355,48 @@ def _parse_id_path(path: str, prefix: str) -> int:
     if "/" in raw or not raw:
         raise ValueError("invalid id path")
     return int(raw)
+
+
+def _target_context(
+    store: SQLiteStore,
+    target_id: int,
+) -> tuple[Profile, SearchProfile]:
+    run = store.get_latest_pipeline_run_for_target(target_id)
+    if run is None:
+        raise ValueError("target has no pipeline context for reprocessing")
+    search_profile = store.get_search_profile(run.search_profile_id)
+    profile = store.get_profile(search_profile.profile_id)
+    return profile, search_profile
+
+
+def _fake_reprocess_orchestrator(
+    *,
+    store: SQLiteStore,
+    profile: Profile,
+    search_profile: SearchProfile,
+) -> PipelineOrchestrator:
+    return PipelineOrchestrator(
+        store,
+        FakeLeadEngine(),
+        fetcher=GeneratedFakeFetcher(terms=_search_terms(search_profile)),
+        extractor=HtmlExtractor(),
+        rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
+        draft_engine=DraftEngine(),
+        profile=profile,
+        max_pages_per_target=2,
+    )
+
+
+def _reprocess_result_payload(result) -> dict[str, Any]:
+    return {
+        "target": _target_payload(result.target),
+        "review_target_count": result.review_target_count,
+        "fetched_count": result.fetched_count,
+        "evidence_count": result.evidence_count,
+        "rated_count": result.rated_count,
+        "drafted_count": result.drafted_count,
+        "error_count": result.error_count,
+    }
 
 
 def _parse_target_path(path: str) -> tuple[int, str | None]:

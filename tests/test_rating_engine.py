@@ -136,6 +136,24 @@ class RatingEngineTests(unittest.TestCase):
         self.assertEqual(rating.recommended_action, RecommendedAction.SKIP)
         self.assertEqual(rating.rating_status, "rule_skipped")
 
+    def test_ai_provider_error_becomes_partial_review_rating(self) -> None:
+        evidence = [
+            Evidence(
+                target_id=self.target.id,
+                source_url="https://example.com/jobs",
+                text="Werkstudent IT in Essen mit Python und Kontakt jobs@example.com",
+                context_type="career",
+            )
+        ]
+        engine = RatingEngine(ai_provider=_BrokenAIRatingProvider())
+
+        rating = engine.rate(self.target, self.search_profile, evidence)
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.REVIEW)
+        self.assertEqual(rating.rating_status, "rating_partial")
+        self.assertEqual(rating.error_type, "ValueError")
+        self.assertIn("invalid ai json", rating.error_message)
+
     def test_evidence_can_be_loaded_for_rating(self) -> None:
         saved = self.store.add_evidence(
             Evidence(
@@ -151,6 +169,11 @@ class RatingEngineTests(unittest.TestCase):
 
         self.assertEqual(loaded[0].id, saved.id)
         self.assertEqual(loaded[0].context_type, "career")
+
+
+class _BrokenAIRatingProvider:
+    def rate(self, request):
+        raise ValueError("invalid ai json")
 
 
 if __name__ == "__main__":

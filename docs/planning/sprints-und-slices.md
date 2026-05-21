@@ -963,12 +963,109 @@ Akzeptanzkriterien:
 - Neue lokale Umgebung kann aus der Doku gestartet werden.
 - Bekannte Fehler haben klare Hinweise.
 
+## Sprint 10: Echte lokale Pipeline stabilisieren
+
+Ziel: Die lokale End-to-End-Pipeline wird fuer echte Review-Arbeit wiederholbar
+und gezielt nachbearbeitbar.
+
+### Slice 10.1: Reprocessing ausfuehren
+
+Ziel:
+
+UI-Aktionen loesen echte Engine-Schritte aus, statt nur Status zu setzen.
+
+Umfang:
+
+- `refetch` fuehrt Fetch, Extract, Rating und Draft-Handoff erneut aus.
+- `rerate` bewertet bestehende Evidence erneut.
+- `regenerate-draft` erzeugt einen neuen Draft aus dem letzten Rating.
+- Einzelaktionen schreiben keinen kuenstlichen Pipeline Run.
+
+Akzeptanzkriterien:
+
+- Reprocessing-Statuslogs duerfen `pipeline_run_id = NULL` haben.
+- Statuslogs enthalten Trigger, Action und Endpoint in den Metadaten.
+- Die Review Queue bleibt nach Reprocessing konsistent.
+
+### Slice 10.2: Mehrseitiger Fetch
+
+Ziel:
+
+Targets werden nicht nur ueber die Basis-URL bewertet, sondern ueber relevante
+gleiche-Domain-Seiten.
+
+Umfang:
+
+- Karriere-, Job-, Kontakt-, Impressum- und About-Links erkennen.
+- Maximalzahl pro Target begrenzen.
+- Fehlgeschlagene Seiten isoliert behandeln.
+
+Akzeptanzkriterien:
+
+- Mindestens eine brauchbare Seite fuehrt nicht zu `fetch_failed`.
+- Teilfehler werden als `fetch_partial` protokolliert.
+- Evidence wird pro brauchbarer Seite gespeichert.
+
+### Slice 10.3: LLM-Robustheit
+
+Ziel:
+
+AI-Ausfaelle blockieren den lokalen Workflow nicht.
+
+Umfang:
+
+- Provider-Fehler und ungueltige Antworten abfangen.
+- Rule Score und Evidence behalten.
+- Target als `rating_partial` in die Review geben.
+
+Akzeptanzkriterien:
+
+- AI-Fehler erzeugen `recommended_action = review`.
+- Fehlerklasse und Fehlermeldung werden am Rating gespeichert.
+- Es wird kein automatischer Draft aus fehlerhaftem AI Rating erzeugt.
+
+### Slice 10.4: Review-UI verdichten
+
+Ziel:
+
+Die lokale UI zeigt die entscheidenden Review-Signale kompakter an.
+
+Umfang:
+
+- Rating-Fehler sichtbar machen.
+- Rating-Gruende und Risiken anzeigen.
+- Reprocessing-Antworten nach UI-Aktionen verarbeiten.
+
+Akzeptanzkriterien:
+
+- Nutzer sieht Gruende, Risiken und Fehler ohne Datenbankzugriff.
+- Manuelle Aktionen und Reprocessing bleiben lokal bedienbar.
+
+### Slice 10.5: Echter Pilotlauf
+
+Ziel:
+
+Die konfigurierte Pipeline kann kontrolliert mit kleinem Budget gegen echte
+Provider laufen.
+
+Umfang:
+
+- CLI-Budgets direkt an die LeadEngine durchreichen.
+- Fetch-Konfiguration aus `.env` nutzen.
+- Ergebniszaehler fuer Fetch, Evidence, Rating, Draft und Fehler ausgeben.
+
+Akzeptanzkriterien:
+
+- `run-configured --request-budget 1 --results-per-query 1` bleibt begrenzt.
+- Externe Fehler beenden nicht den gesamten Lauf.
+- Der Lauf endet bei Teilfehlern als `completed_with_errors`.
+
 ## Empfohlene Reihenfolge
 
-Der naechste konkrete Arbeitsblock ist Sprint 1:
+Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Danach ist die sinnvolle
+Reihenfolge:
 
-1. Domain-Modelle anlegen.
-2. Konfigurationssystem implementieren.
-3. SQLite-Schema vorbereiten.
-4. Storage-Tests schreiben.
-5. Danach Pipeline-Skeleton mit Fake LeadEngine bauen.
+1. Pilotlauf mit echten Suchbegriffen auswerten.
+2. Fehlerklassen und Provider-Limits nachschaerfen.
+3. Export und Importformate fuer reale Review-Arbeit erweitern.
+4. Optional eine externe API-Schicht erst nach stabiler lokaler Nutzung bauen.

@@ -174,6 +174,117 @@ class PipelineSkeletonTests(unittest.TestCase):
         self.assertEqual(ratings[0].recommended_action, RecommendedAction.DRAFT)
         self.assertEqual(drafts[0].score_id, ratings[0].id)
 
+    def test_pipeline_fetches_relevant_same_domain_pages(self) -> None:
+        base_url = "https://multi.example/"
+        contact_url = "https://multi.example/kontakt"
+        lead_engine = FakeLeadEngine(
+            candidates=[TargetCandidate(url=base_url, source="fake")]
+        )
+        fetcher = FakeFetcher(
+            {
+                base_url: FetchedPage(
+                    url=base_url,
+                    status_code=200,
+                    body=(
+                        "<html><body>"
+                        "<h1>Werkstudent IT</h1>"
+                        "<p>Python Projekte</p>"
+                        '<a href="/kontakt">Kontakt</a>'
+                        "</body></html>"
+                    ),
+                ),
+                contact_url: FetchedPage(
+                    url=contact_url,
+                    status_code=200,
+                    body=(
+                        "<html><body>"
+                        "<h1>Kontakt</h1>"
+                        "<p>Essen jobs@multi.example</p>"
+                        "</body></html>"
+                    ),
+                ),
+            }
+        )
+        orchestrator = PipelineOrchestrator(
+            self.store,
+            lead_engine,
+            fetcher=fetcher,
+            extractor=HtmlExtractor(),
+            rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
+            draft_engine=DraftEngine(),
+            profile=self.profile,
+            max_pages_per_target=2,
+        )
+
+        result = orchestrator.run(
+            PipelineRunRequest(
+                search_profile=self.search_profile,
+                phases=(
+                    PipelinePhase.LEAD,
+                    PipelinePhase.IMPORT,
+                    PipelinePhase.FETCH,
+                    PipelinePhase.EXTRACT,
+                    PipelinePhase.RATING,
+                    PipelinePhase.DRAFT,
+                ),
+            )
+        )
+        target = self.store.list_review_targets()[0]
+        pages = self.store.list_target_pages(target.id)
+
+        self.assertEqual(result.fetched_count, 2)
+        self.assertEqual(result.evidence_count, 2)
+        self.assertEqual([page.url for page in pages], [base_url, contact_url])
+
+    def test_target_rerate_runs_without_pipeline_run_id(self) -> None:
+        url = "https://rerate.example/jobs"
+        lead_engine = FakeLeadEngine(
+            candidates=[TargetCandidate(url=url, source="fake")]
+        )
+        fetcher = FakeFetcher(
+            {
+                url: FetchedPage(
+                    url=url,
+                    status_code=200,
+                    body=(
+                        "<html><body>"
+                        "<p>Werkstudent IT Python Essen Kontakt jobs@rerate.example</p>"
+                        "</body></html>"
+                    ),
+                )
+            }
+        )
+        orchestrator = PipelineOrchestrator(
+            self.store,
+            lead_engine,
+            fetcher=fetcher,
+            extractor=HtmlExtractor(),
+            rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
+            draft_engine=DraftEngine(),
+            profile=self.profile,
+        )
+        orchestrator.run(
+            PipelineRunRequest(
+                search_profile=self.search_profile,
+                phases=(
+                    PipelinePhase.LEAD,
+                    PipelinePhase.IMPORT,
+                    PipelinePhase.FETCH,
+                    PipelinePhase.EXTRACT,
+                    PipelinePhase.RATING,
+                    PipelinePhase.DRAFT,
+                ),
+            )
+        )
+        target = self.store.list_review_targets()[0]
+
+        result = orchestrator.rerate_target(target.id, self.search_profile)
+        ratings = self.store.list_ratings(target.id)
+
+        self.assertEqual(result.rated_count, 1)
+        self.assertEqual(len(ratings), 2)
+        self.assertIsNone(ratings[0].pipeline_run_id)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Protocol
+from urllib.parse import urlparse
 
 from target_radar.domain import (
     Draft,
@@ -96,6 +97,29 @@ class PipelineRunResult:
     error_count: int = 0
 
 
+@dataclass(frozen=True, slots=True)
+class TargetReprocessResult:
+    target: Target
+    review_target_count: int = 0
+    fetched_count: int = 0
+    evidence_count: int = 0
+    rated_count: int = 0
+    drafted_count: int = 0
+    error_count: int = 0
+
+    @classmethod
+    def from_counts(cls, target: Target, counts: _PipelineCounts) -> TargetReprocessResult:
+        return cls(
+            target=target,
+            review_target_count=counts.review_target_count,
+            fetched_count=counts.fetched_count,
+            evidence_count=counts.evidence_count,
+            rated_count=counts.rated_count,
+            drafted_count=counts.drafted_count,
+            error_count=counts.error_count,
+        )
+
+
 class PipelineOrchestrator:
     """Coordinate discovery, import, fetch, rating and draft handoff."""
 
@@ -110,6 +134,7 @@ class PipelineOrchestrator:
         rating_engine: RatingEngine | None = None,
         draft_engine: DraftEngine | None = None,
         profile: Profile | None = None,
+        max_pages_per_target: int = 1,
     ) -> None:
         self.store = store
         self.lead_engine = lead_engine
@@ -119,6 +144,7 @@ class PipelineOrchestrator:
         self.rating_engine = rating_engine
         self.draft_engine = draft_engine
         self.profile = profile
+        self.max_pages_per_target = max(1, max_pages_per_target)
 
     def run(self, request: PipelineRunRequest) -> PipelineRunResult:
         if request.search_profile.id is None:
@@ -213,6 +239,81 @@ class PipelineOrchestrator:
             )
             raise PipelineExecutionError(str(exc), failed) from exc
 
+    def refetch_target(
+        self,
+        target_id: int,
+        search_profile: SearchProfile,
+        *,
+        pipeline_run_id: int | None = None,
+    ) -> TargetReprocessResult:
+        target = self.store.get_target(target_id)
+        request = PipelineRunRequest(
+            search_profile=search_profile,
+            phases=(
+                PipelinePhase.FETCH,
+                PipelinePhase.EXTRACT,
+                PipelinePhase.RATING,
+                PipelinePhase.DRAFT,
+            ),
+        )
+        counts = self._process_target(
+            result=_existing_target_import_result(target),
+            request=request,
+            pipeline_run_id=pipeline_run_id,
+        )
+        return TargetReprocessResult.from_counts(
+            self.store.get_target(target_id),
+            counts,
+        )
+
+    def rerate_target(
+        self,
+        target_id: int,
+        search_profile: SearchProfile,
+        *,
+        pipeline_run_id: int | None = None,
+    ) -> TargetReprocessResult:
+        target = self.store.get_target(target_id)
+        request = PipelineRunRequest(
+            search_profile=search_profile,
+            phases=(PipelinePhase.RATING, PipelinePhase.DRAFT),
+        )
+        counts = self._process_target(
+            result=_existing_target_import_result(target),
+            request=request,
+            pipeline_run_id=pipeline_run_id,
+        )
+        return TargetReprocessResult.from_counts(
+            self.store.get_target(target_id),
+            counts,
+        )
+
+    def regenerate_draft(
+        self,
+        target_id: int,
+        search_profile: SearchProfile,
+        *,
+        pipeline_run_id: int | None = None,
+    ) -> TargetReprocessResult:
+        target = self.store.get_target(target_id)
+        ratings = self.store.list_ratings(target_id)
+        if not ratings:
+            raise ValueError("target has no rating to draft from")
+
+        latest_draft = next(iter(self.store.list_drafts(target_id)), None)
+        counts = self._create_draft(
+            target=target,
+            rating=ratings[0],
+            evidence=self.store.list_evidence(target_id),
+            language=search_profile.draft_language,
+            pipeline_run_id=pipeline_run_id,
+            regenerated_from_draft_id=latest_draft.id if latest_draft else None,
+        )
+        return TargetReprocessResult.from_counts(
+            self.store.get_target(target_id),
+            counts,
+        )
+
     def _process_target(
         self,
         *,
@@ -303,39 +404,119 @@ class PipelineOrchestrator:
             PipelinePhase.FETCH,
             pipeline_run_id=pipeline_run_id,
             reason="fetch queued",
-            metadata={"target_url": target.base_url},
+            metadata={
+                "target_url": target.base_url,
+                "max_pages": self.max_pages_per_target,
+            },
         )
-        fetched = self.fetcher.fetch(target.base_url)
-        if not fetched.ok or not fetched.body:
-            error_message = fetched.error_message or "empty response body"
-            self.store.create_target_page(
-                TargetPage(
-                    target_id=target.id,
-                    url=fetched.url,
-                    http_status=fetched.status_code,
-                    error_message=error_message,
-                    metadata=_fetch_metadata(fetched),
-                    fetched_at=datetime.now(UTC),
+
+        pending = [target.base_url]
+        seen: set[str] = set()
+        failed_count = 0
+
+        while pending and len(seen) < self.max_pages_per_target:
+            url = pending.pop(0)
+            if url in seen:
+                continue
+            seen.add(url)
+
+            fetched = self.fetcher.fetch(url)
+            if not fetched.ok or not fetched.body:
+                failed_count += 1
+                error_message = fetched.error_message or "empty response body"
+                self.store.create_target_page(
+                    TargetPage(
+                        target_id=target.id,
+                        url=fetched.url,
+                        http_status=fetched.status_code,
+                        error_message=error_message,
+                        metadata=_fetch_metadata(fetched),
+                        fetched_at=datetime.now(UTC),
+                    )
                 )
+                continue
+
+            extracted, page = self._persist_fetched_page(
+                target=target,
+                fetched=fetched,
+                request=request,
             )
+            counts.fetched_count += 1
+
+            evidence_text = _evidence_text(extracted, page.text)
+            if evidence_text:
+                evidence = self.store.add_evidence(
+                    Evidence(
+                        target_id=target.id,
+                        page_id=page.id,
+                        source_url=page.url,
+                        text=evidence_text,
+                        context_type=page.page_type,
+                        priority=_evidence_priority(page.page_type),
+                        metadata=_evidence_metadata(extracted),
+                    )
+                )
+                counts.evidence_count += 1 if evidence.id is not None else 0
+
+            if extracted is not None:
+                pending.extend(
+                    _relevant_links(
+                        base_url=target.base_url,
+                        links=extracted.links,
+                        seen=seen,
+                        pending=pending,
+                        remaining=self.max_pages_per_target - len(seen),
+                    )
+                )
+
+        if counts.fetched_count == 0:
             self.store.set_target_status(
                 target.id,
                 TargetStatus.FETCH_FAILED,
                 PipelinePhase.FETCH,
                 pipeline_run_id=pipeline_run_id,
                 reason="fetch failed",
-                error_message=error_message,
-                metadata={"target_url": fetched.url, "http_status": fetched.status_code},
+                error_message="no usable target page fetched",
+                metadata={
+                    "target_url": target.base_url,
+                    "attempted_urls": list(seen),
+                },
             )
-            counts.error_count += 1
+            counts.error_count += max(1, failed_count)
             return counts, False
+
+        counts.error_count += failed_count
+        status = TargetStatus.FETCH_PARTIAL if failed_count else TargetStatus.FETCHED
+        self.store.set_target_status(
+            target.id,
+            status,
+            PipelinePhase.FETCH,
+            pipeline_run_id=pipeline_run_id,
+            reason="target pages fetched",
+            metadata={
+                "fetched_count": counts.fetched_count,
+                "failed_count": failed_count,
+                "attempted_urls": list(seen),
+            },
+        )
+        return counts, True
+
+    def _persist_fetched_page(
+        self,
+        *,
+        target: Target,
+        fetched: FetchedPage,
+        request: PipelineRunRequest,
+    ) -> tuple[ExtractedPage | None, TargetPage]:
+        if target.id is None:
+            raise ValueError("target must be persisted before page persistence")
 
         extracted: ExtractedPage | None = None
         page_text = fetched.body
         page_title: str | None = None
         page_type = "other"
         if PipelinePhase.EXTRACT in request.phases and self.extractor is not None:
-            extracted = self.extractor.extract(fetched.url, fetched.body)
+            extracted = self.extractor.extract(fetched.url, fetched.body or "")
             page_text = extracted.text
             page_title = extracted.title
             page_type = extracted.page_type
@@ -352,32 +533,7 @@ class PipelineOrchestrator:
                 fetched_at=datetime.now(UTC),
             )
         )
-        counts.fetched_count += 1
-        self.store.set_target_status(
-            target.id,
-            TargetStatus.FETCHED,
-            PipelinePhase.FETCH,
-            pipeline_run_id=pipeline_run_id,
-            reason="target page fetched",
-            metadata={"page_id": page.id, "page_type": page.page_type},
-        )
-
-        evidence_text = _evidence_text(extracted, page_text)
-        if evidence_text:
-            evidence = self.store.add_evidence(
-                Evidence(
-                    target_id=target.id,
-                    page_id=page.id,
-                    source_url=page.url,
-                    text=evidence_text,
-                    context_type=page.page_type,
-                    priority=_evidence_priority(page.page_type),
-                    metadata=_evidence_metadata(extracted),
-                )
-            )
-            counts.evidence_count += 1 if evidence.id is not None else 0
-
-        return counts, True
+        return extracted, page
 
     def _rate_and_maybe_draft(
         self,
@@ -471,6 +627,7 @@ class PipelineOrchestrator:
         evidence: list[Evidence],
         language: str | None,
         pipeline_run_id: int | None,
+        regenerated_from_draft_id: int | None = None,
     ) -> _PipelineCounts:
         counts = _PipelineCounts()
         if target.id is None:
@@ -504,6 +661,7 @@ class PipelineOrchestrator:
                 rating=rating,
                 evidence=evidence,
                 language=language,
+                regenerated_from_draft_id=regenerated_from_draft_id,
             )
             saved_draft = self.store.save_draft(draft)
             self.store.set_target_status(
@@ -636,6 +794,69 @@ def _import_metadata(result: TargetImportResult) -> dict[str, object]:
         "import_status": result.status.value,
         "candidate_url": result.candidate.url,
     }
+
+
+def _existing_target_import_result(target: Target) -> TargetImportResult:
+    return TargetImportResult(
+        candidate=TargetCandidate(
+            url=target.base_url,
+            source=target.source,
+            domain=target.domain,
+        ),
+        status=ImportStatus.EXISTING,
+        target=target,
+    )
+
+
+def _relevant_links(
+    *,
+    base_url: str,
+    links: tuple[str, ...],
+    seen: set[str],
+    pending: list[str],
+    remaining: int,
+) -> list[str]:
+    if remaining <= 0:
+        return []
+
+    base_domain = _netloc(base_url)
+    selected: list[str] = []
+    queued = set(pending)
+    for link in links:
+        if link in seen or link in queued or link in selected:
+            continue
+        if _netloc(link) != base_domain:
+            continue
+        if not _is_relevant_link(link):
+            continue
+        selected.append(link)
+        if len(selected) >= remaining:
+            break
+    return selected
+
+
+def _netloc(url: str) -> str:
+    parsed = urlparse(url)
+    return (parsed.netloc or parsed.path.split("/", 1)[0]).lower().removeprefix("www.")
+
+
+def _is_relevant_link(url: str) -> bool:
+    haystack = urlparse(url).path.lower()
+    return any(
+        token in haystack
+        for token in (
+            "career",
+            "karriere",
+            "jobs",
+            "stellen",
+            "kontakt",
+            "contact",
+            "impressum",
+            "about",
+            "ueber",
+            "uber",
+        )
+    )
 
 
 def _fetch_metadata(fetched: FetchedPage) -> dict[str, object]:
