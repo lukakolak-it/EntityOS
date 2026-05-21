@@ -1060,12 +1060,149 @@ Akzeptanzkriterien:
 - Externe Fehler beenden nicht den gesamten Lauf.
 - Der Lauf endet bei Teilfehlern als `completed_with_errors`.
 
+## Sprint 11: LeadEngine Ergebnisqualitaet
+
+Ziel: Die LeadEngine liefert weniger Jobportale und mehr direkte, pruefbare
+Ziel-Domains. Der Fokus liegt auf besserer Discovery, nicht auf finalem Scoring.
+
+### Slice 11.1: Source-Klassifikation und Jobportal-Denylist
+
+Ziel:
+
+SERP-Treffer werden frueh nach Quellentyp klassifiziert, damit Aggregatoren,
+Jobboersen und Social-Profile nicht wie echte Zielunternehmen behandelt werden.
+
+Umfang:
+
+- systemische Denylist fuer Jobportale und Aggregatoren
+- Quellentypen wie `company`, `job_board`, `agency_directory`, `social`,
+  `unknown`
+- `blocked_source` fuer systemisch blockierte Quellen
+- Konfiguration fuer lokale Erweiterung der Denylist
+
+Akzeptanzkriterien:
+
+- Bekannte Jobportale wie StudentJob, StepStone, Indeed und LinkedIn Jobs werden
+  nicht als normale Targets importiert.
+- Blockierte Treffer bleiben in SERP-Logs nachvollziehbar.
+- Nutzer-Blacklist (`blacklisted`) bleibt getrennt von Source-Denylist
+  (`blocked_source`).
+
+### Slice 11.2: Query-Templates fuer direkte Ziel-Domains
+
+Ziel:
+
+Die Query Builder erzeugen Suchanfragen, die eher Unternehmensseiten als
+Aggregatoren finden.
+
+Umfang:
+
+- Templates fuer Firmen-Karriereseiten
+- Templates fuer lokale IT-Dienstleister, Agenturen und Mittelstand
+- negative Query-Terme fuer grosse Jobboersen
+- Template-Sets pro Suchmodus, z. B. `company_direct`, `local_services`,
+  `career_pages`
+
+Akzeptanzkriterien:
+
+- Queries bleiben kurz genug fuer Brave.
+- Mindestens ein Template-Set bevorzugt direkte Firmen-Websites.
+- Query-Text, Template und Score werden weiter in `source_queries` gespeichert.
+
+### Slice 11.3: Domain-Qualitaet und SERP-Priorisierung
+
+Ziel:
+
+SERP-Ergebnisse werden vor dem Import nach wahrscheinlicher Target-Qualitaet
+sortiert.
+
+Umfang:
+
+- Domain-Qualitaetsmerkmale speichern
+- direkte Unternehmensdomain hoeher priorisieren
+- Portal-/Aggregator-Signale abwerten
+- Karriere-/Kontakt-/About-URL-Signale aufwerten
+- SERP-Rang nicht blind uebernehmen
+
+Akzeptanzkriterien:
+
+- Bei gleicher Query wird eine direkte Unternehmensdomain vor Jobboersen
+  importiert.
+- Ranking-Metadaten sind im SERP-Result nachvollziehbar.
+- LeadEngine bleibt eine Vorfilterung; finale Passung bleibt RatingEngine.
+
+### Slice 11.4: Domain-Dedupe und Fundstellen-Buendelung
+
+Ziel:
+
+Mehrere Treffer zur gleichen Domain werden als ein Kandidat behandelt, ohne
+nuetzliche Fundstellen zu verlieren.
+
+Umfang:
+
+- Canonical Domain normalisieren
+- `www`, Tracking-Parameter und offensichtliche Duplikate bereinigen
+- beste Fundstellen je Domain sammeln
+- Kandidaten-Metadaten um `discovery_urls` und `best_source_url` erweitern
+
+Akzeptanzkriterien:
+
+- Eine Domain erzeugt pro Lauf nur einen Target-Kandidaten.
+- Alternative Fundstellen bleiben fuer Fetch/Evidence nutzbar.
+- `duplicate_domain` bleibt ein LeadEngine-Status, kein Importstatus.
+
+### Slice 11.5: Feedback aus Review-Aktionen
+
+Ziel:
+
+Manuelle Entscheidungen verbessern spaetere LeadEngine-Laeufe.
+
+Umfang:
+
+- abgelehnte Jobportale fuer Denylist-Vorschlaege markieren
+- `approved`, `rejected`, `blacklisted` als Discovery-Signal auswerten
+- Suchprofil-Anpassungen fuer schlechte Treffer dokumentieren
+- keine automatische Blacklist ohne Nutzerentscheidung
+
+Akzeptanzkriterien:
+
+- Wiederholte schlechte Domains koennen sichtbar vorgeschlagen werden.
+- Nutzerentscheidung bleibt explizit.
+- LeadEngine nutzt Feedback nur als lokales Signal.
+
+### Slice 11.6: LeadEngine-Metriken und Pilot-Auswertung
+
+Ziel:
+
+Discovery-Qualitaet wird messbar, bevor weitere Provider oder groessere Budgets
+genutzt werden.
+
+Umfang:
+
+- Kennzahlen pro Lauf:
+  - Query Count
+  - SERP Result Count
+  - Blocked Source Count
+  - Direct Domain Count
+  - Duplicate Domain Count
+  - Imported Target Count
+- kleiner Pilotlauf mit festen Suchprofilen
+- Vergleich vor/nach Source-Filtern und Template-Sets
+
+Akzeptanzkriterien:
+
+- Ein Lauf zeigt, wie viele Treffer wegen Portalen blockiert wurden.
+- Ergebnisqualitaet laesst sich ohne manuelle DB-Abfrage einschaetzen.
+- Tests decken Query Builder, Source-Filter und Dedupe ab.
+
 ## Empfohlene Reihenfolge
 
-Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Danach ist die sinnvolle
+Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
+LeadEngine-Qualitaet auf Basis echter Pilotlaeufe. Danach ist die sinnvolle
 Reihenfolge:
 
-1. Pilotlauf mit echten Suchbegriffen auswerten.
-2. Fehlerklassen und Provider-Limits nachschaerfen.
-3. Export und Importformate fuer reale Review-Arbeit erweitern.
-4. Optional eine externe API-Schicht erst nach stabiler lokaler Nutzung bauen.
+1. Source-Klassifikation und Jobportal-Denylist implementieren.
+2. Query-Templates fuer direkte Ziel-Domains schaerfen.
+3. Domain-Qualitaet und SERP-Priorisierung einbauen.
+4. LeadEngine-Metriken in CLI/UI sichtbar machen.
+5. Danach RatingEngine und Review Queue anhand besserer Targets nachschaerfen.
