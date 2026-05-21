@@ -45,6 +45,19 @@ Nicht versionieren:
 - echte Profile
 - Exporte
 
+Fuer die aktuelle lokale Aufteilung sind diese Variablen relevant:
+
+- `GITHUB_TOKEN`: GitHub-Zugriff fuer spaetere Repo-/Issue-Workflows
+- `BRAVE_API_KEY`: Brave Search Discovery
+- `OPENAI_API_KEY`: Cloud-LLM fuer Heavy Thinking
+- `LLM_HEAVY_PROVIDER=openai`
+- `LLM_HEAVY_MODEL=gpt-5.5`
+- `LOCAL_AI_PROVIDER=ollama`
+- `LOCAL_AI_MODEL`: Qwen-Modell fuer Light Thinking
+- `LLM_LIGHT_PROVIDER=ollama`
+- `LLM_LIGHT_MODEL`: Qwen-Modell fuer Light Thinking
+- `SEARCH_PROVIDER=brave`, wenn echte Brave-Suche statt Mock genutzt werden soll
+
 ## Datenbank initialisieren
 
 ```powershell

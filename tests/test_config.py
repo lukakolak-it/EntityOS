@@ -23,6 +23,10 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.infrastructure.port, 8765)
         self.assertEqual(config.llm.provider, "local")
         self.assertEqual(config.llm.local_base_url, "http://127.0.0.1:11434")
+        self.assertEqual(config.llm.heavy_provider, "openai")
+        self.assertEqual(config.llm.heavy_model, "gpt-5.5")
+        self.assertEqual(config.llm.light_provider, "ollama")
+        self.assertEqual(config.llm.light_model, "qwen3:30b-a3v-q4_K_M")
         self.assertEqual(config.search_provider.provider, "mock")
 
     def test_environment_overrides_defaults(self) -> None:
@@ -36,6 +40,10 @@ class ConfigTests(unittest.TestCase):
                 "TARGET_RADAR_MIN_CONFIDENCE_FOR_DRAFT": "0.75",
                 "GITHUB_TOKEN": "ghp",
                 "LLM_PROVIDER": "openai",
+                "LLM_HEAVY_PROVIDER": "openai",
+                "LLM_HEAVY_MODEL": "gpt-5.5",
+                "LLM_LIGHT_PROVIDER": "ollama",
+                "LLM_LIGHT_MODEL": "qwen-test",
                 "OPENAI_API_KEY": "sk",
                 "SEARCH_PROVIDER": "brave",
                 "BRAVE_API_KEY": "bv",
@@ -49,6 +57,10 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.rating.min_confidence_for_draft, 0.75)
         self.assertEqual(config.github.token, "ghp")
         self.assertEqual(config.llm.provider, "openai")
+        self.assertEqual(config.llm.heavy_provider, "openai")
+        self.assertEqual(config.llm.heavy_model, "gpt-5.5")
+        self.assertEqual(config.llm.light_provider, "ollama")
+        self.assertEqual(config.llm.light_model, "qwen-test")
         self.assertEqual(config.llm.openai_api_key, "sk")
         self.assertEqual(config.search_provider.provider, "brave")
         self.assertEqual(config.search_provider.brave_api_key, "bv")

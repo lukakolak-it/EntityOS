@@ -36,6 +36,10 @@ class GitHubSettings:
 class LLMSettings:
     provider: str = "local"
     model: str = "llama3.1:8b"
+    heavy_provider: str = "openai"
+    heavy_model: str = "gpt-5.5"
+    light_provider: str = "ollama"
+    light_model: str = "qwen3:30b-a3v-q4_K_M"
     openai_api_key: str | None = None
     openai_model: str | None = None
     anthropic_api_key: str | None = None
@@ -174,6 +178,18 @@ def load_app_config(
         llm=LLMSettings(
             provider=_get_str(values, "LLM_PROVIDER", "local"),
             model=_get_str(values, "LLM_MODEL", "llama3.1:8b"),
+            heavy_provider=_get_str(values, "LLM_HEAVY_PROVIDER", "openai"),
+            heavy_model=_get_str(
+                values,
+                "LLM_HEAVY_MODEL",
+                _get_str(values, "OPENAI_MODEL", "gpt-5.5"),
+            ),
+            light_provider=_get_str(values, "LLM_LIGHT_PROVIDER", "ollama"),
+            light_model=_get_str(
+                values,
+                "LLM_LIGHT_MODEL",
+                _get_str(values, "LOCAL_AI_MODEL", "qwen3:30b-a3v-q4_K_M"),
+            ),
             openai_api_key=_get_optional_str(values, "OPENAI_API_KEY"),
             openai_model=_get_optional_str(values, "OPENAI_MODEL"),
             anthropic_api_key=_get_optional_str(values, "ANTHROPIC_API_KEY"),
