@@ -33,6 +33,15 @@ $env:PYTHONPATH='src'
 py -m unittest discover -s tests
 ```
 
+Lokaler CLI-Smoke-Test:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 init-db
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 run-fake
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 review-queue
+```
+
 ## Git
 
 Das Repository nutzt `main` als Standard-Branch. Vor einem ersten echten Implementierungsschritt sollte der aktuelle Dokumentations- und Strukturstand committed werden.
