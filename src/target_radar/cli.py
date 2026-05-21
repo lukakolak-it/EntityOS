@@ -7,12 +7,34 @@ import json
 from typing import Sequence
 
 from target_radar.config import load_app_config
-from target_radar.domain import Profile, SearchProfile
-from target_radar.engines.lead import FakeLeadEngine, create_lead_engine
+from target_radar.domain import PipelinePhase, Profile, SearchProfile
+from target_radar.engines.draft import DraftEngine
+from target_radar.engines.lead import (
+    FakeLeadEngine,
+    LeadEngineConfig,
+    create_lead_engine,
+)
+from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine, create_rating_engine
 from target_radar.ops import collect_diagnostics, configure_logging, run_privacy_check
-from target_radar.pipeline import PipelineOrchestrator, PipelineRunRequest
+from target_radar.pipeline import (
+    GeneratedFakeFetcher,
+    HtmlExtractor,
+    HttpFetcher,
+    PipelineOrchestrator,
+    PipelineRunRequest,
+)
 from target_radar.storage import SQLiteStore
 from target_radar.web.server import serve
+
+
+FULL_PIPELINE_PHASES = (
+    PipelinePhase.LEAD,
+    PipelinePhase.IMPORT,
+    PipelinePhase.FETCH,
+    PipelinePhase.EXTRACT,
+    PipelinePhase.RATING,
+    PipelinePhase.DRAFT,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -117,9 +139,18 @@ def _run_fake(args, database_url: str) -> int:
                 tech_keywords=tuple(args.tech or ["Python"]),
             )
         )
-        result = PipelineOrchestrator(store, FakeLeadEngine()).run(
+        result = PipelineOrchestrator(
+            store,
+            FakeLeadEngine(),
+            fetcher=GeneratedFakeFetcher(terms=_search_terms(search_profile)),
+            extractor=HtmlExtractor(),
+            rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
+            draft_engine=DraftEngine(),
+            profile=profile,
+        ).run(
             PipelineRunRequest(
                 search_profile=search_profile,
+                phases=FULL_PIPELINE_PHASES,
                 request_budget=args.request_budget,
                 results_per_query=args.results_per_query,
             )
@@ -129,6 +160,11 @@ def _run_fake(args, database_url: str) -> int:
                 "run_id": result.run.id,
                 "status": result.run.status.value,
                 "review_target_count": result.review_target_count,
+                "fetched_count": result.fetched_count,
+                "evidence_count": result.evidence_count,
+                "rated_count": result.rated_count,
+                "drafted_count": result.drafted_count,
+                "error_count": result.error_count,
                 "import_statuses": [
                     item.status.value for item in result.import_results
                 ],
@@ -153,9 +189,23 @@ def _run_configured(args, database_url: str, config) -> int:
             )
         )
         lead_engine = create_lead_engine(config, store=store)
-        result = PipelineOrchestrator(store, lead_engine).run(
+        lead_engine.config = LeadEngineConfig(
+            request_budget=args.request_budget,
+            results_per_query=args.results_per_query,
+            template_set=lead_engine.config.template_set,
+        )
+        result = PipelineOrchestrator(
+            store,
+            lead_engine,
+            fetcher=HttpFetcher(),
+            extractor=HtmlExtractor(),
+            rating_engine=create_rating_engine(config),
+            draft_engine=DraftEngine(),
+            profile=profile,
+        ).run(
             PipelineRunRequest(
                 search_profile=search_profile,
+                phases=FULL_PIPELINE_PHASES,
                 request_budget=args.request_budget,
                 results_per_query=args.results_per_query,
             )
@@ -166,6 +216,11 @@ def _run_configured(args, database_url: str, config) -> int:
                 "status": result.run.status.value,
                 "search_provider": lead_engine.provider.name,
                 "review_target_count": result.review_target_count,
+                "fetched_count": result.fetched_count,
+                "evidence_count": result.evidence_count,
+                "rated_count": result.rated_count,
+                "drafted_count": result.drafted_count,
+                "error_count": result.error_count,
                 "import_statuses": [
                     item.status.value for item in result.import_results
                 ],
@@ -200,6 +255,15 @@ def _review_queue(args, database_url: str) -> int:
 
 def _print_json(payload: dict[str, object]) -> None:
     print(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+
+
+def _search_terms(search_profile: SearchProfile) -> tuple[str, ...]:
+    return (
+        search_profile.roles
+        + search_profile.regions
+        + search_profile.tech_keywords
+        + search_profile.industry_keywords
+    )
 
 
 if __name__ == "__main__":

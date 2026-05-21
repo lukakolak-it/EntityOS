@@ -5,25 +5,36 @@ import unittest
 from target_radar.domain import (
     ImportStatus,
     LeadResultStatus,
+    PipelinePhase,
     PipelineRunStatus,
     Profile,
+    RecommendedAction,
     SearchProfile,
     TargetCandidate,
     TargetStatus,
 )
+from target_radar.engines.draft import DraftEngine
 from target_radar.engines.lead import FakeLeadEngine
 from target_radar.engines.lead import FakeSearchProvider, LeadEngine, LeadEngineConfig, SearchResult
-from target_radar.pipeline import PipelineOrchestrator, PipelineRunRequest, TargetImporter
+from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine
+from target_radar.pipeline import (
+    FakeFetcher,
+    FetchedPage,
+    HtmlExtractor,
+    PipelineOrchestrator,
+    PipelineRunRequest,
+    TargetImporter,
+)
 from target_radar.storage import SQLiteStore
 
 
 class PipelineSkeletonTests(unittest.TestCase):
     def setUp(self) -> None:
         self.store = SQLiteStore.open(":memory:")
-        profile = self.store.create_profile(Profile(name="Pipeline Profile"))
+        self.profile = self.store.create_profile(Profile(name="Pipeline Profile"))
         self.search_profile = self.store.create_search_profile(
             SearchProfile(
-                profile_id=profile.id,
+                profile_id=self.profile.id,
                 name="Werkstudent IT Essen",
                 roles=("Werkstudent IT",),
                 regions=("Essen",),
@@ -100,6 +111,68 @@ class PipelineSkeletonTests(unittest.TestCase):
         ).fetchone()
 
         self.assertEqual(row["pipeline_run_id"], result.run.id)
+
+    def test_full_pipeline_fetches_extracts_rates_and_creates_draft(self) -> None:
+        url = "https://alpha.example/jobs"
+        lead_engine = FakeLeadEngine(
+            candidates=[TargetCandidate(url=url, source="fake")]
+        )
+        fetcher = FakeFetcher(
+            {
+                url: FetchedPage(
+                    url=url,
+                    status_code=200,
+                    body=(
+                        "<html><head><title>Karriere</title></head><body>"
+                        "<h1>Werkstudent IT gesucht</h1>"
+                        "<p>Python Projekte in Essen mit direktem Kontakt.</p>"
+                        "<p>Kontakt: jobs@alpha.example</p>"
+                        "</body></html>"
+                    ),
+                    content_type="text/html; charset=utf-8",
+                )
+            }
+        )
+        orchestrator = PipelineOrchestrator(
+            self.store,
+            lead_engine,
+            fetcher=fetcher,
+            extractor=HtmlExtractor(),
+            rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
+            draft_engine=DraftEngine(),
+            profile=self.profile,
+        )
+
+        result = orchestrator.run(
+            PipelineRunRequest(
+                search_profile=self.search_profile,
+                phases=(
+                    PipelinePhase.LEAD,
+                    PipelinePhase.IMPORT,
+                    PipelinePhase.FETCH,
+                    PipelinePhase.EXTRACT,
+                    PipelinePhase.RATING,
+                    PipelinePhase.DRAFT,
+                ),
+            )
+        )
+        target = self.store.list_review_targets()[0]
+        pages = self.store.list_target_pages(target.id)
+        evidence = self.store.list_evidence(target.id)
+        ratings = self.store.list_ratings(target.id)
+        drafts = self.store.list_drafts(target.id)
+
+        self.assertEqual(result.run.status, PipelineRunStatus.COMPLETED)
+        self.assertEqual(result.fetched_count, 1)
+        self.assertEqual(result.evidence_count, 1)
+        self.assertEqual(result.rated_count, 1)
+        self.assertEqual(result.drafted_count, 1)
+        self.assertEqual(result.error_count, 0)
+        self.assertEqual(target.status, TargetStatus.NEEDS_REVIEW)
+        self.assertEqual(pages[0].page_type, "career")
+        self.assertIn("Werkstudent IT", evidence[0].text)
+        self.assertEqual(ratings[0].recommended_action, RecommendedAction.DRAFT)
+        self.assertEqual(drafts[0].score_id, ratings[0].id)
 
 
 if __name__ == "__main__":

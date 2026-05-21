@@ -18,8 +18,15 @@ from target_radar.domain import (
     SearchProfile,
     TargetStatus,
 )
+from target_radar.engines.draft import DraftEngine
 from target_radar.engines.lead import FakeLeadEngine
-from target_radar.pipeline import PipelineOrchestrator, PipelineRunRequest
+from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine
+from target_radar.pipeline import (
+    GeneratedFakeFetcher,
+    HtmlExtractor,
+    PipelineOrchestrator,
+    PipelineRunRequest,
+)
 from target_radar.storage import NotFoundError, SQLiteStore
 
 
@@ -180,9 +187,25 @@ def _make_handler(database_url: str):
                         tech_keywords=tuple(payload.get("tech_keywords") or ["Python"]),
                     )
                 )
-                result = PipelineOrchestrator(store, FakeLeadEngine()).run(
+                result = PipelineOrchestrator(
+                    store,
+                    FakeLeadEngine(),
+                    fetcher=GeneratedFakeFetcher(terms=_search_terms(search_profile)),
+                    extractor=HtmlExtractor(),
+                    rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
+                    draft_engine=DraftEngine(),
+                    profile=profile,
+                ).run(
                     PipelineRunRequest(
                         search_profile=search_profile,
+                        phases=(
+                            PipelinePhase.LEAD,
+                            PipelinePhase.IMPORT,
+                            PipelinePhase.FETCH,
+                            PipelinePhase.EXTRACT,
+                            PipelinePhase.RATING,
+                            PipelinePhase.DRAFT,
+                        ),
                         request_budget=int(payload.get("request_budget") or 10),
                         results_per_query=int(payload.get("results_per_query") or 5),
                     )
@@ -191,6 +214,11 @@ def _make_handler(database_url: str):
                     {
                         "run": _pipeline_run_payload(result.run),
                         "review_target_count": result.review_target_count,
+                        "fetched_count": result.fetched_count,
+                        "evidence_count": result.evidence_count,
+                        "rated_count": result.rated_count,
+                        "drafted_count": result.drafted_count,
+                        "error_count": result.error_count,
                         "import_statuses": [
                             item.status.value for item in result.import_results
                         ],
@@ -399,6 +427,15 @@ def _status_log_payload(log) -> dict[str, Any]:
         "metadata": log.metadata,
         "created_at": _dt(log.created_at),
     }
+
+
+def _search_terms(search_profile: SearchProfile) -> tuple[str, ...]:
+    return (
+        search_profile.roles
+        + search_profile.regions
+        + search_profile.tech_keywords
+        + search_profile.industry_keywords
+    )
 
 
 def _dt(value) -> str | None:

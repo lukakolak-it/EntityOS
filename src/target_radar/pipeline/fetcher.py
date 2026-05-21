@@ -5,6 +5,8 @@ from __future__ import annotations
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from html import escape
+from urllib.parse import urlparse
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,3 +77,44 @@ class FakeFetcher:
             url=url,
             error_message="fixture not found",
         )
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedFakeFetcher:
+    """Generate deterministic HTML pages for local demos and tests."""
+
+    terms: tuple[str, ...] = ()
+
+    def fetch(self, url: str) -> FetchedPage:
+        parsed = urlparse(url)
+        domain = parsed.netloc or parsed.path.split("/", 1)[0] or "example.local"
+        page_terms = " ".join(term for term in self.terms if term.strip())
+        if not page_terms:
+            page_terms = "Werkstudent IT Python Essen"
+        body = _generated_html(url=url, domain=domain, terms=page_terms)
+        return FetchedPage(
+            url=url,
+            status_code=200,
+            body=body,
+            content_type="text/html; charset=utf-8",
+            metadata={"generated": True, "bytes_read": len(body.encode("utf-8"))},
+        )
+
+
+def _generated_html(*, url: str, domain: str, terms: str) -> str:
+    escaped_domain = escape(domain)
+    escaped_terms = escape(terms)
+    escaped_url = escape(url)
+    local_part = domain.replace(".", "-").replace(":", "-")
+    return (
+        "<!doctype html><html><head>"
+        f"<title>Karriere bei {escaped_domain}</title>"
+        f'<meta name="description" content="Lokale Testseite fuer {escaped_terms}">'
+        "</head><body>"
+        f"<h1>Karriere und Jobs bei {escaped_domain}</h1>"
+        f"<p>Wir suchen Profile rund um {escaped_terms} fuer lokale Projekte.</p>"
+        "<p>Interessierte koennen sich direkt beim Team melden.</p>"
+        f"<p>Kontakt: jobs@{escape(local_part)}.test</p>"
+        f'<a href="{escaped_url}">Karriere</a>'
+        "</body></html>"
+    )
