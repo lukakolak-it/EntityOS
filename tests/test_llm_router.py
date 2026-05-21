@@ -5,7 +5,14 @@ import unittest
 from target_radar.config import load_app_config
 from target_radar.domain import RecommendedAction
 from target_radar.engines.rating import AIRatingRequest, LLMAIRatingProvider
-from target_radar.llm import FakeLLMClient, LLMRouter, create_llm_router
+from target_radar.llm import (
+    FakeLLMClient,
+    LLMRequest,
+    LLMRouter,
+    OpenAIResponsesClient,
+    create_llm_router,
+)
+import target_radar.llm.clients as clients
 
 
 class LLMRouterTests(unittest.TestCase):
@@ -67,6 +74,23 @@ class LLMRouterTests(unittest.TestCase):
         self.assertEqual(response.confidence, 0.77)
         self.assertEqual(response.recommended_action, RecommendedAction.DRAFT)
         self.assertEqual(response.model_name, "fake-heavy")
+
+    def test_openai_gpt5_request_omits_temperature(self) -> None:
+        captured_payloads = []
+        original_post_json = clients._post_json
+
+        def fake_post_json(url, payload, *, headers=None, timeout=60):
+            captured_payloads.append(payload)
+            return {"output_text": "{}"}
+
+        clients._post_json = fake_post_json
+        try:
+            client = OpenAIResponsesClient(api_key="test", model="gpt-5.5")
+            client.complete(LLMRequest(prompt="{}", temperature=0.1))
+        finally:
+            clients._post_json = original_post_json
+
+        self.assertNotIn("temperature", captured_payloads[0])
 
 
 if __name__ == "__main__":

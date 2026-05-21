@@ -65,7 +65,7 @@ class OpenAIResponsesClient:
         }
         if request.instructions:
             payload["instructions"] = request.instructions
-        if request.temperature is not None:
+        if request.temperature is not None and _openai_supports_temperature(self.model):
             payload["temperature"] = request.temperature
 
         response = _post_json(
@@ -171,3 +171,8 @@ def _extract_openai_text(payload: dict[str, object]) -> str:
                 if isinstance(text, str):
                     parts.append(text)
     return "\n".join(parts).strip()
+
+
+def _openai_supports_temperature(model: str) -> bool:
+    normalized = model.strip().lower()
+    return not normalized.startswith(("gpt-5", "o1", "o3", "o4"))
