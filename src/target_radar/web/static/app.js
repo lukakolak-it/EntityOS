@@ -9,9 +9,12 @@ const state = {
 const USE_CASE_TABS = (
   ["basis", "fields", "queries", "sources", "rating", "output", "review"]
 );
+const PAGE_IDS = new Set(["review", "use-cases", "profiles", "runs"]);
 
 const elements = {
   serverStatus: document.querySelector("#serverStatus"),
+  navLinks: Array.from(document.querySelectorAll("[data-nav-page]")),
+  pages: Array.from(document.querySelectorAll("[data-page]")),
   queueBody: document.querySelector("#queueBody"),
   queueCount: document.querySelector("#queueCount"),
   queueUseCaseFilter: document.querySelector("#queueUseCaseFilter"),
@@ -46,10 +49,12 @@ document.querySelector("#runFakeButton").addEventListener("click", async () => {
     body: fakeRunPayload(useCaseId),
   });
   await refreshAll();
+  showPage("review");
 });
 
 elements.queueUseCaseFilter.addEventListener("change", loadQueue);
 elements.importUseCaseButton.addEventListener("click", importUseCaseFromTextarea);
+window.addEventListener("hashchange", renderPage);
 
 document.querySelectorAll("[data-action]").forEach((button) => {
   button.addEventListener("click", async () => {
@@ -62,12 +67,38 @@ document.querySelectorAll("[data-action]").forEach((button) => {
 });
 
 refreshAll();
+renderPage();
 
 async function refreshAll() {
   const health = await api("/api/health");
   elements.serverStatus.textContent = `${health.host} - ${health.status}`;
   await loadUseCases();
   await Promise.all([loadQueue(), loadRuns(), loadSearchProfiles()]);
+  renderPage();
+}
+
+function renderPage() {
+  const page = currentPage();
+  elements.pages.forEach((section) => {
+    section.classList.toggle("active-page", section.dataset.page === page);
+  });
+  elements.navLinks.forEach((link) => {
+    link.classList.toggle("active-nav", link.dataset.navPage === page);
+  });
+}
+
+function currentPage() {
+  const raw = window.location.hash.replace("#", "");
+  return PAGE_IDS.has(raw) ? raw : "review";
+}
+
+function showPage(page) {
+  if (!PAGE_IDS.has(page)) return;
+  if (window.location.hash !== `#${page}`) {
+    window.location.hash = page;
+  } else {
+    renderPage();
+  }
 }
 
 async function loadUseCases() {
@@ -678,6 +709,7 @@ async function loadRuns() {
 }
 
 async function loadTarget(targetId) {
+  showPage("review");
   state.selectedTargetId = targetId;
   await loadQueue();
   const data = await api(`/api/targets/${targetId}`);

@@ -211,13 +211,69 @@ label,
   justify-content: flex-end;
 }
 
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.app-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 11px;
+  text-decoration: none;
+}
+
+.app-nav a:hover {
+  background: #ffffff;
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.app-nav a.active-nav {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--blue);
+  box-shadow: 0 1px 3px rgba(23, 33, 43, 0.08);
+}
+
 .layout {
-  display: grid;
-  grid-template-columns: minmax(390px, 0.95fr) minmax(520px, 1.35fr);
-  gap: 16px;
   max-width: 1540px;
   margin: 0 auto;
   padding: 16px;
+}
+
+.page {
+  display: none;
+}
+
+.page.active-page {
+  display: grid;
+  gap: 16px;
+}
+
+.review-page.active-page {
+  grid-template-columns: minmax(390px, 0.95fr) minmax(520px, 1.35fr);
+}
+
+.usecases-page.active-page {
+  align-items: start;
+  grid-template-columns: minmax(340px, 0.72fr) minmax(560px, 1.28fr);
+}
+
+.profiles-page.active-page,
+.runs-page.active-page {
+  grid-template-columns: 1fr;
 }
 
 .panel {
@@ -229,12 +285,11 @@ label,
   box-shadow: var(--shadow);
 }
 
-.runs-panel,
-.profiles-panel {
-  grid-column: 1 / -1;
+.detail-panel {
+  grid-row: span 2;
 }
 
-.detail-panel {
+.usecase-editor-panel {
   grid-row: span 2;
 }
 
@@ -476,11 +531,6 @@ label {
   padding: 0;
 }
 
-.usecase-detail,
-.import-detail {
-  border-top: 1px solid var(--line);
-}
-
 .detail-grid.compact {
   margin-bottom: 12px;
 }
@@ -542,11 +592,13 @@ label {
 }
 
 @media (max-width: 1120px) {
-  .layout {
+  .review-page.active-page,
+  .usecases-page.active-page {
     grid-template-columns: 1fr;
   }
 
-  .detail-panel {
+  .detail-panel,
+  .usecase-editor-panel {
     grid-row: auto;
   }
 }
@@ -563,6 +615,16 @@ label {
     align-items: flex-start;
     flex-direction: column;
     padding: 12px 14px;
+  }
+
+  .app-nav {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .app-nav a {
+    flex: 1 0 auto;
+    justify-content: center;
   }
 
   .toolbar,

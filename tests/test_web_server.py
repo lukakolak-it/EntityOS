@@ -100,6 +100,8 @@ class WebServerTests(unittest.TestCase):
                 thread.join(timeout=5)
 
         self.assertIn("Target Radar", index)
+        self.assertIn("#review", index)
+        self.assertIn("#use-cases", index)
         self.assertEqual(run_payload["run"]["status"], "completed")
         self.assertGreaterEqual(len(use_cases_payload["use_cases"]), 2)
         self.assertEqual(use_case_detail_payload["use_case"]["slug"], "application_student")
