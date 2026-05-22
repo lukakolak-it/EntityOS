@@ -1195,14 +1195,184 @@ Akzeptanzkriterien:
 - Ergebnisqualitaet laesst sich ohne manuelle DB-Abfrage einschaetzen.
 - Tests decken Query Builder, Source-Filter und Dedupe ab.
 
+## Sprint 12: Produktisierung der lokalen UI
+
+Ziel: Die lokale UI wird vom Demonstrator zur nutzbaren Arbeitsoberflaeche fuer
+begrenzte echte Runs. Der Fokus liegt auf Bedienbarkeit, Transparenz und kleinen
+kontrollierten Budgets, nicht auf neuen Use-Case-Typen.
+
+### Slice 12.1: Konfigurierbare UI-Runs
+
+Ziel:
+
+Nutzer koennen echte, begrenzte Pipeline-Laeufe aus der UI starten.
+
+Umfang:
+
+- Search Profile auswaehlen
+- Use Case auswaehlen
+- Provider-Modus `fake`, `brave` oder `configured` waehlen
+- Request- und Result-Budget setzen
+- Start-Button gegen den bestehenden `run-configured`-Pfad anbinden
+- laufende und abgeschlossene Runs in der UI aktualisieren
+
+Akzeptanzkriterien:
+
+- Fake Runs bleiben fuer Entwicklung und Tests verfuegbar.
+- Ein echter Run kann mit kleinem Budget aus der UI gestartet werden.
+- Provider-Fehler beenden nicht die gesamte UI-Sitzung.
+- Der Run zeigt Status, Zaehler und Fehler ohne Datenbankzugriff.
+
+### Slice 12.2: Provider-Status und Light-LLM-Routing
+
+Ziel:
+
+Die UI zeigt, ob lokale Provider und Light-LLM-Konfiguration nutzbar sind.
+
+Umfang:
+
+- Brave-Konfiguration ohne Secret-Anzeige pruefen
+- Ollama-/Qwen-Erreichbarkeit pruefen
+- OpenAI-Konfiguration nur als vorhanden/nicht vorhanden anzeigen
+- LLM-Modus `off` und `light` sichtbar machen
+- Heavy-Modelle als spaetere optionale Erweiterung markieren
+
+Akzeptanzkriterien:
+
+- Secrets werden nie in der UI oder in Exporten angezeigt.
+- Nutzer sieht fehlende Provider-Konfiguration vor dem Run.
+- Light-Routing ist fuer lokale Tests auswaehlbar.
+- Heavy Thinking ist nicht noetig, um den MVP weiterzuentwickeln.
+
+### Slice 12.3: Evidence- und Rating-Erklaerung
+
+Ziel:
+
+Review-Entscheidungen werden nachvollziehbar, ohne Logs oder Datenbanktabellen
+zu lesen.
+
+Umfang:
+
+- Evidence-Snippets, Quellen-URL und Quellentyp gemeinsam anzeigen
+- Source-Quality-Signale und Risiken anzeigen
+- Rating-Kriterien mit Score-Beitrag darstellen
+- Draft-Fehler und LLM-Fehler sichtbar machen
+
+Akzeptanzkriterien:
+
+- Eine Review-Zeile erklaert, warum `skip`, `review` oder `draft` empfohlen
+  wurde.
+- Nutzer kann schlechte Quellen direkt erkennen.
+- Fehlende Evidence wird als eigener Zustand angezeigt.
+
+### Slice 12.4: Review-Feedback fuer spaetere Discovery
+
+Ziel:
+
+Manuelle Review-Aktionen verbessern spaetere LeadEngine-Laeufe lokal.
+
+Umfang:
+
+- `reject` und `blacklist` als Feedback-Signale speichern
+- wiederholt schlechte Domains fuer Denylist-Vorschlaege markieren
+- Nutzerentscheidung von systemischer Source-Denylist getrennt halten
+- Feedback in SourceQualityClassifier oder LeadEngine-Priorisierung auswerten
+
+Akzeptanzkriterien:
+
+- Eine blacklisted Domain wird in spaeteren Runs nicht erneut importiert.
+- Wiederholte Rejects werden als Vorschlag sichtbar, aber nicht automatisch
+  blockiert.
+- `blocked_source` und Nutzer-Blacklist bleiben begrifflich getrennt.
+
+### Slice 12.5: Strukturierter Use-Case-Editor
+
+Ziel:
+
+Eigene Use Cases lassen sich ohne direkte JSON-Bearbeitung pflegen.
+
+Umfang:
+
+- strukturierte Formulare fuer Attribute, Queries, Quellen, Rating und Drafts
+- Query Preview auf Basis der aktuellen Attribute
+- Validierung mit klaren Fehlern
+- Gewichte muessen exakt zu `100` summieren
+- JSON-Ansicht nur als Expertenmodus behalten
+
+Akzeptanzkriterien:
+
+- Ein einfacher Use Case kann ohne JSON geschrieben werden.
+- Template-Variablen und Attribute sind in der UI eindeutig verbunden.
+- Ungueltige Policies koennen nicht gespeichert werden.
+
+### Slice 12.6: Import und Export als Dateiworkflow
+
+Ziel:
+
+Use Cases koennen sauber geteilt, gesichert und wieder importiert werden.
+
+Umfang:
+
+- Export als Datei-Download
+- Import per Datei-Auswahl
+- Konfliktbehandlung bei gleicher ID
+- Privacy-Check vor Export
+- Validierungsbericht vor Import
+
+Akzeptanzkriterien:
+
+- Export enthaelt keine Secrets.
+- Import zeigt Fehler vor dem Speichern.
+- Bestehende Use Cases werden nicht versehentlich ueberschrieben.
+
+### Slice 12.7: Metriken und Pilot-Auswertung
+
+Ziel:
+
+Echte kleine Runs liefern auswertbare Signale fuer Engine-Verbesserungen.
+
+Umfang:
+
+- Run-Metriken in CLI und UI anzeigen
+- Source-Type-Verteilung anzeigen
+- blockierte, importierte, doppelte und geratete Targets zaehlen
+- Request-/Provider-Zaehler erfassen
+- Pilotlaeufe mit festen Profilen dokumentieren
+
+Akzeptanzkriterien:
+
+- Nach einem Run ist sichtbar, wo Treffer verloren oder blockiert wurden.
+- Ergebnisqualitaet kann ohne manuelle Datenbankanalyse bewertet werden.
+- LeadEngine-Verbesserungen koennen gegen vorherige Runs verglichen werden.
+
+### Slice 12.8: UI-Regressionstests
+
+Ziel:
+
+Die lokale UI bleibt bei weiteren Engine-Aenderungen stabil.
+
+Umfang:
+
+- Playwright-Smoke-Test fuer Review, Use Cases, Profile und Runs
+- Test fuer Fake Run aus der UI
+- Test fuer Use-Case-Clone und Validierungsfehler
+- Screenshot-Pruefung fuer Desktop-Breite
+
+Akzeptanzkriterien:
+
+- UI-Basispfade laufen automatisiert.
+- Navigation zwischen Unterseiten bricht nicht.
+- Tests koennen lokal ohne echte Provider-Secrets laufen.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
-LeadEngine-Qualitaet auf Basis echter Pilotlaeufe. Danach ist die sinnvolle
-Reihenfolge:
+LeadEngine-Qualitaet. Sprint 12 produktisiert die UI, damit echte kleine Runs
+kontrolliert bedienbar werden. Danach ist die sinnvolle Reihenfolge:
 
-1. Source-Klassifikation und Jobportal-Denylist implementieren.
-2. Query-Templates fuer direkte Ziel-Domains schaerfen.
-3. Domain-Qualitaet und SERP-Priorisierung einbauen.
-4. LeadEngine-Metriken in CLI/UI sichtbar machen.
-5. Danach RatingEngine und Review Queue anhand besserer Targets nachschaerfen.
+1. Konfigurierbare UI-Runs mit kleinem Budget anbinden.
+2. Provider-Status und Light-LLM-Routing sichtbar machen.
+3. Evidence-, Source- und Rating-Gruende in der Review Queue darstellen.
+4. Review-Feedback als lokales LeadEngine-Signal nutzen.
+5. Use-Case-Editor und Import/Export ergonomischer machen.
+6. Metriken und UI-Regressionstests ergaenzen.

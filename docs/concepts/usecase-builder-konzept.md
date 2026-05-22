@@ -898,7 +898,54 @@ Bereits fuer den MVP entschieden:
 - Rating-Kriterien werden hybrid umgesetzt: bekannte Rule-Sets plus LLM-Auswertung fuer Custom-Kriterien.
 - Rating-Gewichte muessen exakt zu `100` summieren; die UI normalisiert nicht automatisch.
 
-## 15. Zielbild
+## 15. Aktueller Stand nach MVP-Umsetzung
+
+Umgesetzt:
+
+- Use-Case-Schema mit Defaults fuer `application_student` und `company_osint`
+- lokale Persistenz von Use Cases und Pipeline-Snapshots
+- Clone-from-template, Editieren, Import und Export in der lokalen UI
+- Suchprofile koennen einem Use Case zugeordnet werden
+- LeadEngine nutzt Query- und Source-Policies aus dem Use Case
+- RatingEngine und DraftEngine nutzen Use-Case-Policies
+- Draft Types `application_email` und `research_summary`
+- Review Queue mit Use-Case-Badge und Use-Case-Filter
+- UI-Aufteilung in Review, Use Cases, Profile und Runs
+
+Aktuelle Grenzen:
+
+- Die UI startet weiterhin kontrollierte Fake Runs. Echte Provider-Laeufe sind
+  aktuell ueber den CLI-Pfad `run-configured` vorbereitet.
+- Run-Konfigurationen wie Provider-Modus, Budget, Search Profile und Use Case
+  muessen in der UI noch explizit bedienbar werden.
+- LLM-Routing soll fuer den lokalen MVP zuerst `light` und `off` sichtbar machen.
+  Heavy-Modelle bleiben bewusst optional und werden nicht als naechster
+  Umsetzungsschritt vorausgesetzt.
+- Der Use-Case-Editor arbeitet noch stark mit JSON-Textfeldern. Fuer dauerhaft
+  nutzbare Custom Use Cases braucht er strukturierte Eingaben, Previews und
+  klarere Validierungsfehler.
+- Import und Export funktionieren konzeptionell, sollen aber als echter
+  Datei-Workflow statt nur ueber Textfelder bedienbar werden.
+- Review-Feedback wie `reject` und `blacklist` wird noch nicht konsequent als
+  lokales Signal fuer spaetere LeadEngine-Laeufe genutzt.
+- Provider-Status, Fehler, Kosten-/Request-Zaehler und Qualitaetsmetriken sind
+  noch nicht ausreichend in der UI sichtbar.
+- Browser-Regressionstests fuer die lokale UI fehlen noch.
+
+Der naechste sinnvolle Produktisierungsschritt ist daher nicht ein weiterer
+Use-Case-Typ, sondern die Verbindung der lokalen UI mit echten, begrenzten
+Laeufen:
+
+```text
+Search Profile waehlen
++ Use Case waehlen
++ Provider-Modus waehlen
++ kleines Budget setzen
++ echten Run starten
++ Evidence, Rating und Draft in der Review Queue pruefen
+```
+
+## 16. Zielbild
 
 Target Radar wird dadurch kein Bewerbungswerkzeug mit vielen Sonderfaellen.
 
