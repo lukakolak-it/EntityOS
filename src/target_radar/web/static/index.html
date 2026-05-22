@@ -174,8 +174,63 @@
         <section class="panel profiles-panel" aria-labelledby="profilesTitle">
           <div class="panel-head">
             <h2 id="profilesTitle">Search Profiles</h2>
+            <button id="newSearchProfileButton" type="button">New</button>
           </div>
           <div id="searchProfilesList" class="stack"></div>
+        </section>
+
+        <section class="panel profile-editor-panel" aria-labelledby="profileEditorTitle">
+          <div class="panel-head">
+            <h2 id="profileEditorTitle">Profile Editor</h2>
+            <span id="profileEditorMode" class="status-pill muted">new</span>
+          </div>
+          <div class="detail">
+            <div class="form-grid">
+              <div>
+                <label>Profile Name</label>
+                <input id="profileProfileName" value="Local Profile">
+              </div>
+              <div>
+                <label>Search Name</label>
+                <input id="profileSearchName" value="Local Search">
+              </div>
+              <div>
+                <label>Use Case</label>
+                <select id="profileUseCaseSelect"></select>
+              </div>
+              <div>
+                <label>Rollen</label>
+                <input id="profileRoles">
+              </div>
+              <div>
+                <label>Regionen</label>
+                <input id="profileRegions">
+              </div>
+              <div>
+                <label>Technologien</label>
+                <input id="profileTechKeywords">
+              </div>
+              <div>
+                <label>Branchen</label>
+                <input id="profileIndustryKeywords">
+              </div>
+              <div>
+                <label>Ausschluss</label>
+                <input id="profileExcludeKeywords">
+              </div>
+              <div>
+                <label>Draft Language</label>
+                <input id="profileDraftLanguage" value="de">
+              </div>
+            </div>
+            <label>Attribute JSON</label>
+            <textarea id="profileAttributesJson" class="short-textarea">{}</textarea>
+            <div id="profileEditorStatus" class="editor-status"></div>
+            <div class="actions">
+              <button id="saveSearchProfileButton" class="primary" type="button">Save Profile</button>
+              <button id="deleteSearchProfileButton" class="danger" type="button">Delete</button>
+            </div>
+          </div>
         </section>
       </section>
 
@@ -218,6 +273,33 @@
                 </select>
               </div>
               <div>
+                <label>Light Model</label>
+                <select id="runLightModelSelect"></select>
+              </div>
+              <div>
+                <label>Fetch</label>
+                <select id="runFetchMode">
+                  <option value="fake">fake</option>
+                  <option value="http">http</option>
+                </select>
+              </div>
+              <div>
+                <label>Phase</label>
+                <select id="runPhaseMode">
+                  <option value="full">full</option>
+                  <option value="fetch">discovery+fetch</option>
+                  <option value="discovery">discovery</option>
+                  <option value="rating">rating</option>
+                </select>
+              </div>
+              <div>
+                <label>Draft</label>
+                <select id="runDraftEnabled">
+                  <option value="true">enabled</option>
+                  <option value="false">disabled</option>
+                </select>
+              </div>
+              <div>
                 <label>Request Budget</label>
                 <input id="runRequestBudget" type="number" min="1" max="100" value="5">
               </div>
@@ -225,25 +307,37 @@
                 <label>Results / Query</label>
                 <input id="runResultsPerQuery" type="number" min="1" max="20" value="3">
               </div>
-            </div>
-            <div class="form-grid">
               <div>
-                <label>Rollen / Topics</label>
-                <input id="runRoles" value="Werkstudent IT">
-              </div>
-              <div>
-                <label>Regionen</label>
-                <input id="runRegions" value="Essen">
-              </div>
-              <div>
-                <label>Technologien</label>
-                <input id="runTechKeywords" value="Python">
+                <label>Max Pages</label>
+                <input id="runMaxPages" type="number" min="1" max="20" value="2">
               </div>
             </div>
+            <div id="runAttributeFields" class="form-grid"></div>
+            <div id="runPreview" class="item preview-item"></div>
             <div id="runStatus" class="editor-status"></div>
             <div class="actions">
               <button id="runConfiguredButton" class="primary" type="button">Run starten</button>
+              <button id="saveRunDefaultsButton" type="button">Save Defaults</button>
             </div>
+          </div>
+        </section>
+
+        <section class="panel domain-policy-panel" aria-labelledby="domainPolicyTitle">
+          <div class="panel-head">
+            <h2 id="domainPolicyTitle">Domain Policies</h2>
+          </div>
+          <div class="detail">
+            <div class="form-grid">
+              <div>
+                <label>Domain</label>
+                <input id="domainPolicyInput" placeholder="example.com">
+              </div>
+            </div>
+            <div class="actions">
+              <button id="addBlacklistDomainButton" type="button">Blacklist</button>
+            </div>
+            <div id="domainPolicyStatus" class="editor-status"></div>
+            <div id="domainPolicyList" class="stack"></div>
           </div>
         </section>
 

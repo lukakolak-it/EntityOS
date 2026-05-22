@@ -33,8 +33,12 @@ class WebServerTests(unittest.TestCase):
                     payload={
                         "provider_mode": "fake",
                         "llm_mode": "off",
+                        "fetch_mode": "fake",
+                        "phase_mode": "full",
+                        "draft_enabled": False,
                         "request_budget": 1,
                         "results_per_query": 1,
+                        "max_pages_per_target": 1,
                     },
                 )
                 use_cases_payload = _http_json(f"{base_url}/api/use-cases")
@@ -53,6 +57,60 @@ class WebServerTests(unittest.TestCase):
                     f"{base_url}/api/review-queue?use_case_id={application_use_case['db_id']}"
                 )
                 search_profiles_payload = _http_json(f"{base_url}/api/search-profiles")
+                created_profile_payload = _http_json(
+                    f"{base_url}/api/search-profiles",
+                    method="POST",
+                    payload={
+                        "profile_name": "OSINT Profile",
+                        "search_name": "OSINT Search",
+                        "use_case_id": 2,
+                        "attributes": {
+                            "topics": ["Solar Services"],
+                            "industries": ["IT"],
+                            "regions": ["Essen"],
+                        },
+                        "regions": ["Essen"],
+                    },
+                )
+                preview_payload = _http_json(
+                    f"{base_url}/api/run-preview",
+                    method="POST",
+                    payload={
+                        "use_case_id": 2,
+                        "request_budget": 2,
+                        "results_per_query": 1,
+                        "attributes": {
+                            "topics": ["Solar Services"],
+                            "industries": ["IT"],
+                            "regions": ["Essen"],
+                        },
+                    },
+                )
+                patched_full_profile_payload = _http_json(
+                    f"{base_url}/api/search-profiles/{created_profile_payload['search_profile']['id']}",
+                    method="PATCH",
+                    payload={
+                        "profile_name": "OSINT Edited",
+                        "name": "OSINT Search Edited",
+                        "use_case_id": 2,
+                        "attributes": {
+                            "topics": ["Security"],
+                            "industries": ["IT"],
+                            "regions": ["Essen"],
+                        },
+                    },
+                )
+                domain_policy_payload = _http_json(
+                    f"{base_url}/api/domain-policies/blacklist",
+                    method="POST",
+                    payload={"domain": "blocked.example"},
+                )
+                domain_policies_payload = _http_json(f"{base_url}/api/domain-policies")
+                unblocked_domain_payload = _http_json(
+                    f"{base_url}/api/domain-policies/unblock",
+                    method="POST",
+                    payload={"domain": "blocked.example"},
+                )
                 cloned_use_case_payload = _http_json(
                     f"{base_url}/api/use-cases/application_student/clone",
                     method="POST",
@@ -116,10 +174,13 @@ class WebServerTests(unittest.TestCase):
         self.assertIn("Run konfigurieren", index)
         self.assertIn("Provider Status", index)
         self.assertTrue(provider_status_payload["search"]["mock_ready"])
+        self.assertIn("models", provider_status_payload["llm"]["light"])
         self.assertNotIn("api_key", json.dumps(provider_status_payload).lower())
         self.assertEqual(run_payload["run"]["status"], "completed")
         self.assertEqual(ui_run_payload["provider_mode"], "fake")
         self.assertEqual(ui_run_payload["llm_mode"], "off")
+        self.assertEqual(ui_run_payload["fetch_mode"], "fake")
+        self.assertEqual(ui_run_payload["phase_mode"], "full")
         self.assertEqual(ui_run_payload["search_provider"], "mock")
         self.assertGreaterEqual(len(use_cases_payload["use_cases"]), 2)
         self.assertEqual(use_case_detail_payload["use_case"]["slug"], "application_student")
@@ -128,6 +189,17 @@ class WebServerTests(unittest.TestCase):
         self.assertGreaterEqual(len(filtered_queue_payload["items"]), 1)
         self.assertEqual(filtered_queue_payload["items"][0]["use_case_slug"], "application_student")
         self.assertGreaterEqual(len(search_profiles_payload["search_profiles"]), 1)
+        self.assertEqual(created_profile_payload["search_profile"]["use_case_id"], 2)
+        self.assertEqual(created_profile_payload["search_profile"]["roles"], [])
+        self.assertTrue(preview_payload["valid"])
+        self.assertGreaterEqual(len(preview_payload["queries"]), 1)
+        self.assertEqual(
+            patched_full_profile_payload["search_profile"]["attributes"]["topics"],
+            ["Security"],
+        )
+        self.assertEqual(domain_policy_payload["target"]["status"], "blacklisted")
+        self.assertEqual(domain_policies_payload["counts"]["blacklisted"], 1)
+        self.assertEqual(unblocked_domain_payload["target"]["status"], "rejected")
         self.assertEqual(cloned_use_case_payload["use_case"]["slug"], "application_copy")
         self.assertEqual(updated_use_case_payload["use_case"]["name"], "Application Edited")
         self.assertIn(

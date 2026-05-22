@@ -277,7 +277,8 @@ label,
 }
 
 .profiles-page.active-page {
-  grid-template-columns: 1fr;
+  align-items: start;
+  grid-template-columns: minmax(340px, 0.8fr) minmax(560px, 1.2fr);
 }
 
 .runs-page.active-page {
@@ -285,6 +286,10 @@ label,
 }
 
 .runs-panel {
+  grid-column: 1 / -1;
+}
+
+.domain-policy-panel {
   grid-column: 1 / -1;
 }
 
@@ -652,9 +657,26 @@ label {
   font-size: 12px;
 }
 
+.field-row,
+.criterion-row {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.criterion-row {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
 @media (max-width: 1120px) {
   .review-page.active-page,
   .usecases-page.active-page,
+  .profiles-page.active-page,
   .runs-page.active-page {
     grid-template-columns: 1fr;
   }
@@ -669,7 +691,9 @@ label {
   .layout,
   .split,
   .detail-grid,
-  .form-grid {
+  .form-grid,
+  .field-row,
+  .criterion-row {
     grid-template-columns: 1fr;
   }
 

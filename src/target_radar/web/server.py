@@ -19,10 +19,14 @@ from target_radar.domain import (
     PipelinePhase,
     Profile,
     SearchProfile,
+    Target,
     TargetStatus,
+    domain_from_url,
+    normalize_domain,
 )
 from target_radar.engines.draft import DraftEngine
 from target_radar.engines.lead import FakeLeadEngine, LeadEngineConfig, create_lead_engine
+from target_radar.engines.lead.query import QueryBuilder
 from target_radar.engines.rating import (
     FakeAIRatingProvider,
     RatingEngine,
@@ -106,6 +110,8 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
                     self._send_json({"status": "ok", "host": "127.0.0.1"})
                 elif parsed.path == "/api/provider-status":
                     self._handle_provider_status()
+                elif parsed.path == "/api/domain-policies":
+                    self._handle_domain_policies()
                 elif parsed.path == "/api/use-cases":
                     self._handle_use_cases()
                 elif parsed.path.startswith("/api/use-cases/"):
@@ -132,6 +138,14 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
                     self._handle_fake_run()
                 elif parsed.path == "/api/pipeline-runs":
                     self._handle_pipeline_run_start()
+                elif parsed.path == "/api/run-preview":
+                    self._handle_run_preview()
+                elif parsed.path == "/api/search-profiles":
+                    self._handle_search_profile_create()
+                elif parsed.path == "/api/domain-policies/blacklist":
+                    self._handle_domain_blacklist()
+                elif parsed.path == "/api/domain-policies/unblock":
+                    self._handle_domain_unblock()
                 elif parsed.path == "/api/use-cases/import":
                     self._handle_use_case_import()
                 elif parsed.path.startswith("/api/use-cases/"):
@@ -161,6 +175,18 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
             except ValueError as exc:
                 self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
 
+        def do_DELETE(self) -> None:
+            parsed = urlparse(self.path)
+            try:
+                if parsed.path.startswith("/api/search-profiles/"):
+                    self._handle_search_profile_delete(parsed.path)
+                else:
+                    self._send_error(HTTPStatus.NOT_FOUND, "not found")
+            except NotFoundError as exc:
+                self._send_error(HTTPStatus.NOT_FOUND, str(exc))
+            except ValueError as exc:
+                self._send_error(HTTPStatus.BAD_REQUEST, str(exc))
+
         def log_message(self, format: str, *args: Any) -> None:
             return
 
@@ -176,6 +202,13 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
 
         def _handle_provider_status(self) -> None:
             self._send_json(_provider_status_payload(self._config(), database_url))
+
+        def _handle_domain_policies(self) -> None:
+            store = self._store()
+            try:
+                self._send_json(_domain_policy_payload(store))
+            finally:
+                store.close()
 
         def _handle_review_queue(self, query: str) -> None:
             params = parse_qs(query)
@@ -285,6 +318,59 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
             finally:
                 store.close()
 
+        def _handle_search_profile_create(self) -> None:
+            payload = self._read_json(default={})
+            store = self._store()
+            try:
+                profile = store.create_profile(
+                    Profile(
+                        name=str(payload.get("profile_name") or "Local Profile"),
+                        draft_language=str(payload.get("draft_language") or "de"),
+                    )
+                )
+                search_profile = store.create_search_profile(
+                    _search_profile_from_payload(
+                        payload,
+                        profile_id=profile.id,
+                        default_name="Local Search",
+                        store=store,
+                    )
+                )
+                self._send_json(
+                    {"search_profile": _search_profile_payload(search_profile)},
+                    status=HTTPStatus.CREATED,
+                )
+            finally:
+                store.close()
+
+        def _handle_run_preview(self) -> None:
+            payload = self._read_json(default={})
+            store = self._store()
+            try:
+                self._send_json(_run_preview_payload(store, payload))
+            finally:
+                store.close()
+
+        def _handle_domain_blacklist(self) -> None:
+            payload = self._read_json(default={})
+            domain = _domain_from_payload(payload)
+            store = self._store()
+            try:
+                target = _blacklist_domain(store, domain)
+                self._send_json({"target": _target_payload(target)})
+            finally:
+                store.close()
+
+        def _handle_domain_unblock(self) -> None:
+            payload = self._read_json(default={})
+            domain = _domain_from_payload(payload)
+            store = self._store()
+            try:
+                target = _unblock_domain(store, domain)
+                self._send_json({"target": _target_payload(target)})
+            finally:
+                store.close()
+
         def _handle_use_case_patch(self, path: str) -> None:
             slug, action = _parse_use_case_path(path)
             if action is not None:
@@ -354,8 +440,17 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
         def _run_pipeline_from_payload(self, payload: dict[str, Any]) -> None:
             provider_mode = _provider_mode(payload.get("provider_mode"))
             llm_mode = _llm_mode(payload.get("llm_mode"))
+            fetch_mode = _fetch_mode(payload.get("fetch_mode"), provider_mode=provider_mode)
+            phase_mode = _phase_mode(payload.get("phase_mode"))
+            draft_enabled = _bool_payload(payload.get("draft_enabled"), default=True)
+            phases = _phases_for_mode(phase_mode, draft_enabled=draft_enabled)
             request_budget = _positive_int(payload.get("request_budget"), default=10, maximum=100)
             results_per_query = _positive_int(payload.get("results_per_query"), default=5, maximum=20)
+            max_pages_per_target = _positive_int(
+                payload.get("max_pages_per_target"),
+                default=2 if provider_mode == "fake" else self._config().fetch.max_pages_per_target,
+                maximum=20,
+            )
             store = self._store()
             try:
                 profile, search_profile = _run_context(store, payload)
@@ -366,14 +461,17 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
                     config=self._config(),
                     provider_mode=provider_mode,
                     llm_mode=llm_mode,
+                    fetch_mode=fetch_mode,
+                    light_model=_optional_str(payload.get("light_model")),
                     request_budget=request_budget,
                     results_per_query=results_per_query,
+                    max_pages_per_target=max_pages_per_target,
                 )
                 result = orchestrator.run(
                     PipelineRunRequest(
                         search_profile=search_profile,
-                        mode=f"ui:{provider_mode}:{llm_mode}",
-                        phases=FULL_PIPELINE_PHASES,
+                        mode=f"ui:{provider_mode}:{llm_mode}:{phase_mode}:{fetch_mode}",
+                        phases=phases,
                         request_budget=request_budget,
                         results_per_query=results_per_query,
                     )
@@ -383,6 +481,8 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
                         result,
                         provider_mode=provider_mode,
                         llm_mode=llm_mode,
+                        fetch_mode=fetch_mode,
+                        phase_mode=phase_mode,
                         search_provider=search_provider,
                     ),
                     status=HTTPStatus.CREATED,
@@ -393,6 +493,8 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
                         "run": _pipeline_run_payload(exc.run),
                         "provider_mode": provider_mode,
                         "llm_mode": llm_mode,
+                        "fetch_mode": fetch_mode,
+                        "phase_mode": phase_mode,
                         "error": str(exc),
                     },
                     status=HTTPStatus.CREATED,
@@ -475,15 +577,68 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
         def _handle_search_profile_patch(self, path: str) -> None:
             search_profile_id = _parse_id_path(path, "/api/search-profiles/")
             payload = self._read_json(default={})
-            if payload.get("use_case_id") is None:
-                raise ValueError("use_case_id is required")
             store = self._store()
             try:
-                search_profile = store.update_search_profile_use_case(
+                search_profile = store.update_search_profile(
                     search_profile_id,
-                    int(payload["use_case_id"]),
+                    profile_name=(
+                        str(payload["profile_name"])
+                        if payload.get("profile_name") is not None
+                        else None
+                    ),
+                    name=str(payload["name"]) if payload.get("name") is not None else None,
+                    use_case_id=(
+                        int(payload["use_case_id"])
+                        if payload.get("use_case_id") is not None
+                        else None
+                    ),
+                    roles=_tuple_payload(payload.get("roles")) if "roles" in payload else None,
+                    regions=(
+                        _tuple_payload(payload.get("regions"))
+                        if "regions" in payload
+                        else None
+                    ),
+                    tech_keywords=(
+                        _tuple_payload(payload.get("tech_keywords"))
+                        if "tech_keywords" in payload
+                        else None
+                    ),
+                    industry_keywords=(
+                        _tuple_payload(payload.get("industry_keywords"))
+                        if "industry_keywords" in payload
+                        else None
+                    ),
+                    exclude_keywords=(
+                        _tuple_payload(payload.get("exclude_keywords"))
+                        if "exclude_keywords" in payload
+                        else None
+                    ),
+                    attributes=(
+                        dict(payload.get("attributes") or {})
+                        if "attributes" in payload
+                        else None
+                    ),
+                    manual_query=(
+                        str(payload["manual_query"])
+                        if payload.get("manual_query") is not None
+                        else None
+                    ),
+                    draft_language=(
+                        str(payload["draft_language"])
+                        if payload.get("draft_language") is not None
+                        else None
+                    ),
                 )
                 self._send_json({"search_profile": _search_profile_payload(search_profile)})
+            finally:
+                store.close()
+
+        def _handle_search_profile_delete(self, path: str) -> None:
+            search_profile_id = _parse_id_path(path, "/api/search-profiles/")
+            store = self._store()
+            try:
+                store.delete_search_profile(search_profile_id)
+                self._send_json({"deleted": True, "search_profile_id": search_profile_id})
             finally:
                 store.close()
 
@@ -556,6 +711,46 @@ def _run_context(
                 search_profile_id,
                 use_case_id,
             )
+        if _payload_has_search_values(payload):
+            search_profile = SearchProfile(
+                id=search_profile.id,
+                profile_id=search_profile.profile_id,
+                use_case_id=search_profile.use_case_id,
+                name=search_profile.name,
+                roles=(
+                    _tuple_payload(payload.get("roles"))
+                    if "roles" in payload
+                    else search_profile.roles
+                ),
+                regions=(
+                    _tuple_payload(payload.get("regions"))
+                    if "regions" in payload
+                    else search_profile.regions
+                ),
+                tech_keywords=(
+                    _tuple_payload(payload.get("tech_keywords"))
+                    if "tech_keywords" in payload
+                    else search_profile.tech_keywords
+                ),
+                industry_keywords=(
+                    _tuple_payload(payload.get("industry_keywords"))
+                    if "industry_keywords" in payload
+                    else search_profile.industry_keywords
+                ),
+                exclude_keywords=(
+                    _tuple_payload(payload.get("exclude_keywords"))
+                    if "exclude_keywords" in payload
+                    else search_profile.exclude_keywords
+                ),
+                attributes=(
+                    dict(payload.get("attributes") or {})
+                    if "attributes" in payload
+                    else search_profile.attributes
+                ),
+                manual_query=search_profile.manual_query,
+                draft_language=search_profile.draft_language,
+                created_at=search_profile.created_at,
+            )
         profile = store.get_profile(search_profile.profile_id)
         return profile, search_profile
 
@@ -563,19 +758,59 @@ def _run_context(
         Profile(name=str(payload.get("profile_name") or "Local Profile"))
     )
     search_profile = store.create_search_profile(
-        SearchProfile(
+        _search_profile_from_payload(
+            payload,
             profile_id=profile.id,
-            name=str(payload.get("search_name") or "Local Search"),
-            roles=_tuple_payload(payload.get("roles"), default=("Werkstudent IT",)),
-            regions=_tuple_payload(payload.get("regions"), default=("Essen",)),
-            tech_keywords=_tuple_payload(payload.get("tech_keywords"), default=("Python",)),
-            industry_keywords=_tuple_payload(payload.get("industry_keywords")),
-            exclude_keywords=_tuple_payload(payload.get("exclude_keywords")),
-            use_case_id=use_case_id,
-            attributes=dict(payload.get("attributes") or {}),
+            default_name="Local Search",
+            store=store,
         )
     )
     return profile, search_profile
+
+
+def _payload_has_search_values(payload: dict[str, Any]) -> bool:
+    return any(
+        key in payload
+        for key in (
+            "roles",
+            "regions",
+            "tech_keywords",
+            "industry_keywords",
+            "exclude_keywords",
+            "attributes",
+        )
+    )
+
+
+def _search_profile_from_payload(
+    payload: dict[str, Any],
+    *,
+    profile_id: int,
+    default_name: str,
+    store: SQLiteStore | None = None,
+) -> SearchProfile:
+    use_case_id = _optional_positive_int(payload.get("use_case_id"))
+    use_case = store.get_use_case(use_case_id) if store is not None and use_case_id else None
+    default_roles = (
+        ("Werkstudent IT",)
+        if use_case is None or use_case.id == "application_student"
+        else ()
+    )
+    default_regions = ("Essen",) if use_case is None else ()
+    default_tech = ("Python",) if use_case is None or use_case.id == "application_student" else ()
+    return SearchProfile(
+        profile_id=profile_id,
+        name=str(payload.get("search_name") or payload.get("name") or default_name),
+        roles=_tuple_payload(payload.get("roles"), default=default_roles),
+        regions=_tuple_payload(payload.get("regions"), default=default_regions),
+        tech_keywords=_tuple_payload(payload.get("tech_keywords"), default=default_tech),
+        industry_keywords=_tuple_payload(payload.get("industry_keywords")),
+        exclude_keywords=_tuple_payload(payload.get("exclude_keywords")),
+        manual_query=_optional_str(payload.get("manual_query")),
+        draft_language=_optional_str(payload.get("draft_language")),
+        use_case_id=use_case_id,
+        attributes=dict(payload.get("attributes") or {}),
+    )
 
 
 def _orchestrator_for_run(
@@ -586,9 +821,13 @@ def _orchestrator_for_run(
     config: AppConfig,
     provider_mode: str,
     llm_mode: str,
+    fetch_mode: str,
+    light_model: str | None,
     request_budget: int,
     results_per_query: int,
+    max_pages_per_target: int,
 ) -> tuple[PipelineOrchestrator, str]:
+    selected_config = _config_with_light_model(config, light_model)
     importer = TargetImporter(
         store,
         blacklisted_domains=store.list_domains_by_status(TargetStatus.BLACKLISTED),
@@ -597,24 +836,28 @@ def _orchestrator_for_run(
         rating_engine = (
             RatingEngine()
             if llm_mode == "off"
-            else create_rating_engine(config, task="light")
+            else create_rating_engine(selected_config, task="light")
         )
         return (
             PipelineOrchestrator(
                 store,
                 FakeLeadEngine(),
                 importer=importer,
-                fetcher=GeneratedFakeFetcher(terms=_search_terms(search_profile)),
+                fetcher=_fetcher_for_mode(
+                    fetch_mode,
+                    config=selected_config,
+                    search_profile=search_profile,
+                ),
                 extractor=HtmlExtractor(),
                 rating_engine=rating_engine,
                 draft_engine=DraftEngine(),
                 profile=profile,
-                max_pages_per_target=2,
+                max_pages_per_target=max_pages_per_target,
             ),
             "mock",
         )
 
-    selected_config = _config_for_provider_mode(config, provider_mode)
+    selected_config = _config_for_provider_mode(selected_config, provider_mode)
     lead_engine = create_lead_engine(selected_config, store=store)
     lead_engine.config = LeadEngineConfig(
         request_budget=request_budget,
@@ -622,15 +865,10 @@ def _orchestrator_for_run(
         template_set=lead_engine.config.template_set,
         source_block_threshold=lead_engine.config.source_block_threshold,
     )
-    fetcher = (
-        GeneratedFakeFetcher(terms=_search_terms(search_profile))
-        if lead_engine.provider.name == "mock"
-        else HttpFetcher(
-            PipelineFetchConfig(
-                timeout_seconds=selected_config.fetch.timeout_seconds,
-                user_agent=selected_config.fetch.user_agent,
-            )
-        )
+    fetcher = _fetcher_for_mode(
+        fetch_mode,
+        config=selected_config,
+        search_profile=search_profile,
     )
     rating_engine = (
         RatingEngine()
@@ -647,7 +885,7 @@ def _orchestrator_for_run(
             rating_engine=rating_engine,
             draft_engine=DraftEngine(),
             profile=profile,
-            max_pages_per_target=selected_config.fetch.max_pages_per_target,
+            max_pages_per_target=max_pages_per_target,
         ),
         lead_engine.provider.name,
     )
@@ -664,10 +902,35 @@ def _config_for_provider_mode(config: AppConfig, provider_mode: str) -> AppConfi
     raise ValueError("provider_mode must be one of: fake, brave, configured")
 
 
+def _config_with_light_model(config: AppConfig, light_model: str | None) -> AppConfig:
+    if not light_model:
+        return config
+    return replace(config, llm=replace(config.llm, light_model=light_model))
+
+
+def _fetcher_for_mode(
+    fetch_mode: str,
+    *,
+    config: AppConfig,
+    search_profile: SearchProfile,
+):
+    if fetch_mode == "fake":
+        return GeneratedFakeFetcher(terms=_search_terms(search_profile))
+    if fetch_mode == "http":
+        return HttpFetcher(
+            PipelineFetchConfig(
+                timeout_seconds=config.fetch.timeout_seconds,
+                user_agent=config.fetch.user_agent,
+            )
+        )
+    raise ValueError("fetch_mode must be one of: fake, http")
+
+
 def _provider_status_payload(config: AppConfig, database_url: str) -> dict[str, Any]:
     configured_provider = config.search_provider.provider.strip().lower()
     light_provider = config.llm.light_provider.strip().lower()
     heavy_provider = config.llm.heavy_provider.strip().lower()
+    ollama_models = _ollama_models(config) if light_provider in {"ollama", "local"} else []
     return {
         "host": {
             "bind": config.infrastructure.host,
@@ -690,6 +953,12 @@ def _provider_status_payload(config: AppConfig, database_url: str) -> dict[str, 
                 "model": config.llm.light_model,
                 "configured": _llm_provider_ready(config, light_provider),
                 "reachable": _ollama_reachable(config) if light_provider in {"ollama", "local"} else None,
+                "models": ollama_models,
+                "model_available": (
+                    config.llm.light_model in ollama_models
+                    if ollama_models
+                    else None
+                ),
             },
             "off": {"configured": True},
             "heavy": {
@@ -707,12 +976,16 @@ def _run_result_payload(
     *,
     provider_mode: str,
     llm_mode: str,
+    fetch_mode: str,
+    phase_mode: str,
     search_provider: str,
 ) -> dict[str, Any]:
     return {
         "run": _pipeline_run_payload(result.run),
         "provider_mode": provider_mode,
         "llm_mode": llm_mode,
+        "fetch_mode": fetch_mode,
+        "phase_mode": phase_mode,
         "search_provider": search_provider,
         "review_target_count": result.review_target_count,
         "fetched_count": result.fetched_count,
@@ -733,11 +1006,70 @@ def _provider_mode(value: object) -> str:
     return selected
 
 
+def _fetch_mode(value: object, *, provider_mode: str) -> str:
+    if value in {None, ""}:
+        return "fake" if provider_mode == "fake" else "http"
+    selected = str(value).strip().lower()
+    if selected not in {"fake", "http"}:
+        raise ValueError("fetch_mode must be one of: fake, http")
+    return selected
+
+
+def _phase_mode(value: object) -> str:
+    selected = str(value or "full").strip().lower()
+    if selected not in {"discovery", "fetch", "full", "rating"}:
+        raise ValueError("phase_mode must be one of: discovery, fetch, full, rating")
+    return selected
+
+
+def _phases_for_mode(
+    phase_mode: str,
+    *,
+    draft_enabled: bool,
+) -> tuple[PipelinePhase, ...]:
+    if phase_mode == "discovery":
+        return (PipelinePhase.LEAD, PipelinePhase.IMPORT)
+    if phase_mode == "fetch":
+        return (
+            PipelinePhase.LEAD,
+            PipelinePhase.IMPORT,
+            PipelinePhase.FETCH,
+            PipelinePhase.EXTRACT,
+        )
+    if phase_mode == "rating":
+        phases = (PipelinePhase.RATING,)
+        return phases + ((PipelinePhase.DRAFT,) if draft_enabled else ())
+
+    phases = (
+        PipelinePhase.LEAD,
+        PipelinePhase.IMPORT,
+        PipelinePhase.FETCH,
+        PipelinePhase.EXTRACT,
+        PipelinePhase.RATING,
+    )
+    return phases + ((PipelinePhase.DRAFT,) if draft_enabled else ())
+
+
 def _llm_mode(value: object) -> str:
     selected = str(value or "off").strip().lower()
     if selected not in {"off", "light"}:
         raise ValueError("llm_mode must be one of: off, light")
     return selected
+
+
+def _bool_payload(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    cleaned = str(value).strip()
+    return cleaned or None
 
 
 def _optional_positive_int(value: object) -> int | None:
@@ -804,6 +1136,229 @@ def _redacted_database_url(database_url: str) -> str:
     if "@" in database_url:
         return database_url.split("@", 1)[1]
     return database_url
+
+
+def _ollama_models(config: AppConfig) -> list[str]:
+    request = urllib.request.Request(f"{config.llm.local_base_url.rstrip('/')}/api/tags")
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
+        return []
+
+    models = payload.get("models")
+    if not isinstance(models, list):
+        return []
+    names = [
+        str(item.get("name") or item.get("model") or "").strip()
+        for item in models
+        if isinstance(item, dict)
+    ]
+    return sorted(name for name in names if name)
+
+
+def _domain_policy_payload(store: SQLiteStore) -> dict[str, Any]:
+    blacklisted = [_domain_item(target) for target in store.list_targets_by_status(TargetStatus.BLACKLISTED)]
+    rejected = store.list_rejected_domain_suggestions(min_count=1)
+    return {
+        "blacklisted": blacklisted,
+        "rejected_suggestions": rejected,
+        "counts": {
+            "blacklisted": len(blacklisted),
+            "rejected_suggestions": len(rejected),
+        },
+    }
+
+
+def _domain_item(target: Target) -> dict[str, Any]:
+    return {
+        "id": target.id,
+        "domain": target.domain,
+        "base_url": target.base_url,
+        "status": target.status.value,
+        "source": target.source,
+        "updated_at": _dt(target.updated_at),
+    }
+
+
+def _domain_from_payload(payload: dict[str, Any]) -> str:
+    raw = str(payload.get("domain") or payload.get("url") or "").strip()
+    if not raw:
+        raise ValueError("domain is required")
+    try:
+        return domain_from_url(raw)
+    except ValueError:
+        return normalize_domain(raw)
+
+
+def _blacklist_domain(store: SQLiteStore, domain: str) -> Target:
+    existing = store.get_target_by_domain(domain)
+    if existing is None:
+        return store.create_target(
+            Target(
+                domain=domain,
+                base_url=f"https://{domain}",
+                source="manual",
+                status=TargetStatus.BLACKLISTED,
+                metadata={"policy": "manual_blacklist"},
+            )
+        )
+    if existing.id is None:
+        raise ValueError("target id is missing")
+    store.set_target_status(
+        existing.id,
+        TargetStatus.BLACKLISTED,
+        PipelinePhase.REVIEW,
+        reason="manual domain blacklist",
+        metadata={"trigger": "domain_policy"},
+    )
+    return store.get_target(existing.id)
+
+
+def _unblock_domain(store: SQLiteStore, domain: str) -> Target:
+    existing = store.get_target_by_domain(domain)
+    if existing is None or existing.id is None:
+        raise NotFoundError(f"domain not found: {domain}")
+    store.set_target_status(
+        existing.id,
+        TargetStatus.REJECTED,
+        PipelinePhase.REVIEW,
+        reason="manual domain unblock",
+        metadata={"trigger": "domain_policy"},
+    )
+    return store.get_target(existing.id)
+
+
+def _run_preview_payload(store: SQLiteStore, payload: dict[str, Any]) -> dict[str, Any]:
+    search_profile_id = _optional_positive_int(payload.get("search_profile_id"))
+    use_case_id = _optional_positive_int(payload.get("use_case_id"))
+    if search_profile_id is not None:
+        search_profile = store.get_search_profile(search_profile_id)
+        if use_case_id is not None and use_case_id != search_profile.use_case_id:
+            search_profile = SearchProfile(
+                id=search_profile.id,
+                profile_id=search_profile.profile_id,
+                use_case_id=use_case_id,
+                name=search_profile.name,
+                roles=search_profile.roles,
+                regions=search_profile.regions,
+                tech_keywords=search_profile.tech_keywords,
+                industry_keywords=search_profile.industry_keywords,
+                exclude_keywords=search_profile.exclude_keywords,
+                attributes=search_profile.attributes,
+                manual_query=search_profile.manual_query,
+                draft_language=search_profile.draft_language,
+                created_at=search_profile.created_at,
+            )
+        if _payload_has_search_values(payload):
+            search_profile = SearchProfile(
+                id=search_profile.id,
+                profile_id=search_profile.profile_id,
+                use_case_id=search_profile.use_case_id,
+                name=search_profile.name,
+                roles=(
+                    _tuple_payload(payload.get("roles"))
+                    if "roles" in payload
+                    else search_profile.roles
+                ),
+                regions=(
+                    _tuple_payload(payload.get("regions"))
+                    if "regions" in payload
+                    else search_profile.regions
+                ),
+                tech_keywords=(
+                    _tuple_payload(payload.get("tech_keywords"))
+                    if "tech_keywords" in payload
+                    else search_profile.tech_keywords
+                ),
+                industry_keywords=(
+                    _tuple_payload(payload.get("industry_keywords"))
+                    if "industry_keywords" in payload
+                    else search_profile.industry_keywords
+                ),
+                exclude_keywords=(
+                    _tuple_payload(payload.get("exclude_keywords"))
+                    if "exclude_keywords" in payload
+                    else search_profile.exclude_keywords
+                ),
+                attributes=(
+                    dict(payload.get("attributes") or {})
+                    if "attributes" in payload
+                    else search_profile.attributes
+                ),
+                manual_query=search_profile.manual_query,
+                draft_language=search_profile.draft_language,
+                created_at=search_profile.created_at,
+            )
+    else:
+        search_profile = _search_profile_from_payload(
+            payload,
+            profile_id=1,
+            default_name="Preview",
+            store=store,
+        )
+
+    selected_use_case_id = use_case_id or search_profile.use_case_id
+    use_case = store.get_use_case(selected_use_case_id) if selected_use_case_id else None
+    request_budget = _positive_int(payload.get("request_budget"), default=10, maximum=100)
+    queries = QueryBuilder().build(
+        search_profile,
+        template_set=None,
+        limit=request_budget,
+        use_case=use_case,
+    )
+    missing_required = _missing_required_fields(search_profile, use_case)
+    source_policy = use_case.source_policy.to_dict() if use_case is not None else {}
+    return {
+        "queries": [
+            {
+                "text": query.text,
+                "template": query.query_template,
+                "template_set": query.template_set,
+                "score": query.score,
+            }
+            for query in queries
+        ],
+        "source_policy": source_policy,
+        "missing_required": missing_required,
+        "valid": not missing_required,
+        "budget": {
+            "request_budget": request_budget,
+            "results_per_query": _positive_int(
+                payload.get("results_per_query"),
+                default=5,
+                maximum=20,
+            ),
+        },
+    }
+
+
+def _missing_required_fields(
+    search_profile: SearchProfile,
+    use_case: UseCaseConfig | None,
+) -> list[str]:
+    if use_case is None:
+        return []
+    values = _search_profile_value_map(search_profile)
+    missing: list[str] = []
+    for field in use_case.attribute_schema.fields:
+        if not field.required:
+            continue
+        value = values.get(field.key)
+        if value is None or value == "" or value == []:
+            missing.append(field.key)
+    return missing
+
+
+def _search_profile_value_map(search_profile: SearchProfile) -> dict[str, Any]:
+    return {
+        **dict(search_profile.attributes),
+        "roles": list(search_profile.roles),
+        "regions": list(search_profile.regions),
+        "tech_keywords": list(search_profile.tech_keywords),
+        "industry_keywords": list(search_profile.industry_keywords),
+        "exclude_keywords": list(search_profile.exclude_keywords),
+    }
 
 
 def _parse_use_case_path(path: str) -> tuple[str, str | None]:

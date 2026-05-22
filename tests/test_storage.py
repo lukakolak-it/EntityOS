@@ -15,7 +15,7 @@ from target_radar.domain import (
     Target,
     TargetStatus,
 )
-from target_radar.storage import SQLiteStore, init_db
+from target_radar.storage import NotFoundError, SQLiteStore, init_db
 from target_radar.use_cases import UseCaseConfig, UseCaseStatus, get_default_use_case
 
 
@@ -86,6 +86,37 @@ class SQLiteStorageTests(unittest.TestCase):
             self.store.get_search_profile(search_profile.id).attributes,
             {"topics": ["Fallback Topic"]},
         )
+
+    def test_search_profile_can_be_updated_and_deleted(self) -> None:
+        profile = self.store.create_profile(Profile(name="Editable Profile"))
+        search_profile = self.store.create_search_profile(
+            SearchProfile(
+                profile_id=profile.id,
+                name="Editable Search",
+                roles=("Werkstudent IT",),
+            )
+        )
+        osint_use_case_id = self.store.get_use_case_id_by_slug("company_osint")
+
+        updated = self.store.update_search_profile(
+            search_profile.id,
+            profile_name="Edited Profile",
+            name="Edited Search",
+            use_case_id=osint_use_case_id,
+            roles=(),
+            regions=("Essen",),
+            attributes={"topics": ["Security"]},
+        )
+
+        self.assertEqual(updated.name, "Edited Search")
+        self.assertEqual(updated.use_case_id, osint_use_case_id)
+        self.assertEqual(updated.attributes, {"topics": ["Security"]})
+        self.assertEqual(self.store.get_profile(profile.id).name, "Edited Profile")
+
+        self.store.delete_search_profile(search_profile.id)
+
+        with self.assertRaises(NotFoundError):
+            self.store.get_search_profile(search_profile.id)
 
     def test_pipeline_run_stores_use_case_snapshot(self) -> None:
         profile = self.store.create_profile(Profile(name="OSINT Profile"))

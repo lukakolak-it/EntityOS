@@ -6,12 +6,17 @@ const state = {
   useCases: [],
   searchProfiles: [],
   providerStatus: null,
+  domainPolicies: null,
+  selectedSearchProfileId: null,
+  previewTimer: null,
+  defaultsApplied: false,
 };
 
 const USE_CASE_TABS = (
   ["basis", "fields", "queries", "sources", "rating", "output", "review"]
 );
 const PAGE_IDS = new Set(["review", "use-cases", "profiles", "runs"]);
+const RUN_DEFAULTS_KEY = "target-radar-run-defaults-v1";
 
 const elements = {
   serverStatus: document.querySelector("#serverStatus"),
@@ -39,12 +44,17 @@ const elements = {
   runSearchProfileSelect: document.querySelector("#runSearchProfileSelect"),
   runProviderMode: document.querySelector("#runProviderMode"),
   runLlmMode: document.querySelector("#runLlmMode"),
+  runLightModelSelect: document.querySelector("#runLightModelSelect"),
+  runFetchMode: document.querySelector("#runFetchMode"),
+  runPhaseMode: document.querySelector("#runPhaseMode"),
+  runDraftEnabled: document.querySelector("#runDraftEnabled"),
   runRequestBudget: document.querySelector("#runRequestBudget"),
   runResultsPerQuery: document.querySelector("#runResultsPerQuery"),
-  runRoles: document.querySelector("#runRoles"),
-  runRegions: document.querySelector("#runRegions"),
-  runTechKeywords: document.querySelector("#runTechKeywords"),
+  runMaxPages: document.querySelector("#runMaxPages"),
+  runAttributeFields: document.querySelector("#runAttributeFields"),
+  runPreview: document.querySelector("#runPreview"),
   runConfiguredButton: document.querySelector("#runConfiguredButton"),
+  saveRunDefaultsButton: document.querySelector("#saveRunDefaultsButton"),
   runStatus: document.querySelector("#runStatus"),
   useCaseCount: document.querySelector("#useCaseCount"),
   useCaseList: document.querySelector("#useCaseList"),
@@ -55,14 +65,57 @@ const elements = {
   importUseCaseStatus: document.querySelector("#importUseCaseStatus"),
   importUseCaseButton: document.querySelector("#importUseCaseButton"),
   searchProfilesList: document.querySelector("#searchProfilesList"),
+  newSearchProfileButton: document.querySelector("#newSearchProfileButton"),
+  profileEditorMode: document.querySelector("#profileEditorMode"),
+  profileProfileName: document.querySelector("#profileProfileName"),
+  profileSearchName: document.querySelector("#profileSearchName"),
+  profileUseCaseSelect: document.querySelector("#profileUseCaseSelect"),
+  profileRoles: document.querySelector("#profileRoles"),
+  profileRegions: document.querySelector("#profileRegions"),
+  profileTechKeywords: document.querySelector("#profileTechKeywords"),
+  profileIndustryKeywords: document.querySelector("#profileIndustryKeywords"),
+  profileExcludeKeywords: document.querySelector("#profileExcludeKeywords"),
+  profileDraftLanguage: document.querySelector("#profileDraftLanguage"),
+  profileAttributesJson: document.querySelector("#profileAttributesJson"),
+  profileEditorStatus: document.querySelector("#profileEditorStatus"),
+  saveSearchProfileButton: document.querySelector("#saveSearchProfileButton"),
+  deleteSearchProfileButton: document.querySelector("#deleteSearchProfileButton"),
+  domainPolicyInput: document.querySelector("#domainPolicyInput"),
+  addBlacklistDomainButton: document.querySelector("#addBlacklistDomainButton"),
+  domainPolicyStatus: document.querySelector("#domainPolicyStatus"),
+  domainPolicyList: document.querySelector("#domainPolicyList"),
 };
 
 document.querySelector("#refreshButton").addEventListener("click", refreshAll);
 elements.runConfiguredButton.addEventListener("click", runFromForm);
+elements.saveRunDefaultsButton.addEventListener("click", saveRunDefaults);
+elements.runUseCaseSelect.addEventListener("change", () => {
+  renderRunAttributeFields();
+  scheduleRunPreview();
+});
+elements.runSearchProfileSelect.addEventListener("change", () => {
+  applySelectedRunProfile();
+  scheduleRunPreview();
+});
+[
+  elements.runProviderMode,
+  elements.runLlmMode,
+  elements.runLightModelSelect,
+  elements.runFetchMode,
+  elements.runPhaseMode,
+  elements.runDraftEnabled,
+  elements.runRequestBudget,
+  elements.runResultsPerQuery,
+  elements.runMaxPages,
+].forEach((element) => element.addEventListener("input", scheduleRunPreview));
 
 elements.queueUseCaseFilter.addEventListener("change", loadQueue);
 elements.importUseCaseFile.addEventListener("change", importUseCaseFromFile);
 elements.importUseCaseButton.addEventListener("click", importUseCaseFromTextarea);
+elements.newSearchProfileButton.addEventListener("click", () => renderSearchProfileEditor(null));
+elements.saveSearchProfileButton.addEventListener("click", saveSearchProfileFromEditor);
+elements.deleteSearchProfileButton.addEventListener("click", deleteSelectedSearchProfile);
+elements.addBlacklistDomainButton.addEventListener("click", addBlacklistDomain);
 window.addEventListener("hashchange", renderPage);
 
 document.querySelectorAll("[data-action]").forEach((button) => {
@@ -82,7 +135,19 @@ async function refreshAll() {
   const health = await api("/api/health");
   elements.serverStatus.textContent = `${health.host} - ${health.status}`;
   await loadUseCases();
-  await Promise.all([loadProviderStatus(), loadQueue(), loadRuns(), loadSearchProfiles()]);
+  await Promise.all([
+    loadProviderStatus(),
+    loadDomainPolicies(),
+    loadQueue(),
+    loadRuns(),
+    loadSearchProfiles(),
+  ]);
+  if (!state.defaultsApplied) {
+    applyRunDefaults();
+    state.defaultsApplied = true;
+  }
+  renderRunAttributeFields();
+  scheduleRunPreview();
   renderPage();
 }
 
@@ -137,6 +202,15 @@ function renderUseCaseOptions() {
   elements.runUseCaseSelect.value = optionExists(elements.runUseCaseSelect, runValue)
     ? runValue
     : String(defaultUseCase?.db_id || state.useCases[0]?.db_id || "");
+
+  const profileUseCaseValue = elements.profileUseCaseSelect.value;
+  elements.profileUseCaseSelect.innerHTML = "";
+  for (const useCase of state.useCases) {
+    elements.profileUseCaseSelect.appendChild(useCaseOption(useCase));
+  }
+  elements.profileUseCaseSelect.value = optionExists(elements.profileUseCaseSelect, profileUseCaseValue)
+    ? profileUseCaseValue
+    : elements.runUseCaseSelect.value;
 }
 
 function useCaseOption(useCase) {
@@ -236,10 +310,43 @@ function renderUseCaseDetail(useCase) {
   elements.useCaseDetail.querySelector("#resetUseCaseButton").addEventListener("click", () => {
     renderUseCaseDetail(useCase);
   });
+  const addFieldButton = elements.useCaseDetail.querySelector("#addAttributeFieldButton");
+  if (addFieldButton) {
+    addFieldButton.addEventListener("click", () => {
+      elements.useCaseDetail.querySelector("#uc-field-rows").insertAdjacentHTML(
+        "beforeend",
+        renderAttributeFieldRow({ type: "text" })
+      );
+      wireRemoveRowButtons();
+      updateUseCasePreview(useCase);
+    });
+  }
+  const addCriterionButton = elements.useCaseDetail.querySelector("#addCriterionButton");
+  if (addCriterionButton) {
+    addCriterionButton.addEventListener("click", () => {
+      elements.useCaseDetail.querySelector("#uc-criterion-rows").insertAdjacentHTML(
+        "beforeend",
+        renderCriterionRow({ evaluation: "rules", weight: 10 })
+      );
+      wireRemoveRowButtons();
+      updateUseCasePreview(useCase);
+    });
+  }
+  wireRemoveRowButtons();
   elements.useCaseDetail.querySelector("#useCaseEditor").addEventListener("input", () => {
     updateUseCasePreview(useCase);
   });
   updateUseCasePreview(useCase);
+}
+
+function wireRemoveRowButtons() {
+  elements.useCaseDetail.querySelectorAll("[data-remove-row]").forEach((button) => {
+    button.onclick = () => {
+      button.closest("[data-uc-field-row], [data-uc-criterion-row]")?.remove();
+      const selected = state.useCases.find((item) => item.slug === state.selectedUseCaseSlug);
+      if (selected) updateUseCasePreview(selected);
+    };
+  });
 }
 
 function renderUseCaseTab(useCase, tab) {
@@ -281,8 +388,44 @@ function renderBasisTab(useCase) {
 
 function renderFieldsTab(useCase) {
   return `
-    <label>Attribute Schema Fields</label>
-    <textarea id="uc-fields-json" class="code-input">${escapeHtml(jsonText(useCase.attribute_schema.fields))}</textarea>
+    <div id="uc-field-rows" class="editor-form">
+      ${useCase.attribute_schema.fields.map(renderAttributeFieldRow).join("")}
+    </div>
+    <div class="actions">
+      <button type="button" id="addAttributeFieldButton">Add Field</button>
+    </div>
+  `;
+}
+
+function renderAttributeFieldRow(field = {}) {
+  return `
+    <div class="field-row" data-uc-field-row>
+      <div>
+        <label>Key</label>
+        <input data-field-key value="${escapeAttribute(field.key || "")}">
+      </div>
+      <div>
+        <label>Label</label>
+        <input data-field-label value="${escapeAttribute(field.label || "")}">
+      </div>
+      <div>
+        <label>Type</label>
+        <select data-field-type>
+          ${selectOptions(["text", "list", "number", "boolean", "select"], field.type || "text")}
+        </select>
+      </div>
+      <div>
+        <label>Required</label>
+        <select data-field-required>
+          ${selectOptions(["false", "true"], String(Boolean(field.required)))}
+        </select>
+      </div>
+      <div>
+        <label>Options</label>
+        <input data-field-options value="${escapeAttribute((field.options || []).join(", "))}">
+      </div>
+      <button type="button" data-remove-row>Remove</button>
+    </div>
   `;
 }
 
@@ -356,8 +499,46 @@ function renderRatingTab(useCase) {
         <input id="uc-rating-draft-score" type="number" min="0" max="100" value="${escapeAttribute(useCase.rating_policy.min_score_for_draft)}">
       </div>
     </div>
-    <label>Criteria</label>
-    <textarea id="uc-rating-criteria" class="code-input">${escapeHtml(jsonText(useCase.rating_policy.criteria))}</textarea>
+    <div id="uc-criterion-rows" class="editor-form">
+      ${useCase.rating_policy.criteria.map(renderCriterionRow).join("")}
+    </div>
+    <div class="actions">
+      <button type="button" id="addCriterionButton">Add Criterion</button>
+    </div>
+  `;
+}
+
+function renderCriterionRow(criterion = {}) {
+  return `
+    <div class="criterion-row" data-uc-criterion-row>
+      <div>
+        <label>Key</label>
+        <input data-criterion-key value="${escapeAttribute(criterion.key || "")}">
+      </div>
+      <div>
+        <label>Label</label>
+        <input data-criterion-label value="${escapeAttribute(criterion.label || "")}">
+      </div>
+      <div>
+        <label>Weight</label>
+        <input data-criterion-weight type="number" min="1" max="100" value="${escapeAttribute(criterion.weight || 10)}">
+      </div>
+      <div>
+        <label>Eval</label>
+        <select data-criterion-evaluation>
+          ${selectOptions(["rules", "llm", "hybrid"], criterion.evaluation || "rules")}
+        </select>
+      </div>
+      <div>
+        <label>Rule Set</label>
+        <input data-criterion-rule-set value="${escapeAttribute(criterion.rule_set || "")}">
+      </div>
+      <div>
+        <label>LLM Instruction</label>
+        <input data-criterion-llm value="${escapeAttribute(criterion.llm_instruction || "")}">
+      </div>
+      <button type="button" data-remove-row>Remove</button>
+    </div>
   `;
 }
 
@@ -497,8 +678,20 @@ function buildUseCaseConfigFromEditor(useCase) {
     config.status = get("uc-status").value;
     config.version = numberValue(get("uc-version").value);
   }
-  if (get("uc-fields-json")) {
-    config.attribute_schema.fields = parseJsonField("uc-fields-json", "Attribute Schema Fields");
+  if (elements.useCaseDetail.querySelector("[data-uc-field-row]")) {
+    config.attribute_schema.fields = Array.from(
+      elements.useCaseDetail.querySelectorAll("[data-uc-field-row]")
+    ).map((row) => {
+      const field = {
+        key: row.querySelector("[data-field-key]").value.trim(),
+        label: row.querySelector("[data-field-label]").value.trim(),
+        type: row.querySelector("[data-field-type]").value,
+        required: row.querySelector("[data-field-required]").value === "true",
+      };
+      const options = parseCsv(row.querySelector("[data-field-options]").value);
+      if (options.length) field.options = options;
+      return field;
+    }).filter((field) => field.key || field.label);
   }
   if (get("uc-query-templates")) {
     config.query_policy.default_template_set = get("uc-query-template-set").value.trim();
@@ -518,11 +711,25 @@ function buildUseCaseConfigFromEditor(useCase) {
     config.source_policy.relevant_path_tokens = parseCsv(get("uc-source-relevant-paths").value);
     config.source_policy.listing_path_tokens = parseCsv(get("uc-source-listing-paths").value);
   }
-  if (get("uc-rating-criteria")) {
+  if (elements.useCaseDetail.querySelector("[data-uc-criterion-row]")) {
     config.rating_policy.llm_mode = get("uc-rating-llm-mode").value;
     config.rating_policy.min_score_for_review = numberValue(get("uc-rating-review-score").value);
     config.rating_policy.min_score_for_draft = numberValue(get("uc-rating-draft-score").value);
-    config.rating_policy.criteria = parseJsonField("uc-rating-criteria", "Criteria");
+    config.rating_policy.criteria = Array.from(
+      elements.useCaseDetail.querySelectorAll("[data-uc-criterion-row]")
+    ).map((row) => {
+      const criterion = {
+        key: row.querySelector("[data-criterion-key]").value.trim(),
+        label: row.querySelector("[data-criterion-label]").value.trim(),
+        weight: numberValue(row.querySelector("[data-criterion-weight]").value),
+        evaluation: row.querySelector("[data-criterion-evaluation]").value,
+      };
+      const ruleSet = row.querySelector("[data-criterion-rule-set]").value.trim();
+      const llmInstruction = row.querySelector("[data-criterion-llm]").value.trim();
+      if (ruleSet) criterion.rule_set = ruleSet;
+      if (llmInstruction) criterion.llm_instruction = llmInstruction;
+      return criterion;
+    }).filter((criterion) => criterion.key || criterion.label);
     const weightSum = config.rating_policy.criteria.reduce((sum, item) => sum + Number(item.weight || 0), 0);
     if (weightSum !== 100) {
       throw new Error(`Criteria weights must sum to 100, currently ${weightSum}`);
@@ -562,6 +769,10 @@ function parseJsonField(id, label) {
 
 function parseJsonObject(id, label) {
   const value = elements.useCaseDetail.querySelector(`#${id}`).value;
+  return parseJsonObjectValue(value, label);
+}
+
+function parseJsonObjectValue(value, label) {
   const parsed = JSON.parse(value);
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`${label} must be a JSON object`);
@@ -597,12 +808,13 @@ function queryPreview(config) {
 }
 
 function sourcePolicyPreview(config) {
+  const policy = config.source_policy || {};
   return [
-    `import >= ${config.source_policy.import_threshold}`,
-    `review >= ${config.source_policy.review_threshold}`,
-    `preferred: ${config.source_policy.preferred_source_types.join(", ") || "-"}`,
-    `context: ${config.source_policy.context_source_types.join(", ") || "-"}`,
-    `blocked: ${config.source_policy.blocked_source_types.join(", ") || "-"}`,
+    `import >= ${displayNumber(policy.import_threshold)}`,
+    `review >= ${displayNumber(policy.review_threshold)}`,
+    `preferred: ${(policy.preferred_source_types || []).join(", ") || "-"}`,
+    `context: ${(policy.context_source_types || []).join(", ") || "-"}`,
+    `blocked: ${(policy.blocked_source_types || []).join(", ") || "-"}`,
   ];
 }
 
@@ -649,6 +861,13 @@ function selectOptions(values, selected) {
   )).join("");
 }
 
+function setSelectValue(select, value) {
+  if (value === undefined || value === null) return;
+  if (optionExists(select, String(value))) {
+    select.value = String(value);
+  }
+}
+
 function jsonText(value) {
   return JSON.stringify(value, null, 2);
 }
@@ -660,45 +879,121 @@ async function loadSearchProfiles() {
   elements.searchProfilesList.innerHTML = "";
   if (data.search_profiles.length === 0) {
     elements.searchProfilesList.appendChild(emptyItem("Keine Search Profiles."));
+    renderSearchProfileEditor(null);
     return;
+  }
+  if (state.selectedSearchProfileId === null) {
+    state.selectedSearchProfileId = data.search_profiles[0].id;
   }
   for (const profile of data.search_profiles) {
     const item = document.createElement("article");
-    item.className = "item";
+    item.className = `item selectable ${profile.id === state.selectedSearchProfileId ? "selected-card" : ""}`;
     item.innerHTML = `
       <div class="item-header">
         <span class="item-title">${escapeHtml(profile.name)}</span>
         ${pill(profile.use_case_slug || "none")}
       </div>
       <p>${escapeHtml(profile.profile_name)} - ${escapeHtml(formatSearchTerms(profile))}</p>
-      <label>Use Case</label>
-      <select data-profile-use-case="${profile.id}">
-        ${state.useCases.map((useCase) => `
-          <option value="${useCase.db_id}" ${useCase.db_id === profile.use_case_id ? "selected" : ""}>
-            ${escapeHtml(useCase.name)}
-          </option>
-        `).join("")}
-      </select>
       <div class="actions">
-        <button type="button" data-save-profile="${profile.id}">Save</button>
+        <button type="button" data-edit-profile="${profile.id}">Edit</button>
+        <button type="button" data-run-profile="${profile.id}">Use in Run</button>
       </div>
     `;
-    item.querySelector("[data-save-profile]").addEventListener("click", async () => {
-      const select = item.querySelector(`[data-profile-use-case="${profile.id}"]`);
-      await api(`/api/search-profiles/${profile.id}`, {
-        method: "PATCH",
-        body: { use_case_id: selectedNumber(select.value) },
-      });
-      await refreshAll();
+    item.querySelector("[data-edit-profile]").addEventListener("click", () => {
+      state.selectedSearchProfileId = profile.id;
+      renderSearchProfileEditor(profile);
+      loadSearchProfiles();
+    });
+    item.querySelector("[data-run-profile]").addEventListener("click", () => {
+      elements.runSearchProfileSelect.value = String(profile.id);
+      applySelectedRunProfile();
+      showPage("runs");
     });
     elements.searchProfilesList.appendChild(item);
   }
+  const selected = state.searchProfiles.find((item) => item.id === state.selectedSearchProfileId) || null;
+  renderSearchProfileEditor(selected);
+}
+
+function renderSearchProfileEditor(profile) {
+  elements.profileEditorMode.textContent = profile ? `#${profile.id}` : "new";
+  elements.deleteSearchProfileButton.disabled = !profile;
+  elements.profileProfileName.value = profile?.profile_name || "Local Profile";
+  elements.profileSearchName.value = profile?.name || "Local Search";
+  elements.profileUseCaseSelect.value = String(profile?.use_case_id || elements.runUseCaseSelect.value || "");
+  elements.profileRoles.value = (profile?.roles || []).join(", ");
+  elements.profileRegions.value = (profile?.regions || []).join(", ");
+  elements.profileTechKeywords.value = (profile?.tech_keywords || []).join(", ");
+  elements.profileIndustryKeywords.value = (profile?.industry_keywords || []).join(", ");
+  elements.profileExcludeKeywords.value = (profile?.exclude_keywords || []).join(", ");
+  elements.profileDraftLanguage.value = profile?.draft_language || "de";
+  elements.profileAttributesJson.value = jsonText(profile?.attributes || {});
+  elements.profileEditorStatus.textContent = "";
+}
+
+async function saveSearchProfileFromEditor() {
+  try {
+    const payload = profilePayloadFromEditor();
+    const selected = state.searchProfiles.find((item) => item.id === state.selectedSearchProfileId);
+    const data = selected
+      ? await api(`/api/search-profiles/${selected.id}`, { method: "PATCH", body: payload })
+      : await api("/api/search-profiles", { method: "POST", body: payload });
+    state.selectedSearchProfileId = data.search_profile.id;
+    elements.profileEditorStatus.textContent = "Saved";
+    await refreshAll();
+  } catch (error) {
+    elements.profileEditorStatus.textContent = error.message;
+  }
+}
+
+async function deleteSelectedSearchProfile() {
+  const selected = state.searchProfiles.find((item) => item.id === state.selectedSearchProfileId);
+  if (!selected) return;
+  try {
+    await api(`/api/search-profiles/${selected.id}`, { method: "DELETE" });
+    state.selectedSearchProfileId = null;
+    await refreshAll();
+  } catch (error) {
+    elements.profileEditorStatus.textContent = error.message;
+  }
+}
+
+function profilePayloadFromEditor() {
+  return {
+    profile_name: elements.profileProfileName.value.trim(),
+    search_name: elements.profileSearchName.value.trim(),
+    name: elements.profileSearchName.value.trim(),
+    use_case_id: selectedNumber(elements.profileUseCaseSelect.value),
+    roles: parseCsv(elements.profileRoles.value),
+    regions: parseCsv(elements.profileRegions.value),
+    tech_keywords: parseCsv(elements.profileTechKeywords.value),
+    industry_keywords: parseCsv(elements.profileIndustryKeywords.value),
+    exclude_keywords: parseCsv(elements.profileExcludeKeywords.value),
+    draft_language: elements.profileDraftLanguage.value.trim() || "de",
+    attributes: parseJsonObjectValue(elements.profileAttributesJson.value, "Profile Attributes"),
+  };
 }
 
 async function loadProviderStatus() {
   const data = await api("/api/provider-status");
   state.providerStatus = data;
+  renderLightModelOptions(data.llm.light.models || [], data.llm.light.model);
   renderProviderStatus(data);
+}
+
+function renderLightModelOptions(models, configuredModel) {
+  const previous = elements.runLightModelSelect.value;
+  const values = models.length ? models : [configuredModel].filter(Boolean);
+  elements.runLightModelSelect.innerHTML = "";
+  for (const model of values) {
+    const option = document.createElement("option");
+    option.value = model;
+    option.textContent = model;
+    elements.runLightModelSelect.appendChild(option);
+  }
+  elements.runLightModelSelect.value = optionExists(elements.runLightModelSelect, previous)
+    ? previous
+    : configuredModel || values[0] || "";
 }
 
 function renderRunProfileOptions() {
@@ -733,6 +1028,7 @@ function renderProviderStatus(status) {
       lines: [
         `${status.llm.light.provider} / ${status.llm.light.model}`,
         `reachable: ${status.llm.light.reachable === null ? "n/a" : String(status.llm.light.reachable)}`,
+        `model available: ${status.llm.light.model_available === null ? "n/a" : String(status.llm.light.model_available)}`,
       ],
     },
     {
@@ -762,27 +1058,10 @@ async function runFromForm() {
   elements.runStatus.textContent = "Run startet...";
   elements.runConfiguredButton.disabled = true;
   try {
-    const useCaseId = selectedNumber(elements.runUseCaseSelect.value);
-    const payload = {
-      provider_mode: elements.runProviderMode.value,
-      llm_mode: elements.runLlmMode.value,
-      search_profile_id: selectedNumber(elements.runSearchProfileSelect.value),
-      use_case_id: useCaseId,
-      request_budget: numberValue(elements.runRequestBudget.value),
-      results_per_query: numberValue(elements.runResultsPerQuery.value),
-      roles: parseCsv(elements.runRoles.value),
-      regions: parseCsv(elements.runRegions.value),
-      tech_keywords: parseCsv(elements.runTechKeywords.value),
-    };
-    const useCase = state.useCases.find((item) => item.db_id === useCaseId);
-    if (!payload.search_profile_id && useCase?.slug === "company_osint") {
-      payload.attributes = {
-        topics: payload.roles.length ? payload.roles : ["Solar Services"],
-        industries: payload.tech_keywords,
-        regions: payload.regions,
-      };
-      payload.roles = [];
-      payload.tech_keywords = [];
+    const payload = runPayloadFromForm();
+    const preview = await api("/api/run-preview", { method: "POST", body: payload });
+    if (!preview.valid) {
+      throw new Error(`Missing required fields: ${preview.missing_required.join(", ")}`);
     }
     const data = await api("/api/pipeline-runs", {
       method: "POST",
@@ -797,6 +1076,252 @@ async function runFromForm() {
     elements.runStatus.textContent = error.message;
   } finally {
     elements.runConfiguredButton.disabled = false;
+  }
+}
+
+function runPayloadFromForm() {
+  const useCaseId = selectedNumber(elements.runUseCaseSelect.value);
+  const values = runAttributeValues();
+  return {
+    provider_mode: elements.runProviderMode.value,
+    llm_mode: elements.runLlmMode.value,
+    light_model: elements.runLightModelSelect.value,
+    fetch_mode: elements.runFetchMode.value,
+    phase_mode: elements.runPhaseMode.value,
+    draft_enabled: elements.runDraftEnabled.value === "true",
+    search_profile_id: selectedNumber(elements.runSearchProfileSelect.value),
+    use_case_id: useCaseId,
+    request_budget: numberValue(elements.runRequestBudget.value),
+    results_per_query: numberValue(elements.runResultsPerQuery.value),
+    max_pages_per_target: numberValue(elements.runMaxPages.value),
+    roles: values.roles || [],
+    regions: values.regions || [],
+    tech_keywords: values.tech_keywords || [],
+    industry_keywords: values.industry_keywords || [],
+    exclude_keywords: values.exclude_keywords || [],
+    attributes: values,
+  };
+}
+
+function runAttributeValues() {
+  const values = {};
+  elements.runAttributeFields.querySelectorAll("[data-run-field]").forEach((input) => {
+    const key = input.dataset.runField;
+    const type = input.dataset.runFieldType;
+    if (type === "boolean") {
+      values[key] = input.checked;
+    } else if (type === "number") {
+      values[key] = input.value === "" ? null : numberValue(input.value);
+    } else if (type === "list") {
+      values[key] = parseCsv(input.value);
+    } else {
+      values[key] = input.value.trim();
+    }
+  });
+  return values;
+}
+
+function renderRunAttributeFields() {
+  const useCase = selectedRunUseCase();
+  elements.runAttributeFields.innerHTML = "";
+  if (!useCase) return;
+  const profile = selectedRunProfile();
+  const values = {
+    ...(profile?.attributes || {}),
+    roles: profile?.roles || ["Werkstudent IT"],
+    regions: profile?.regions || ["Essen"],
+    tech_keywords: profile?.tech_keywords || ["Python"],
+    industry_keywords: profile?.industry_keywords || [],
+    exclude_keywords: profile?.exclude_keywords || [],
+  };
+  for (const field of useCase.attribute_schema.fields) {
+    const wrapper = document.createElement("div");
+    const value = values[field.key] ?? field.default ?? "";
+    wrapper.innerHTML = renderRunField(field, value);
+    const input = wrapper.querySelector("[data-run-field]");
+    input.addEventListener("input", scheduleRunPreview);
+    input.addEventListener("change", scheduleRunPreview);
+    elements.runAttributeFields.appendChild(wrapper);
+  }
+}
+
+function renderRunField(field, value) {
+  const required = field.required ? " *" : "";
+  if (field.type === "boolean") {
+    return `
+      <label>${escapeHtml(field.label)}${required}</label>
+      <input data-run-field="${escapeAttribute(field.key)}" data-run-field-type="boolean" type="checkbox" ${value ? "checked" : ""}>
+    `;
+  }
+  if (field.type === "select") {
+    return `
+      <label>${escapeHtml(field.label)}${required}</label>
+      <select data-run-field="${escapeAttribute(field.key)}" data-run-field-type="select">
+        ${selectOptions(field.options || [], value)}
+      </select>
+    `;
+  }
+  const inputType = field.type === "number" ? "number" : "text";
+  const displayValue = Array.isArray(value) ? value.join(", ") : value;
+  return `
+    <label>${escapeHtml(field.label)}${required}</label>
+    <input data-run-field="${escapeAttribute(field.key)}" data-run-field-type="${escapeAttribute(field.type)}" type="${inputType}" value="${escapeAttribute(displayValue || "")}">
+  `;
+}
+
+function selectedRunUseCase() {
+  const useCaseId = selectedNumber(elements.runUseCaseSelect.value);
+  return state.useCases.find((item) => item.db_id === useCaseId) || null;
+}
+
+function selectedRunProfile() {
+  const profileId = selectedNumber(elements.runSearchProfileSelect.value);
+  return state.searchProfiles.find((item) => item.id === profileId) || null;
+}
+
+function applySelectedRunProfile() {
+  const profile = selectedRunProfile();
+  if (profile?.use_case_id) {
+    elements.runUseCaseSelect.value = String(profile.use_case_id);
+  }
+  renderRunAttributeFields();
+}
+
+function scheduleRunPreview() {
+  window.clearTimeout(state.previewTimer);
+  state.previewTimer = window.setTimeout(loadRunPreview, 150);
+}
+
+async function loadRunPreview() {
+  try {
+    const data = await api("/api/run-preview", {
+      method: "POST",
+      body: runPayloadFromForm(),
+    });
+    elements.runPreview.innerHTML = `
+      <div class="split">
+        <section>
+          <h3>Query Preview</h3>
+          ${renderList(data.queries.slice(0, 8).map((query) => query.text))}
+        </section>
+        <section>
+          <h3>Source Policy</h3>
+          ${renderList(sourcePolicyPreview({ source_policy: data.source_policy }))}
+          ${data.missing_required.length ? `<p class="muted">Missing: ${escapeHtml(data.missing_required.join(", "))}</p>` : ""}
+        </section>
+      </div>
+    `;
+  } catch (error) {
+    elements.runPreview.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function saveRunDefaults() {
+  localStorage.setItem(RUN_DEFAULTS_KEY, JSON.stringify({
+    provider_mode: elements.runProviderMode.value,
+    llm_mode: elements.runLlmMode.value,
+    light_model: elements.runLightModelSelect.value,
+    fetch_mode: elements.runFetchMode.value,
+    phase_mode: elements.runPhaseMode.value,
+    draft_enabled: elements.runDraftEnabled.value,
+    request_budget: elements.runRequestBudget.value,
+    results_per_query: elements.runResultsPerQuery.value,
+    max_pages: elements.runMaxPages.value,
+  }));
+  elements.runStatus.textContent = "Defaults saved";
+}
+
+function applyRunDefaults() {
+  const raw = localStorage.getItem(RUN_DEFAULTS_KEY);
+  if (!raw) return;
+  try {
+    const defaults = JSON.parse(raw);
+    setSelectValue(elements.runProviderMode, defaults.provider_mode);
+    setSelectValue(elements.runLlmMode, defaults.llm_mode);
+    setSelectValue(elements.runLightModelSelect, defaults.light_model);
+    setSelectValue(elements.runFetchMode, defaults.fetch_mode);
+    setSelectValue(elements.runPhaseMode, defaults.phase_mode);
+    setSelectValue(elements.runDraftEnabled, defaults.draft_enabled);
+    if (defaults.request_budget) elements.runRequestBudget.value = defaults.request_budget;
+    if (defaults.results_per_query) elements.runResultsPerQuery.value = defaults.results_per_query;
+    if (defaults.max_pages) elements.runMaxPages.value = defaults.max_pages;
+  } catch {
+    localStorage.removeItem(RUN_DEFAULTS_KEY);
+  }
+}
+
+async function loadDomainPolicies() {
+  const data = await api("/api/domain-policies");
+  state.domainPolicies = data;
+  renderDomainPolicies(data);
+}
+
+function renderDomainPolicies(data) {
+  elements.domainPolicyList.innerHTML = "";
+  const blacklisted = data.blacklisted || [];
+  const suggestions = data.rejected_suggestions || [];
+  if (!blacklisted.length && !suggestions.length) {
+    elements.domainPolicyList.appendChild(emptyItem("Keine Domain Policies."));
+    return;
+  }
+  for (const item of blacklisted) {
+    const card = document.createElement("article");
+    card.className = "item";
+    card.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(item.domain)}</span>
+        ${pill("blacklisted")}
+      </div>
+      <p>${escapeHtml(item.base_url || "")}</p>
+      <div class="actions">
+        <button type="button" data-unblock-domain="${escapeAttribute(item.domain)}">Unblock</button>
+      </div>
+    `;
+    card.querySelector("[data-unblock-domain]").addEventListener("click", async () => {
+      await api("/api/domain-policies/unblock", {
+        method: "POST",
+        body: { domain: item.domain },
+      });
+      await refreshAll();
+    });
+    elements.domainPolicyList.appendChild(card);
+  }
+  for (const item of suggestions) {
+    const card = document.createElement("article");
+    card.className = "item";
+    card.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(item.domain)}</span>
+        ${pill(`rejects:${item.reject_count}`)}
+      </div>
+      <p>${escapeHtml(item.base_url || "")}</p>
+      <div class="actions">
+        <button type="button" data-blacklist-suggestion="${escapeAttribute(item.domain)}">Blacklist</button>
+      </div>
+    `;
+    card.querySelector("[data-blacklist-suggestion]").addEventListener("click", async () => {
+      await api("/api/domain-policies/blacklist", {
+        method: "POST",
+        body: { domain: item.domain },
+      });
+      await refreshAll();
+    });
+    elements.domainPolicyList.appendChild(card);
+  }
+}
+
+async function addBlacklistDomain() {
+  try {
+    const domain = elements.domainPolicyInput.value.trim();
+    await api("/api/domain-policies/blacklist", {
+      method: "POST",
+      body: { domain },
+    });
+    elements.domainPolicyInput.value = "";
+    elements.domainPolicyStatus.textContent = "Blacklisted";
+    await refreshAll();
+  } catch (error) {
+    elements.domainPolicyStatus.textContent = error.message;
   }
 }
 

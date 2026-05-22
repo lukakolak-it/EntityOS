@@ -311,6 +311,92 @@ class SQLiteStore:
         self.connection.commit()
         return self.get_search_profile(search_profile_id)
 
+    def update_search_profile(
+        self,
+        search_profile_id: int,
+        *,
+        profile_name: str | None = None,
+        name: str | None = None,
+        use_case_id: int | None = None,
+        roles: tuple[str, ...] | None = None,
+        regions: tuple[str, ...] | None = None,
+        tech_keywords: tuple[str, ...] | None = None,
+        industry_keywords: tuple[str, ...] | None = None,
+        exclude_keywords: tuple[str, ...] | None = None,
+        attributes: dict[str, Any] | None = None,
+        manual_query: str | None = None,
+        draft_language: str | None = None,
+    ) -> SearchProfile:
+        current = self.get_search_profile(search_profile_id)
+        if use_case_id is not None:
+            self.get_use_case(use_case_id)
+        if profile_name is not None:
+            self.connection.execute(
+                "UPDATE profiles SET name = ? WHERE id = ?",
+                (profile_name.strip(), current.profile_id),
+            )
+        next_profile = SearchProfile(
+            id=current.id,
+            profile_id=current.profile_id,
+            use_case_id=use_case_id if use_case_id is not None else current.use_case_id,
+            name=name if name is not None else current.name,
+            roles=roles if roles is not None else current.roles,
+            regions=regions if regions is not None else current.regions,
+            tech_keywords=(
+                tech_keywords if tech_keywords is not None else current.tech_keywords
+            ),
+            industry_keywords=(
+                industry_keywords
+                if industry_keywords is not None
+                else current.industry_keywords
+            ),
+            exclude_keywords=(
+                exclude_keywords
+                if exclude_keywords is not None
+                else current.exclude_keywords
+            ),
+            attributes=attributes if attributes is not None else current.attributes,
+            manual_query=manual_query if manual_query is not None else current.manual_query,
+            draft_language=(
+                draft_language if draft_language is not None else current.draft_language
+            ),
+            created_at=current.created_at,
+        )
+        self.connection.execute(
+            """
+            UPDATE search_profiles
+            SET use_case_id = ?, name = ?, roles_json = ?, regions_json = ?,
+                tech_keywords_json = ?, industry_keywords_json = ?,
+                exclude_keywords_json = ?, attributes_json = ?, manual_query = ?,
+                draft_language = ?
+            WHERE id = ?
+            """,
+            (
+                next_profile.use_case_id,
+                next_profile.name,
+                _json_dumps(list(next_profile.roles)),
+                _json_dumps(list(next_profile.regions)),
+                _json_dumps(list(next_profile.tech_keywords)),
+                _json_dumps(list(next_profile.industry_keywords)),
+                _json_dumps(list(next_profile.exclude_keywords)),
+                _json_dumps(next_profile.attributes),
+                next_profile.manual_query,
+                next_profile.draft_language,
+                search_profile_id,
+            ),
+        )
+        self.connection.commit()
+        return self.get_search_profile(search_profile_id)
+
+    def delete_search_profile(self, search_profile_id: int) -> None:
+        cursor = self.connection.execute(
+            "DELETE FROM search_profiles WHERE id = ?",
+            (search_profile_id,),
+        )
+        if cursor.rowcount == 0:
+            raise NotFoundError(f"search profile not found: {search_profile_id}")
+        self.connection.commit()
+
     def create_pipeline_run(self, run: PipelineRun) -> PipelineRun:
         use_case_id, use_case_version, use_case_snapshot = self._pipeline_use_case_context(run)
         cursor = self.connection.execute(
@@ -936,6 +1022,40 @@ class SQLiteStore:
             tuple(status.value for status in statuses),
         ).fetchall()
         return {str(row["domain"]) for row in rows}
+
+    def list_targets_by_status(self, *statuses: TargetStatus) -> list[Target]:
+        if not statuses:
+            return []
+        placeholders = ", ".join("?" for _ in statuses)
+        rows = self.connection.execute(
+            f"""
+            SELECT * FROM targets
+            WHERE status IN ({placeholders})
+            ORDER BY updated_at DESC, id DESC
+            """,
+            tuple(status.value for status in statuses),
+        ).fetchall()
+        return [_target_from_row(row) for row in rows]
+
+    def list_rejected_domain_suggestions(self, *, min_count: int = 1) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                targets.domain,
+                targets.base_url,
+                COUNT(*) AS reject_count,
+                MAX(target_status_log.created_at) AS last_rejected_at
+            FROM target_status_log
+            INNER JOIN targets
+                ON targets.id = target_status_log.target_id
+            WHERE target_status_log.to_status = ?
+            GROUP BY targets.domain, targets.base_url
+            HAVING COUNT(*) >= ?
+            ORDER BY reject_count DESC, last_rejected_at DESC
+            """,
+            (TargetStatus.REJECTED.value, min_count),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def list_review_queue_items(
         self,
