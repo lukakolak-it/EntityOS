@@ -625,6 +625,9 @@ attribute_schema:
       label: Regionen
       type: list
 query_policy:
+  default_template_set: application_student
+  request_budget_default: 25
+  results_per_query_default: 5
   variable_map:
     role: roles
     tech: tech_keywords
@@ -693,6 +696,9 @@ attribute_schema:
       label: Regionen
       type: list
 query_policy:
+  default_template_set: company_osint
+  request_budget_default: 25
+  results_per_query_default: 5
   variable_map:
     topic: topics
     industry: industries
