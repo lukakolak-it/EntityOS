@@ -61,9 +61,7 @@
       "snippet": "Ranking des IT-Dienstleistungsmarkts in Essen mit mehreren Unternehmen.",
       "provider_rank": 2,
       "expected_source_type": "directory",
-      "expected_action": "review_source",
-      "known_gap": true,
-      "gap_reason": "Ranking and publisher domain should be a context source, not an imported company target."
+      "expected_action": "review_source"
     },
     {
       "id": "control_official_bund",

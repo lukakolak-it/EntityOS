@@ -86,6 +86,7 @@ Moegliche Importstatus:
 - `imported`
 - `existing`
 - `duplicate_input`
+- `review_source`
 - `blocked_source`
 - `blacklisted`
 - `invalid`
@@ -93,12 +94,13 @@ Moegliche Importstatus:
 Abgrenzung:
 
 - `duplicate_input`: dieselbe URL oder normalisierte Domain kommt mehrfach im selben Import-Payload vor.
+- `review_source`: die Quelle ist eine Kontextquelle, z. B. Verzeichnis, Register oder News, und wird nicht als primaeres Target importiert.
 - `blocked_source`: die Domain ist durch eine systemische Denylist oder Source-Regel blockiert, z. B. Jobboerse oder Aggregator.
 - `blacklisted`: die Domain wurde durch eine Nutzerentscheidung ausgeschlossen und soll auch in kuenftigen Laeufen nicht importiert werden.
 - `existing`: das Target existiert bereits lokal und wird wiederverwendet.
 - `invalid`: URL oder Domain kann nicht sinnvoll normalisiert werden.
 
-`duplicate_domain` ist kein Target-Importstatus, sondern ein LeadEngine-Status fuer SERP-Ergebnisse innerhalb eines Discovery-Laufs. Wenn der deduplizierte Kandidat an den Target Import uebergeben wird, wird daraus je nach lokaler Lage `imported`, `existing`, `blocked_source`, `blacklisted` oder `invalid`.
+`duplicate_domain` ist kein Target-Importstatus, sondern ein LeadEngine-Status fuer SERP-Ergebnisse innerhalb eines Discovery-Laufs. Wenn der deduplizierte Kandidat an den Target Import uebergeben wird, wird daraus je nach lokaler Lage `imported`, `existing`, `review_source`, `blocked_source`, `blacklisted` oder `invalid`.
 
 ## 4. Target
 

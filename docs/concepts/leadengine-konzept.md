@@ -239,6 +239,7 @@ get-in-it.de
 Treffer werden nicht zwingend geloescht. Sie koennen mit einem Status markiert werden:
 
 - `candidate`
+- `review_source`
 - `blocked_source`
 - `duplicate_domain`
 - `imported`
@@ -249,6 +250,7 @@ Treffer werden nicht zwingend geloescht. Sie koennen mit einem Status markiert w
 Status-Abgrenzung:
 
 - `candidate`: SERP-Ergebnis ist grundsaetzlich brauchbar und kann an den Target Import gehen.
+- `review_source`: SERP-Ergebnis ist als Kontextquelle nuetzlich, soll aber nicht automatisch als primaeres Target importiert werden.
 - `blocked_source`: SERP-Ergebnis wurde durch Denylist oder Source-Regel blockiert, z. B. Jobportal, Aggregator oder Social-Media-Profil.
 - `duplicate_domain`: dieselbe normalisierte Domain wurde im Discovery-Lauf bereits durch ein besseres SERP-Ergebnis vertreten.
 - `imported`: der Target Import hat daraus ein neues lokales Target erzeugt.
@@ -256,7 +258,7 @@ Status-Abgrenzung:
 - `blacklisted`: der Target Import hat die Domain wegen einer Nutzer-Blacklist abgewiesen.
 - `invalid`: URL oder Domain ist nicht sinnvoll normalisierbar.
 
-Damit unterscheiden sich Source-Filter (`blocked_source`) von Nutzerentscheidungen (`blacklisted`) und LeadEngine-Dedupe (`duplicate_domain`) von Import-Payload-Dubletten (`duplicate_input` im Target Import).
+Damit unterscheiden sich Kontextquellen (`review_source`), Source-Filter (`blocked_source`), Nutzerentscheidungen (`blacklisted`) und LeadEngine-Dedupe (`duplicate_domain`) von Import-Payload-Dubletten (`duplicate_input` im Target Import).
 
 ### Source Quality Heuristik
 
@@ -292,9 +294,9 @@ Negative Signale:
 
 - `configured_blocked_domain` (Score `0`): Domain steht in `TARGET_RADAR_BLOCKED_SOURCE_DOMAINS`.
 - `secondary_source` (`-20`): `source_type = directory`.
-- `context_source` (`-10`): `source_type` ist `repository`, `news` oder `registry`.
+- `context_source` (`-10`): `source_type` ist in `context_source_types`, z. B. `repository`, `news`, `registry` oder im OSINT-Use-Case `directory`.
 - `blocked_source_type` (`-40`): `source_type` ist `job_board`, `social` oder `marketplace`.
-- `listing_or_search_page` (`-25`): Pfad enthaelt `search`, `suche`, `stellenangebote`, `jobboerse`, `jobsuche`, `vacancies`, `results` oder `listing`; Query-Parameter-Key ist `q`, `query`, `search`, `s` oder `keyword`; oder Titel/Snippet enthalten mindestens 4 Jobboersen-Tokens.
+- `listing_or_search_page` (`-25`): Pfad enthaelt `search`, `suche`, `ranking`, `rankings`, `topliste`, `toplisten`, `branchenbuch`, `stellenangebote`, `jobboerse`, `jobsuche`, `vacancies`, `results` oder `listing`; Query-Parameter-Key ist `q`, `query`, `search`, `s` oder `keyword`; oder Titel/Snippet enthalten mindestens 4 Jobboersen-Tokens.
 - `login_or_tracking_page` (`-20`): Pfad enthaelt `login`, `signin`, `signup`, `register` oder `bewerben`; oder Query enthaelt `utm_`, `fbclid=` oder `gclid=`.
 - `deep_url` (`-10`): Pfad hat mindestens 4 Segmente.
 - `generic_title` (`-10`): Titel existiert, ist aber nicht konkret genug.
@@ -304,6 +306,7 @@ Domain-Klassifizierung:
 - Bekannte Domains und deren Subdomains werden zuerst ueber eine feste Mapping-Liste klassifiziert.
 - `official_site`: Domain endet auf `.gov`, `.edu`, `.bund.de` oder enthaelt `.ac.`.
 - `news`: bekannte News-Domain oder artikeltypischer Pfad wie `/news/`, `/article/`, `/artikel/`, `/meldung/`, `/story/` oder Datumsartikelpfad.
+- `directory`: bekannte Verzeichnis-/Publisher-Domain oder rankingtypischer Pfad wie `/ranking/`, `/rankings/`, `/topliste/`, `/toplisten/` oder `/branchenbuch/`.
 - `job_board`: bekannte Jobboerse oder Domain-Tokens enthalten `jobs`, `stellen`, `karriere` oder `career`; Tokens entstehen durch Split an `.`, `-` und `_`.
 - `marketplace`: Domain-Tokens enthalten `marketplace`, `shop` oder `store`.
 - `company_site`: Fallback fuer direkte Domains.

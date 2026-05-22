@@ -127,6 +127,7 @@ class ImportStatus(StrEnum):
     IMPORTED = "imported"
     EXISTING = "existing"
     DUPLICATE_INPUT = "duplicate_input"
+    REVIEW_SOURCE = "review_source"
     BLOCKED_SOURCE = "blocked_source"
     BLACKLISTED = "blacklisted"
     INVALID = "invalid"
@@ -134,6 +135,7 @@ class ImportStatus(StrEnum):
 
 class LeadResultStatus(StrEnum):
     CANDIDATE = "candidate"
+    REVIEW_SOURCE = "review_source"
     BLOCKED_SOURCE = "blocked_source"
     DUPLICATE_DOMAIN = "duplicate_domain"
     IMPORTED = "imported"

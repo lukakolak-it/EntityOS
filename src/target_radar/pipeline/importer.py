@@ -91,6 +91,16 @@ class TargetImporter:
                 )
                 continue
 
+            if candidate.status == LeadResultStatus.REVIEW_SOURCE:
+                results.append(
+                    TargetImportResult(
+                        candidate=candidate,
+                        status=ImportStatus.REVIEW_SOURCE,
+                        reason="candidate source is context-only",
+                    )
+                )
+                continue
+
             if domain in self.blocked_domains:
                 results.append(
                     TargetImportResult(

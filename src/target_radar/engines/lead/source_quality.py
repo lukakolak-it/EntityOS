@@ -48,6 +48,11 @@ _RELEVANT_PATH_TOKENS = (
 _LISTING_TOKENS = (
     "search",
     "suche",
+    "ranking",
+    "rankings",
+    "topliste",
+    "toplisten",
+    "branchenbuch",
     "stellenangebote",
     "jobboerse",
     "jobsuche",
@@ -238,6 +243,7 @@ class SourceQualityClassifier:
             score=score,
             block_threshold=self.block_threshold,
             import_threshold=self.import_threshold,
+            context_source_types=self.context_source_types,
             blocked_source_types=self.blocked_source_types,
         )
         return SourceQualityResult(
@@ -277,6 +283,7 @@ _DOMAIN_SOURCE_TYPES: dict[str, SourceType] = {
     "firmenwissen.de": SourceType.DIRECTORY,
     "gelbeseiten.de": SourceType.DIRECTORY,
     "dasoertliche.de": SourceType.DIRECTORY,
+    "regiomanager.de": SourceType.DIRECTORY,
     "unternehmensregister.de": SourceType.REGISTRY,
     "handelsregister.de": SourceType.REGISTRY,
     "bundesanzeiger.de": SourceType.REGISTRY,
@@ -304,6 +311,13 @@ _DOMAIN_JOB_BOARD_TOKENS = frozenset({"jobs", "stellen", "karriere", "career"})
 _MARKETPLACE_TOKENS = frozenset({"marketplace", "shop", "store"})
 _LISTING_QUERY_KEYS = frozenset({"q", "query", "search", "s", "keyword"})
 _NEWS_PATH_TOKENS = ("/news/", "/article/", "/artikel/", "/meldung/", "/story/")
+_DIRECTORY_PATH_TOKENS = (
+    "/ranking/",
+    "/rankings/",
+    "/topliste/",
+    "/toplisten/",
+    "/branchenbuch/",
+)
 
 
 def _classify_domain(domain: str, path: str = "") -> SourceType:
@@ -316,6 +330,8 @@ def _classify_domain(domain: str, path: str = "") -> SourceType:
         return SourceType.OFFICIAL_SITE
     if _is_news_path(path):
         return SourceType.NEWS
+    if _is_directory_path(path):
+        return SourceType.DIRECTORY
     domain_tokens = _domain_tokens(domain)
     if domain_tokens & _DOMAIN_JOB_BOARD_TOKENS:
         return SourceType.JOB_BOARD
@@ -402,6 +418,10 @@ def _is_news_path(path: str) -> bool:
     return re.search(r"/20\d{2}/\d{1,2}/\d{1,2}/", path) is not None
 
 
+def _is_directory_path(path: str) -> bool:
+    return any(token in path for token in _DIRECTORY_PATH_TOKENS)
+
+
 def _source_types(values: tuple[str, ...]) -> tuple[SourceType, ...]:
     return tuple(SourceType(value) for value in values)
 
@@ -412,10 +432,13 @@ def _recommended_action(
     score: int,
     block_threshold: int,
     import_threshold: int,
+    context_source_types: tuple[SourceType, ...],
     blocked_source_types: tuple[SourceType, ...],
 ) -> SourceImportAction:
     if source_type in blocked_source_types:
         return SourceImportAction.BLOCK
+    if source_type in context_source_types:
+        return SourceImportAction.REVIEW_SOURCE
     if score < block_threshold:
         return SourceImportAction.BLOCK
     if score >= import_threshold:

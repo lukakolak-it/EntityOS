@@ -193,6 +193,7 @@ Jedes Target kann innerhalb eines Laufs einen eigenen Fortschritt haben.
 Beispiele:
 
 - `candidate`: von der LeadEngine gefunden
+- `review_source`: Kontextquelle, nicht als primaeres Target importiert
 - `blocked_source`: Quelle ist durch Denylist blockiert
 - `imported`: als Target importiert
 - `existing`: Target existiert bereits
@@ -243,6 +244,12 @@ Wenn die Domain blockiert ist:
 - SERP-Result wird `blocked_source`,
 - Blockgrund wird gespeichert,
 - kein Target wird erzeugt.
+
+Wenn die Source Policy eine Quelle nur als Kontextquelle einordnet:
+
+- SERP-Result wird `review_source`,
+- Source-Quality-Metadaten bleiben gespeichert,
+- kein primaeres Target wird erzeugt.
 
 ### Fetcher-Fehler
 

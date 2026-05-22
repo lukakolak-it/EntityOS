@@ -167,6 +167,8 @@ class LeadEngine:
             status = LeadResultStatus.BLOCKED_SOURCE
         elif source_quality.recommended_action == SourceImportAction.BLOCK:
             status = LeadResultStatus.BLOCKED_SOURCE
+        elif source_quality.recommended_action == SourceImportAction.REVIEW_SOURCE:
+            status = LeadResultStatus.REVIEW_SOURCE
         elif domain in seen_domains:
             status = LeadResultStatus.DUPLICATE_DOMAIN
         else:

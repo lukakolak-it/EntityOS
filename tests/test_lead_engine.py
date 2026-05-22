@@ -354,9 +354,9 @@ class LeadEngineTests(unittest.TestCase):
         classifier = SourceQualityClassifier.from_source_policy(
             get_default_use_case("company_osint").source_policy
         )
-        cases = [case for case in _source_quality_baseline_cases() if not case.get("known_gap")]
+        cases = _source_quality_baseline_cases()
 
-        self.assertGreaterEqual(len(cases), 8)
+        self.assertGreaterEqual(len(cases), 10)
         for case in cases:
             with self.subTest(case=case["id"]):
                 result = classifier.classify(_search_result_from_baseline(case))
@@ -366,24 +366,23 @@ class LeadEngineTests(unittest.TestCase):
                     SourceImportAction(case["expected_action"]),
                 )
 
-    @unittest.expectedFailure
-    def test_source_quality_e1_known_gap_regiomanager_is_context_source(self) -> None:
+    def test_source_quality_e2_ranking_paths_are_context_sources(self) -> None:
         classifier = SourceQualityClassifier.from_source_policy(
             get_default_use_case("company_osint").source_policy
         )
-        case = next(
-            item
-            for item in _source_quality_baseline_cases()
-            if item["id"] == "run19_regiomanager"
+
+        result = classifier.classify(
+            SearchResult(
+                url="https://publisher.example/ranking/digital/it-dienstleister/essen/",
+                title="Die groessten IT-Dienstleister in Essen",
+                snippet="Ranking mit mehreren Unternehmen und Marktinformationen.",
+                metadata={"provider_rank": 2},
+            )
         )
 
-        result = classifier.classify(_search_result_from_baseline(case))
-
-        self.assertEqual(result.source_type, SourceType(case["expected_source_type"]))
-        self.assertEqual(
-            result.recommended_action,
-            SourceImportAction(case["expected_action"]),
-        )
+        self.assertEqual(result.source_type, SourceType.DIRECTORY)
+        self.assertEqual(result.recommended_action, SourceImportAction.REVIEW_SOURCE)
+        self.assertIn("listing_or_search_page", [risk["type"] for risk in result.risks])
 
     def test_lead_engine_prioritizes_direct_domains_before_portals(self) -> None:
         search_profile = SearchProfile(

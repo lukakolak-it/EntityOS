@@ -1571,7 +1571,7 @@ Umfang:
   `job_board` erfassen
 - erwartete Source-Type- und Import-Action-Entscheidungen festhalten
 - stabile Faelle als normale Regressionstests ausfuehren
-- bekannte Fehlklassifizierung `regiomanager.de` als `expectedFailure`
+- bekannte Fehlklassifizierung `regiomanager.de` als naechsten E2-Fix
   dokumentieren
 
 Akzeptanzkriterien:
@@ -1579,11 +1579,11 @@ Akzeptanzkriterien:
 - `tests/fixtures/source_quality_e1_baseline.json` enthaelt die
   Evaluationsfaelle.
 - `test_source_quality_e1_baseline_stable_cases` prueft die stabilen Faelle.
-- `test_source_quality_e1_known_gap_regiomanager_is_context_source` beschreibt
-  die naechste Soll-Aenderung fuer E2.
 - Die Baseline laeuft ohne echte Provider-Secrets.
 
 ### Slice E2: Source Classification verbessern
+
+Status: umgesetzt.
 
 Ziel:
 
@@ -1600,9 +1600,32 @@ Umfang:
 Akzeptanzkriterien:
 
 - `regiomanager.de` wird nicht mehr als `company_site/import` behandelt.
-- Kontextquellen bleiben fuer Evidence nutzbar, werden aber nicht als
+- Kontextquellen bleiben als SERP-Kontext nachvollziehbar, werden aber nicht als
   Zielunternehmen importiert.
 - E1-Baseline bleibt gruen.
+
+### Slice E3: Kontextquellen fuer Evidence nutzbar machen
+
+Ziel:
+
+`review_source`-Treffer sollen nicht als Targets importiert werden, aber fuer
+spaetere Evidence und Kontextrecherche verwertbar bleiben.
+
+Umfang:
+
+- `review_source`-SERP-Ergebnisse mit Query- und Source-Quality-Metadaten
+  abrufbar machen
+- Kontextquellen einem passenden Target oder Search Profile zuordnen
+- Fetch/Evidence optional fuer Kontextquellen erlauben, ohne Target-Status zu
+  vermischen
+- Review-UI sichtbar machen, welche Kontextquellen zu einem Run gehoeren
+
+Akzeptanzkriterien:
+
+- Kontextquellen werden nicht als Zielunternehmen geratet.
+- Kontextquellen koennen Evidence liefern, wenn sie einem Target zugeordnet
+  werden.
+- Review Queue bleibt auf primaere Targets fokussiert.
 
 ## Empfohlene Reihenfolge
 
@@ -1612,9 +1635,8 @@ kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
 Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
 Danach ist die sinnvolle Reihenfolge:
 
-1. E2 Source Classification verbessern.
-2. E3 Import Policy fuer direkte Targets vs. Kontextquellen schaerfen.
-3. E4 Query Quality pro Use Case verbessern.
-4. E5 Evidence Engine mit typisierten Belegen ausbauen.
-5. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
-6. DraftEngine erst danach weiter optimieren.
+1. E3 Kontextquellen fuer Evidence nutzbar machen.
+2. E4 Query Quality pro Use Case verbessern.
+3. E5 Evidence Engine mit typisierten Belegen ausbauen.
+4. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
+5. DraftEngine erst danach weiter optimieren.

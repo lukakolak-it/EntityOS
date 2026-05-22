@@ -81,6 +81,23 @@ class PipelineSkeletonTests(unittest.TestCase):
         self.assertEqual(logs[0].pipeline_run_id, result.run.id)
         self.assertEqual(logs[0].metadata["import_status"], ImportStatus.IMPORTED.value)
 
+    def test_importer_keeps_review_sources_out_of_targets(self) -> None:
+        importer = TargetImporter(self.store)
+
+        results = importer.import_candidates(
+            [
+                TargetCandidate(
+                    url="https://regiomanager.de/ranking/digital/it-dienstleister/essen/",
+                    source="serp:mock",
+                    status=LeadResultStatus.REVIEW_SOURCE,
+                )
+            ]
+        )
+
+        self.assertEqual(results[0].status, ImportStatus.REVIEW_SOURCE)
+        self.assertIsNone(results[0].target)
+        self.assertEqual(self.store.get_target_by_domain("regiomanager.de"), None)
+
     def test_fake_lead_engine_is_deterministic_from_search_profile(self) -> None:
         lead_engine = FakeLeadEngine()
 
