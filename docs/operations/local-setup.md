@@ -37,6 +37,16 @@ Copy-Item .env.example .env
 
 Echte lokale Werte gehoeren nur in `.env`.
 
+Die lokale UI bietet dafuer die Seite:
+
+```text
+http://127.0.0.1:8765/#secrets
+```
+
+Die Seite schreibt bekannte Infrastruktur- und Provider-Werte in `.env`.
+Vorhandene Secret-Werte werden nicht zurueck an den Browser gesendet. Ein leeres
+Secret-Feld bedeutet: bestehenden Wert behalten.
+
 Nicht versionieren:
 
 - `.env`

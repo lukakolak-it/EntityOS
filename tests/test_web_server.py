@@ -15,13 +15,32 @@ class WebServerTests(unittest.TestCase):
     def test_local_web_server_serves_ui_and_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             database_url = f"sqlite:///{Path(tmpdir) / 'target-radar.sqlite3'}"
-            server = create_server(database_url=database_url, host="127.0.0.1", port=0)
+            env_file = Path(tmpdir) / ".env"
+            env_file.write_text("SEARCH_PROVIDER=mock\n", encoding="utf-8")
+            server = create_server(
+                database_url=database_url,
+                host="127.0.0.1",
+                port=0,
+                env_file=env_file,
+            )
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
             base_url = f"http://127.0.0.1:{server.server_port}"
             try:
                 index = _http_text(f"{base_url}/")
                 provider_status_payload = _http_json(f"{base_url}/api/provider-status")
+                local_settings_payload = _http_json(f"{base_url}/api/local-settings")
+                saved_local_settings_payload = _http_json(
+                    f"{base_url}/api/local-settings",
+                    method="POST",
+                    payload={
+                        "values": {
+                            "SEARCH_PROVIDER": "brave",
+                            "BRAVE_API_KEY": "test-secret-value",
+                            "LOCAL_AI_BASE_URL": "http://127.0.0.1:11434",
+                        }
+                    },
+                )
                 run_payload = _http_json(
                     f"{base_url}/api/pipeline-runs/fake",
                     method="POST",
@@ -171,11 +190,21 @@ class WebServerTests(unittest.TestCase):
         self.assertIn("Target Radar", index)
         self.assertIn("#review", index)
         self.assertIn("#use-cases", index)
+        self.assertIn("#secrets", index)
         self.assertIn("Run konfigurieren", index)
         self.assertIn("Provider Status", index)
         self.assertTrue(provider_status_payload["search"]["mock_ready"])
         self.assertIn("models", provider_status_payload["llm"]["light"])
         self.assertNotIn("api_key", json.dumps(provider_status_payload).lower())
+        self.assertGreaterEqual(len(local_settings_payload["groups"]), 1)
+        self.assertEqual(
+            _settings_field(saved_local_settings_payload, "SEARCH_PROVIDER")["value"],
+            "brave",
+        )
+        saved_brave_field = _settings_field(saved_local_settings_payload, "BRAVE_API_KEY")
+        self.assertTrue(saved_brave_field["configured"])
+        self.assertEqual(saved_brave_field["value"], "")
+        self.assertNotIn("test-secret-value", json.dumps(saved_local_settings_payload))
         self.assertEqual(run_payload["run"]["status"], "completed")
         self.assertEqual(ui_run_payload["provider_mode"], "fake")
         self.assertEqual(ui_run_payload["llm_mode"], "off")
@@ -264,6 +293,14 @@ def _http_status(
         code = exc.code
         exc.close()
         return code
+
+
+def _settings_field(payload: dict[str, object], key: str) -> dict[str, object]:
+    for group in payload["groups"]:
+        for field in group["fields"]:
+            if field["key"] == key:
+                return field
+    raise AssertionError(f"settings field not found: {key}")
 
 
 if __name__ == "__main__":

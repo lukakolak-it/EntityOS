@@ -78,7 +78,8 @@ MVP-Entscheidung:
 - Produkt-Konfiguration liegt als Python-Konfiguration im Backend.
 - Presets liefern fachliche Defaults.
 - Suchprofil-Overrides werden spaeter ergaenzt.
-- Eine UI fuer Konfiguration ist nicht Teil des ersten MVP.
+- Die lokale UI darf bekannte `.env`-Werte unter `/#secrets` pflegen.
+- Secrets werden in dieser UI nur als konfiguriert/nicht konfiguriert angezeigt, nie als Klartextwert.
 
 Spaeter moeglich:
 

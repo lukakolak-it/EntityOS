@@ -22,6 +22,7 @@
         <a href="#use-cases" data-nav-page="use-cases">Use Cases</a>
         <a href="#profiles" data-nav-page="profiles">Profiles</a>
         <a href="#runs" data-nav-page="runs">Runs</a>
+        <a href="#secrets" data-nav-page="secrets">Secrets</a>
       </nav>
 
       <div class="toolbar">
@@ -346,6 +347,33 @@
             <h2 id="runsTitle">Runs</h2>
           </div>
           <div id="runsList" class="stack"></div>
+        </section>
+      </section>
+
+      <section class="page secrets-page" data-page="secrets" aria-label="Secrets">
+        <section class="panel local-settings-panel" aria-labelledby="localSettingsTitle">
+          <div class="panel-head">
+            <div>
+              <h2 id="localSettingsTitle">Secrets & Setup</h2>
+              <span id="localSettingsEnvFile" class="panel-subtitle"></span>
+            </div>
+            <span id="localSettingsCount" class="count">0</span>
+          </div>
+          <div class="detail">
+            <div id="localSettingsGroups" class="settings-groups"></div>
+            <div id="localSettingsStatus" class="editor-status"></div>
+            <div class="actions">
+              <button id="saveLocalSettingsButton" class="primary" type="button">Save Settings</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel secrets-status-panel" aria-labelledby="secretsStatusTitle">
+          <div class="panel-head">
+            <h2 id="secretsStatusTitle">Checks</h2>
+            <span class="status-pill active">local</span>
+          </div>
+          <div id="secretsProviderStatusList" class="stack"></div>
         </section>
       </section>
     </main>

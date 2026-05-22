@@ -6,6 +6,7 @@ const state = {
   useCases: [],
   searchProfiles: [],
   providerStatus: null,
+  localSettings: null,
   domainPolicies: null,
   selectedSearchProfileId: null,
   previewTimer: null,
@@ -15,7 +16,7 @@ const state = {
 const USE_CASE_TABS = (
   ["basis", "fields", "queries", "sources", "rating", "output", "review"]
 );
-const PAGE_IDS = new Set(["review", "use-cases", "profiles", "runs"]);
+const PAGE_IDS = new Set(["review", "use-cases", "profiles", "runs", "secrets"]);
 const RUN_DEFAULTS_KEY = "target-radar-run-defaults-v1";
 
 const elements = {
@@ -41,6 +42,7 @@ const elements = {
   statusLogList: document.querySelector("#statusLogList"),
   runsList: document.querySelector("#runsList"),
   providerStatusList: document.querySelector("#providerStatusList"),
+  secretsProviderStatusList: document.querySelector("#secretsProviderStatusList"),
   runSearchProfileSelect: document.querySelector("#runSearchProfileSelect"),
   runProviderMode: document.querySelector("#runProviderMode"),
   runLlmMode: document.querySelector("#runLlmMode"),
@@ -84,6 +86,11 @@ const elements = {
   addBlacklistDomainButton: document.querySelector("#addBlacklistDomainButton"),
   domainPolicyStatus: document.querySelector("#domainPolicyStatus"),
   domainPolicyList: document.querySelector("#domainPolicyList"),
+  localSettingsEnvFile: document.querySelector("#localSettingsEnvFile"),
+  localSettingsCount: document.querySelector("#localSettingsCount"),
+  localSettingsGroups: document.querySelector("#localSettingsGroups"),
+  localSettingsStatus: document.querySelector("#localSettingsStatus"),
+  saveLocalSettingsButton: document.querySelector("#saveLocalSettingsButton"),
 };
 
 document.querySelector("#refreshButton").addEventListener("click", refreshAll);
@@ -116,6 +123,7 @@ elements.newSearchProfileButton.addEventListener("click", () => renderSearchProf
 elements.saveSearchProfileButton.addEventListener("click", saveSearchProfileFromEditor);
 elements.deleteSearchProfileButton.addEventListener("click", deleteSelectedSearchProfile);
 elements.addBlacklistDomainButton.addEventListener("click", addBlacklistDomain);
+elements.saveLocalSettingsButton.addEventListener("click", saveLocalSettings);
 window.addEventListener("hashchange", renderPage);
 
 document.querySelectorAll("[data-action]").forEach((button) => {
@@ -137,6 +145,7 @@ async function refreshAll() {
   await loadUseCases();
   await Promise.all([
     loadProviderStatus(),
+    loadLocalSettings(),
     loadDomainPolicies(),
     loadQueue(),
     loadRuns(),
@@ -981,6 +990,101 @@ async function loadProviderStatus() {
   renderProviderStatus(data);
 }
 
+async function loadLocalSettings() {
+  const data = await api("/api/local-settings");
+  state.localSettings = data;
+  renderLocalSettings(data);
+}
+
+function renderLocalSettings(data) {
+  const fields = data.groups.flatMap((group) => group.fields);
+  elements.localSettingsEnvFile.textContent = data.env_file || "";
+  elements.localSettingsCount.textContent = String(fields.length);
+  elements.localSettingsGroups.innerHTML = "";
+
+  for (const group of data.groups) {
+    const section = document.createElement("section");
+    section.className = "settings-group";
+    const configuredCount = group.fields.filter((field) => (
+      field.secret ? field.configured : field.value !== ""
+    )).length;
+    section.innerHTML = `
+      <div class="settings-group-head">
+        <h3>${escapeHtml(group.name)}</h3>
+        <span class="count">${configuredCount}/${group.fields.length}</span>
+      </div>
+      <div class="settings-grid"></div>
+    `;
+    const grid = section.querySelector(".settings-grid");
+    for (const field of group.fields) {
+      const row = document.createElement("div");
+      row.className = "settings-field";
+      const status = field.secret
+        ? (field.configured ? "configured" : "missing")
+        : field.source;
+      row.innerHTML = `
+        <div class="settings-field-head">
+          <label for="${settingInputId(field.key)}">${escapeHtml(field.label)}</label>
+          ${pill(status)}
+        </div>
+        ${renderLocalSettingControl(field)}
+        <span class="setting-key">${escapeHtml(field.key)}</span>
+      `;
+      grid.appendChild(row);
+    }
+    elements.localSettingsGroups.appendChild(section);
+  }
+}
+
+function renderLocalSettingControl(field) {
+  const id = settingInputId(field.key);
+  const dataAttrs = `data-local-setting="${escapeAttribute(field.key)}" data-local-secret="${field.secret ? "true" : "false"}"`;
+  if (field.options?.length) {
+    const values = ["", ...field.options];
+    if (field.value && !values.includes(field.value)) {
+      values.push(field.value);
+    }
+    return `
+      <select id="${id}" ${dataAttrs}>
+        ${selectOptions(values, field.value)}
+      </select>
+    `;
+  }
+  if (field.secret) {
+    return `
+      <input id="${id}" ${dataAttrs} type="password" autocomplete="off" placeholder="${field.configured ? "configured" : ""}">
+    `;
+  }
+  return `
+    <input id="${id}" ${dataAttrs} value="${escapeAttribute(field.value || "")}">
+  `;
+}
+
+async function saveLocalSettings() {
+  elements.localSettingsStatus.textContent = "Saving...";
+  elements.saveLocalSettingsButton.disabled = true;
+  try {
+    const values = {};
+    elements.localSettingsGroups.querySelectorAll("[data-local-setting]").forEach((control) => {
+      const key = control.dataset.localSetting;
+      const value = control.value.trim();
+      if (control.dataset.localSecret === "true" && !value) return;
+      values[key] = value;
+    });
+    await api("/api/local-settings", { method: "POST", body: { values } });
+    elements.localSettingsStatus.textContent = "Saved";
+    await Promise.all([loadLocalSettings(), loadProviderStatus()]);
+  } catch (error) {
+    elements.localSettingsStatus.textContent = error.message;
+  } finally {
+    elements.saveLocalSettingsButton.disabled = false;
+  }
+}
+
+function settingInputId(key) {
+  return `setting-${className(key)}`;
+}
+
 function renderLightModelOptions(models, configuredModel) {
   const previous = elements.runLightModelSelect.value;
   const values = models.length ? models : [configuredModel].filter(Boolean);
@@ -1011,7 +1115,13 @@ function renderRunProfileOptions() {
 }
 
 function renderProviderStatus(status) {
-  elements.providerStatusList.innerHTML = "";
+  renderProviderStatusCards(status, elements.providerStatusList);
+  renderProviderStatusCards(status, elements.secretsProviderStatusList);
+}
+
+function renderProviderStatusCards(status, container) {
+  if (!container) return;
+  container.innerHTML = "";
   const cards = [
     {
       title: "Search",
@@ -1050,7 +1160,7 @@ function renderProviderStatus(status) {
       </div>
       ${renderList(card.lines)}
     `;
-    elements.providerStatusList.appendChild(item);
+    container.appendChild(item);
   }
 }
 

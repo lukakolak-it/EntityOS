@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import os
 import urllib.error
 import urllib.request
 from dataclasses import asdict, replace
@@ -15,6 +16,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from target_radar.config import AppConfig, load_app_config
+from target_radar.config.settings import DEFAULT_ENV_FILE, load_dotenv
 from target_radar.domain import (
     PipelinePhase,
     Profile,
@@ -57,6 +59,74 @@ FULL_PIPELINE_PHASES = (
     PipelinePhase.DRAFT,
 )
 
+LOCAL_SETTING_FIELDS: tuple[dict[str, Any], ...] = (
+    {
+        "group": "Local UI",
+        "key": "TARGET_RADAR_ENV",
+        "label": "Environment",
+        "options": ("local", "dev", "test"),
+    },
+    {"group": "Local UI", "key": "LOG_LEVEL", "label": "Log Level", "options": ("DEBUG", "INFO", "WARNING", "ERROR")},
+    {"group": "Local UI", "key": "DATABASE_URL", "label": "Database URL"},
+    {"group": "Local UI", "key": "TARGET_RADAR_HOST", "label": "Host"},
+    {"group": "Local UI", "key": "TARGET_RADAR_PORT", "label": "Port"},
+    {"group": "Local UI", "key": "LOG_FILE", "label": "Log File"},
+    {"group": "GitHub", "key": "GITHUB_TOKEN", "label": "GitHub Token", "secret": True},
+    {"group": "GitHub", "key": "GITHUB_OWNER", "label": "Owner"},
+    {"group": "GitHub", "key": "GITHUB_REPO", "label": "Repository"},
+    {
+        "group": "Search",
+        "key": "SEARCH_PROVIDER",
+        "label": "Search Provider",
+        "options": ("mock", "brave", "searxng", "serpapi", "google"),
+    },
+    {"group": "Search", "key": "SEARCH_ENGINE_TOKEN", "label": "Search Engine Token", "secret": True},
+    {"group": "Search", "key": "BRAVE_API_KEY", "label": "Brave API Key", "secret": True},
+    {"group": "Search", "key": "SERPAPI_API_KEY", "label": "SerpApi Key", "secret": True},
+    {"group": "Search", "key": "GOOGLE_CSE_API_KEY", "label": "Google CSE Key", "secret": True},
+    {"group": "Search", "key": "GOOGLE_CSE_ID", "label": "Google CSE ID"},
+    {"group": "Search", "key": "SEARXNG_BASE_URL", "label": "SearXNG Base URL"},
+    {"group": "LLM", "key": "LLM_PROVIDER", "label": "Default Provider", "options": ("local", "ollama", "openai", "fake")},
+    {"group": "LLM", "key": "LLM_MODEL", "label": "Default Model"},
+    {"group": "LLM", "key": "LLM_LIGHT_PROVIDER", "label": "Light Provider", "options": ("ollama", "local", "openai", "fake")},
+    {"group": "LLM", "key": "LLM_LIGHT_MODEL", "label": "Light Model"},
+    {"group": "LLM", "key": "LLM_HEAVY_PROVIDER", "label": "Heavy Provider", "options": ("openai", "ollama", "local", "fake")},
+    {"group": "LLM", "key": "LLM_HEAVY_MODEL", "label": "Heavy Model"},
+    {"group": "LLM", "key": "OPENAI_API_KEY", "label": "OpenAI API Key", "secret": True},
+    {"group": "LLM", "key": "OPENAI_BASE_URL", "label": "OpenAI Base URL"},
+    {"group": "LLM", "key": "OPENAI_MODEL", "label": "OpenAI Model"},
+    {"group": "LLM", "key": "ANTHROPIC_API_KEY", "label": "Anthropic API Key", "secret": True},
+    {"group": "LLM", "key": "ANTHROPIC_MODEL", "label": "Anthropic Model"},
+    {"group": "LLM", "key": "GEMINI_API_KEY", "label": "Gemini API Key", "secret": True},
+    {"group": "LLM", "key": "GEMINI_MODEL", "label": "Gemini Model"},
+    {"group": "LLM", "key": "MISTRAL_API_KEY", "label": "Mistral API Key", "secret": True},
+    {"group": "LLM", "key": "MISTRAL_MODEL", "label": "Mistral Model"},
+    {"group": "Local AI", "key": "LOCAL_AI_PROVIDER", "label": "Local Provider", "options": ("ollama", "local", "openai-compatible")},
+    {"group": "Local AI", "key": "LOCAL_AI_BASE_URL", "label": "Local Base URL"},
+    {"group": "Local AI", "key": "LOCAL_AI_OPENAI_BASE_URL", "label": "Local OpenAI Base URL"},
+    {"group": "Local AI", "key": "LOCAL_AI_MODEL", "label": "Local Model"},
+    {"group": "Local AI", "key": "LOCAL_AI_API_KEY", "label": "Local API Key", "secret": True},
+    {"group": "Pipeline", "key": "TARGET_RADAR_REQUEST_BUDGET", "label": "Request Budget"},
+    {"group": "Pipeline", "key": "TARGET_RADAR_RESULTS_PER_QUERY", "label": "Results per Query"},
+    {"group": "Pipeline", "key": "TARGET_RADAR_MAX_RAW_RESULTS", "label": "Max Raw Results"},
+    {"group": "Pipeline", "key": "TARGET_RADAR_DEFAULT_PROVIDER", "label": "Default Provider", "options": ("mock", "brave")},
+    {"group": "Pipeline", "key": "TARGET_RADAR_SOURCE_BLOCK_THRESHOLD", "label": "Source Block Threshold"},
+    {"group": "Pipeline", "key": "TARGET_RADAR_BLOCKED_SOURCE_DOMAINS", "label": "Blocked Source Domains"},
+    {"group": "Rating", "key": "TARGET_RADAR_MIN_RULE_SCORE_FOR_AI", "label": "Min Rule Score for AI"},
+    {"group": "Rating", "key": "TARGET_RADAR_MIN_AI_SCORE_FOR_REVIEW", "label": "Min AI Score for Review"},
+    {"group": "Rating", "key": "TARGET_RADAR_MIN_AI_SCORE_FOR_DRAFT", "label": "Min AI Score for Draft"},
+    {"group": "Rating", "key": "TARGET_RADAR_MIN_CONFIDENCE_FOR_DRAFT", "label": "Min Confidence for Draft"},
+    {"group": "Rating", "key": "TARGET_RADAR_HARD_STOP_ACTION", "label": "Hard Stop Action", "options": ("skip", "review", "draft")},
+    {"group": "Fetch", "key": "TARGET_RADAR_FETCH_TIMEOUT_SECONDS", "label": "Timeout Seconds"},
+    {"group": "Fetch", "key": "TARGET_RADAR_MAX_PAGES_PER_TARGET", "label": "Max Pages per Target"},
+    {"group": "Fetch", "key": "TARGET_RADAR_USER_AGENT", "label": "User Agent"},
+    {"group": "Review", "key": "TARGET_RADAR_REVIEW_PAGE_SIZE", "label": "Page Size"},
+    {"group": "Review", "key": "TARGET_RADAR_REVIEW_MAX_PAGE_SIZE", "label": "Max Page Size"},
+    {"group": "Draft", "key": "TARGET_RADAR_DRAFT_LANGUAGE", "label": "Draft Language"},
+    {"group": "Draft", "key": "TARGET_RADAR_DRAFT_TYPE", "label": "Draft Type"},
+    {"group": "Draft", "key": "TARGET_RADAR_DRAFT_MAX_BODY_CHARS", "label": "Max Body Chars"},
+)
+
 
 class UseCaseImportConflict(ValueError):
     """Raised when an imported use case collides with an existing slug."""
@@ -88,13 +158,19 @@ def create_server(
     host: str = "127.0.0.1",
     port: int = 8765,
     app_config: AppConfig | None = None,
+    env_file: str | Path | None = DEFAULT_ENV_FILE,
 ) -> ThreadingHTTPServer:
-    handler = _make_handler(database_url, app_config=app_config)
+    handler = _make_handler(database_url, app_config=app_config, env_file=env_file)
     return ThreadingHTTPServer((host, port), handler)
 
 
-def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
-    base_config = app_config or load_app_config()
+def _make_handler(
+    database_url: str,
+    *,
+    app_config: AppConfig | None = None,
+    env_file: str | Path | None = DEFAULT_ENV_FILE,
+):
+    base_config = app_config or load_app_config(env_file=env_file)
 
     class TargetRadarHandler(BaseHTTPRequestHandler):
         server_version = "TargetRadarLocal/0.1"
@@ -110,6 +186,8 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
                     self._send_json({"status": "ok", "host": "127.0.0.1"})
                 elif parsed.path == "/api/provider-status":
                     self._handle_provider_status()
+                elif parsed.path == "/api/local-settings":
+                    self._handle_local_settings()
                 elif parsed.path == "/api/domain-policies":
                     self._handle_domain_policies()
                 elif parsed.path == "/api/use-cases":
@@ -140,6 +218,8 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
                     self._handle_pipeline_run_start()
                 elif parsed.path == "/api/run-preview":
                     self._handle_run_preview()
+                elif parsed.path == "/api/local-settings":
+                    self._handle_local_settings_save()
                 elif parsed.path == "/api/search-profiles":
                     self._handle_search_profile_create()
                 elif parsed.path == "/api/domain-policies/blacklist":
@@ -195,13 +275,27 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
 
         def _config(self) -> AppConfig:
             try:
-                return load_app_config()
+                return load_app_config(env_file=env_file)
             except Exception:
                 LOGGER.warning("failed to reload app config; using server startup config")
                 return base_config
 
         def _handle_provider_status(self) -> None:
             self._send_json(_provider_status_payload(self._config(), database_url))
+
+        def _handle_local_settings(self) -> None:
+            self._send_json(_local_settings_payload(self._config(), env_file=env_file))
+
+        def _handle_local_settings_save(self) -> None:
+            payload = self._read_json(default={})
+            values = payload.get("values")
+            if not isinstance(values, dict):
+                raise ValueError("values must be an object")
+            updates = _local_setting_updates(values)
+            if updates:
+                _validate_local_setting_updates(env_file, updates)
+                _update_env_file_values(env_file, updates)
+            self._send_json(_local_settings_payload(self._config(), env_file=env_file))
 
         def _handle_domain_policies(self) -> None:
             store = self._store()
@@ -689,6 +783,197 @@ def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
             self._send_json({"error": message}, status=status)
 
     return TargetRadarHandler
+
+
+def _local_settings_payload(
+    config: AppConfig,
+    *,
+    env_file: str | Path | None,
+) -> dict[str, Any]:
+    env_values = load_dotenv(env_file) if env_file is not None else {}
+    current_values = _local_setting_current_values(config)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+
+    for field in LOCAL_SETTING_FIELDS:
+        key = str(field["key"])
+        is_secret = bool(field.get("secret"))
+        configured = bool(
+            _non_empty_value(env_values.get(key))
+            or _non_empty_value(os.environ.get(key))
+            or (is_secret and _non_empty_value(current_values.get(key)))
+        )
+        if key in env_values:
+            source = ".env"
+        elif key in os.environ:
+            source = "process"
+        else:
+            source = "default"
+
+        payload_field = {
+            "key": key,
+            "label": field["label"],
+            "secret": is_secret,
+            "configured": configured,
+            "source": source,
+            "value": "" if is_secret else str(current_values.get(key, "") or ""),
+        }
+        if "options" in field:
+            payload_field["options"] = list(field["options"])
+        grouped.setdefault(str(field["group"]), []).append(payload_field)
+
+    return {
+        "env_file": str(env_file) if env_file is not None else None,
+        "groups": [
+            {"name": group, "fields": fields}
+            for group, fields in grouped.items()
+        ],
+    }
+
+
+def _local_setting_current_values(config: AppConfig) -> dict[str, str | None]:
+    return {
+        "TARGET_RADAR_ENV": config.infrastructure.environment,
+        "LOG_LEVEL": config.infrastructure.log_level,
+        "DATABASE_URL": config.infrastructure.database_url,
+        "TARGET_RADAR_HOST": config.infrastructure.host,
+        "TARGET_RADAR_PORT": str(config.infrastructure.port),
+        "LOG_FILE": config.infrastructure.log_file,
+        "GITHUB_TOKEN": config.github.token,
+        "GITHUB_OWNER": config.github.owner,
+        "GITHUB_REPO": config.github.repo,
+        "LLM_PROVIDER": config.llm.provider,
+        "LLM_MODEL": config.llm.model,
+        "LLM_HEAVY_PROVIDER": config.llm.heavy_provider,
+        "LLM_HEAVY_MODEL": config.llm.heavy_model,
+        "LLM_LIGHT_PROVIDER": config.llm.light_provider,
+        "LLM_LIGHT_MODEL": config.llm.light_model,
+        "OPENAI_API_KEY": config.llm.openai_api_key,
+        "OPENAI_BASE_URL": config.llm.openai_base_url,
+        "OPENAI_MODEL": config.llm.openai_model,
+        "ANTHROPIC_API_KEY": config.llm.anthropic_api_key,
+        "ANTHROPIC_MODEL": config.llm.anthropic_model,
+        "GEMINI_API_KEY": config.llm.gemini_api_key,
+        "GEMINI_MODEL": config.llm.gemini_model,
+        "MISTRAL_API_KEY": config.llm.mistral_api_key,
+        "MISTRAL_MODEL": config.llm.mistral_model,
+        "LOCAL_AI_PROVIDER": config.llm.local_provider,
+        "LOCAL_AI_BASE_URL": config.llm.local_base_url,
+        "LOCAL_AI_OPENAI_BASE_URL": config.llm.local_openai_base_url,
+        "LOCAL_AI_MODEL": config.llm.local_model,
+        "LOCAL_AI_API_KEY": config.llm.local_api_key,
+        "SEARCH_PROVIDER": config.search_provider.provider,
+        "SEARCH_ENGINE_TOKEN": config.search_provider.search_engine_token,
+        "BRAVE_API_KEY": config.search_provider.brave_api_key,
+        "SERPAPI_API_KEY": config.search_provider.serpapi_api_key,
+        "GOOGLE_CSE_API_KEY": config.search_provider.google_cse_api_key,
+        "GOOGLE_CSE_ID": config.search_provider.google_cse_id,
+        "SEARXNG_BASE_URL": config.search_provider.searxng_base_url,
+        "TARGET_RADAR_REQUEST_BUDGET": str(config.lead_budget.request_budget),
+        "TARGET_RADAR_RESULTS_PER_QUERY": str(config.lead_budget.results_per_query),
+        "TARGET_RADAR_MAX_RAW_RESULTS": str(config.lead_budget.max_raw_results),
+        "TARGET_RADAR_DEFAULT_PROVIDER": config.lead_budget.default_provider,
+        "TARGET_RADAR_SOURCE_BLOCK_THRESHOLD": str(config.lead_budget.source_block_threshold),
+        "TARGET_RADAR_BLOCKED_SOURCE_DOMAINS": ",".join(config.lead_budget.blocked_source_domains),
+        "TARGET_RADAR_MIN_RULE_SCORE_FOR_AI": str(config.rating.min_rule_score_for_ai),
+        "TARGET_RADAR_MIN_AI_SCORE_FOR_REVIEW": str(config.rating.min_ai_score_for_review),
+        "TARGET_RADAR_MIN_AI_SCORE_FOR_DRAFT": str(config.rating.min_ai_score_for_draft),
+        "TARGET_RADAR_MIN_CONFIDENCE_FOR_DRAFT": str(config.rating.min_confidence_for_draft),
+        "TARGET_RADAR_HARD_STOP_ACTION": config.rating.hard_stop_action,
+        "TARGET_RADAR_FETCH_TIMEOUT_SECONDS": str(config.fetch.timeout_seconds),
+        "TARGET_RADAR_MAX_PAGES_PER_TARGET": str(config.fetch.max_pages_per_target),
+        "TARGET_RADAR_USER_AGENT": config.fetch.user_agent,
+        "TARGET_RADAR_REVIEW_PAGE_SIZE": str(config.review_queue.page_size),
+        "TARGET_RADAR_REVIEW_MAX_PAGE_SIZE": str(config.review_queue.max_page_size),
+        "TARGET_RADAR_DRAFT_LANGUAGE": config.draft.default_draft_language,
+        "TARGET_RADAR_DRAFT_TYPE": config.draft.default_draft_type,
+        "TARGET_RADAR_DRAFT_MAX_BODY_CHARS": str(config.draft.max_body_chars),
+    }
+
+
+def _local_setting_updates(values: dict[str, Any]) -> dict[str, str]:
+    fields_by_key = {str(field["key"]): field for field in LOCAL_SETTING_FIELDS}
+    updates: dict[str, str] = {}
+    for key, raw_value in values.items():
+        if key not in fields_by_key:
+            raise ValueError(f"unknown local setting: {key}")
+        value = str(raw_value or "").strip()
+        if "\n" in value or "\r" in value:
+            raise ValueError(f"local setting cannot contain newlines: {key}")
+        if fields_by_key[key].get("secret") and not value:
+            continue
+        updates[key] = value
+    return updates
+
+
+def _update_env_file_values(
+    env_file: str | Path | None,
+    updates: dict[str, str],
+) -> None:
+    if env_file is None:
+        raise ValueError("local settings env file is disabled")
+
+    env_path = Path(env_file)
+    lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
+    rendered = {key: f"{key}={_format_env_value(value)}" for key, value in updates.items()}
+    seen: set[str] = set()
+    next_lines: list[str] = []
+
+    for line in lines:
+        key = _env_line_key(line)
+        if key in rendered:
+            next_lines.append(rendered[key])
+            seen.add(key)
+        else:
+            next_lines.append(line)
+
+    missing = [str(field["key"]) for field in LOCAL_SETTING_FIELDS if field["key"] in rendered and field["key"] not in seen]
+    if missing and next_lines and next_lines[-1].strip():
+        next_lines.append("")
+    for key in missing:
+        next_lines.append(rendered[key])
+
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_path.write_text("\n".join(next_lines).rstrip() + "\n", encoding="utf-8")
+
+
+def _validate_local_setting_updates(
+    env_file: str | Path | None,
+    updates: dict[str, str],
+) -> None:
+    values = dict(os.environ)
+    if env_file is not None:
+        values.update(load_dotenv(env_file))
+    values.update(updates)
+    load_app_config(env_file=None, environ=values)
+
+
+def _env_line_key(line: str) -> str | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith("#") or "=" not in stripped:
+        return None
+    if stripped.startswith("export "):
+        stripped = stripped.removeprefix("export ").strip()
+    key = stripped.split("=", 1)[0].strip()
+    return key or None
+
+
+def _format_env_value(value: str) -> str:
+    if value == "":
+        return ""
+    should_quote = any(char.isspace() for char in value) or any(
+        char in value for char in ('"', "'", "#", "=")
+    )
+    if not should_quote:
+        return value
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+    return f'"{escaped}"'
+
+
+def _non_empty_value(value: object) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
 
 
 def _parse_id_path(path: str, prefix: str) -> int:
