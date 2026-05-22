@@ -597,7 +597,7 @@ def _orchestrator_for_run(
         rating_engine = (
             RatingEngine()
             if llm_mode == "off"
-            else RatingEngine(ai_provider=FakeAIRatingProvider())
+            else create_rating_engine(config, task="light")
         )
         return (
             PipelineOrchestrator(
