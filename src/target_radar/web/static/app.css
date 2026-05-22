@@ -370,6 +370,10 @@ textarea {
   border-top: 1px solid var(--line);
 }
 
+.import-detail {
+  border-top: 1px solid var(--line);
+}
+
 .detail-grid.compact {
   margin-bottom: 12px;
 }

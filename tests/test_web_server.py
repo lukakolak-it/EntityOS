@@ -4,6 +4,7 @@ import json
 import tempfile
 import threading
 import unittest
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -34,6 +35,9 @@ class WebServerTests(unittest.TestCase):
                 use_case_detail_payload = _http_json(
                     f"{base_url}/api/use-cases/application_student"
                 )
+                use_case_export_payload = _http_json(
+                    f"{base_url}/api/use-cases/application_student/export"
+                )
                 filtered_queue_payload = _http_json(
                     f"{base_url}/api/review-queue?use_case_id={application_use_case['db_id']}"
                 )
@@ -50,6 +54,22 @@ class WebServerTests(unittest.TestCase):
                     f"{base_url}/api/use-cases/application_copy",
                     method="PATCH",
                     payload={"config": edited_config},
+                )
+                imported_use_case_payload = _http_json(
+                    f"{base_url}/api/use-cases/import",
+                    method="POST",
+                    payload={
+                        "conflict": "rename",
+                        "use_case": use_case_export_payload["use_case"],
+                    },
+                )
+                import_conflict_status = _http_status(
+                    f"{base_url}/api/use-cases/import",
+                    method="POST",
+                    payload={
+                        "conflict": "reject",
+                        "use_case": use_case_export_payload["use_case"],
+                    },
                 )
                 patched_profile_payload = _http_json(
                     f"{base_url}/api/search-profiles/{search_profiles_payload['search_profiles'][0]['id']}",
@@ -83,6 +103,8 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(run_payload["run"]["status"], "completed")
         self.assertGreaterEqual(len(use_cases_payload["use_cases"]), 2)
         self.assertEqual(use_case_detail_payload["use_case"]["slug"], "application_student")
+        self.assertEqual(use_case_export_payload["format"], "target-radar-use-case-v1")
+        self.assertNotIn("db_id", use_case_export_payload["use_case"])
         self.assertGreaterEqual(len(filtered_queue_payload["items"]), 1)
         self.assertEqual(filtered_queue_payload["items"][0]["use_case_slug"], "application_student")
         self.assertGreaterEqual(len(search_profiles_payload["search_profiles"]), 1)
@@ -92,6 +114,12 @@ class WebServerTests(unittest.TestCase):
             "{role} remote {region}",
             updated_use_case_payload["use_case"]["query_policy"]["templates"],
         )
+        self.assertEqual(imported_use_case_payload["import_status"], "renamed")
+        self.assertEqual(
+            imported_use_case_payload["use_case"]["created_from_template"],
+            "application_student",
+        )
+        self.assertEqual(import_conflict_status, 409)
         self.assertEqual(
             patched_profile_payload["search_profile"]["use_case_id"],
             cloned_use_case_payload["use_case"]["db_id"],
@@ -122,6 +150,28 @@ def _http_json(
 def _http_text(url: str) -> str:
     with urllib.request.urlopen(url, timeout=10) as response:
         return response.read().decode("utf-8")
+
+
+def _http_status(
+    url: str,
+    *,
+    method: str,
+    payload: dict[str, object],
+) -> int:
+    data = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method=method,
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status
+    except urllib.error.HTTPError as exc:
+        code = exc.code
+        exc.close()
+        return code
 
 
 if __name__ == "__main__":

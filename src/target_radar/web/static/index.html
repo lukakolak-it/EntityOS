@@ -117,6 +117,25 @@
         </div>
         <div id="useCaseList" class="stack"></div>
         <div id="useCaseDetail" class="detail usecase-detail hidden"></div>
+        <div class="detail import-detail">
+          <h3>Import</h3>
+          <div class="form-grid">
+            <div>
+              <label>Conflict</label>
+              <select id="importConflict">
+                <option value="rename">rename</option>
+                <option value="reject">reject</option>
+                <option value="overwrite">overwrite</option>
+              </select>
+            </div>
+          </div>
+          <label>JSON</label>
+          <textarea id="importUseCaseJson" class="code-input"></textarea>
+          <div id="importUseCaseStatus" class="editor-status"></div>
+          <div class="actions">
+            <button id="importUseCaseButton" type="button">Import</button>
+          </div>
+        </div>
       </section>
 
       <section class="panel profiles-panel" aria-labelledby="profilesTitle">

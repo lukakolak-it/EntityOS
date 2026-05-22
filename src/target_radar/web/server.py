@@ -35,6 +35,10 @@ STATIC_DIR = Path(__file__).with_name("static")
 LOGGER = logging.getLogger(__name__)
 
 
+class UseCaseImportConflict(ValueError):
+    """Raised when an imported use case collides with an existing slug."""
+
+
 def serve(
     *,
     database_url: str,
@@ -102,6 +106,8 @@ def _make_handler(database_url: str):
             try:
                 if parsed.path == "/api/pipeline-runs/fake":
                     self._handle_fake_run()
+                elif parsed.path == "/api/use-cases/import":
+                    self._handle_use_case_import()
                 elif parsed.path.startswith("/api/use-cases/"):
                     self._handle_use_case_action(parsed.path)
                 elif parsed.path.startswith("/api/targets/"):
@@ -168,6 +174,14 @@ def _make_handler(database_url: str):
 
         def _handle_use_case_detail(self, path: str) -> None:
             slug, action = _parse_use_case_path(path)
+            if action == "export":
+                store = self._store()
+                try:
+                    use_case = store.get_use_case_by_slug(slug)
+                    self._send_json(_use_case_export_payload(use_case))
+                finally:
+                    store.close()
+                return
             if action is not None:
                 self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "use POST for actions")
                 return
@@ -200,6 +214,29 @@ def _make_handler(database_url: str):
                     {"use_case": _use_case_payload(store, cloned)},
                     status=HTTPStatus.CREATED,
                 )
+            finally:
+                store.close()
+
+        def _handle_use_case_import(self) -> None:
+            payload = self._read_json(default={})
+            conflict = str(payload.get("conflict") or "reject").strip().lower()
+            config = _import_config_from_payload(payload)
+            store = self._store()
+            try:
+                imported, import_status = _import_use_case(store, config, conflict=conflict)
+                self._send_json(
+                    {
+                        "import_status": import_status,
+                        "use_case": _use_case_payload(store, imported),
+                    },
+                    status=(
+                        HTTPStatus.OK
+                        if import_status == "overwritten"
+                        else HTTPStatus.CREATED
+                    ),
+                )
+            except UseCaseImportConflict as exc:
+                self._send_json({"error": str(exc)}, status=HTTPStatus.CONFLICT)
             finally:
                 store.close()
 
@@ -496,6 +533,60 @@ def _use_case_payload(store: SQLiteStore, use_case: UseCaseConfig) -> dict[str, 
     return payload
 
 
+def _use_case_export_payload(use_case: UseCaseConfig) -> dict[str, Any]:
+    return {
+        "format": "target-radar-use-case-v1",
+        "use_case": use_case.to_dict(),
+    }
+
+
+def _import_config_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    raw_config = payload.get("config")
+    if raw_config is None:
+        raw_config = payload.get("use_case")
+    if raw_config is None and payload.get("format") == "target-radar-use-case-v1":
+        raw_config = payload.get("use_case")
+    if raw_config is None:
+        raw_config = payload
+    if not isinstance(raw_config, dict):
+        raise ValueError("import payload must contain a use_case object")
+    config = dict(raw_config)
+    config.pop("db_id", None)
+    config.pop("slug", None)
+    return config
+
+
+def _import_use_case(
+    store: SQLiteStore,
+    config: dict[str, Any],
+    *,
+    conflict: str,
+) -> tuple[UseCaseConfig, str]:
+    if conflict not in {"reject", "rename", "overwrite"}:
+        raise ValueError("conflict must be one of: reject, rename, overwrite")
+
+    selected = validate_use_case_config(config)
+    exists = _use_case_slug_exists(store, selected.id)
+    if not exists:
+        store.save_use_case(selected)
+        return store.get_use_case_by_slug(selected.id), "created"
+
+    if conflict == "reject":
+        raise UseCaseImportConflict(f"use case already exists: {selected.id}")
+
+    if conflict == "overwrite":
+        store.save_use_case(selected)
+        return store.get_use_case_by_slug(selected.id), "overwritten"
+
+    renamed_payload = selected.to_dict()
+    renamed_payload["id"] = _unique_import_slug(store, selected.id)
+    renamed_payload["name"] = f"{selected.name} Import"
+    renamed_payload["created_from_template"] = selected.created_from_template or selected.id
+    renamed = validate_use_case_config(renamed_payload)
+    store.save_use_case(renamed)
+    return store.get_use_case_by_slug(renamed.id), "renamed"
+
+
 def _clone_use_case(
     store: SQLiteStore,
     source: UseCaseConfig,
@@ -523,6 +614,15 @@ def _clone_use_case(
 
 def _unique_clone_slug(store: SQLiteStore, source_slug: str) -> str:
     base = _slugify(f"{source_slug}_copy")
+    return _unique_slug(store, base)
+
+
+def _unique_import_slug(store: SQLiteStore, source_slug: str) -> str:
+    base = _slugify(f"{source_slug}_import")
+    return _unique_slug(store, base)
+
+
+def _unique_slug(store: SQLiteStore, base: str) -> str:
     candidate = base
     suffix = 2
     while _use_case_slug_exists(store, candidate):

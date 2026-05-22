@@ -31,6 +31,10 @@ const elements = {
   useCaseCount: document.querySelector("#useCaseCount"),
   useCaseList: document.querySelector("#useCaseList"),
   useCaseDetail: document.querySelector("#useCaseDetail"),
+  importConflict: document.querySelector("#importConflict"),
+  importUseCaseJson: document.querySelector("#importUseCaseJson"),
+  importUseCaseStatus: document.querySelector("#importUseCaseStatus"),
+  importUseCaseButton: document.querySelector("#importUseCaseButton"),
   searchProfilesList: document.querySelector("#searchProfilesList"),
 };
 
@@ -45,6 +49,7 @@ document.querySelector("#runFakeButton").addEventListener("click", async () => {
 });
 
 elements.queueUseCaseFilter.addEventListener("change", loadQueue);
+elements.importUseCaseButton.addEventListener("click", importUseCaseFromTextarea);
 
 document.querySelectorAll("[data-action]").forEach((button) => {
   button.addEventListener("click", async () => {
@@ -133,6 +138,7 @@ function renderUseCases() {
       <div class="actions">
         <button type="button" data-use-case-detail="${escapeAttribute(useCase.slug)}">Details</button>
         <button type="button" data-use-case-clone="${escapeAttribute(useCase.slug)}">Clone</button>
+        <button type="button" data-use-case-export="${escapeAttribute(useCase.slug)}">Export</button>
       </div>
     `;
     item.querySelector("[data-use-case-detail]").addEventListener("click", () => {
@@ -143,6 +149,11 @@ function renderUseCases() {
       const data = await api(`/api/use-cases/${useCase.slug}/clone`, { method: "POST", body: {} });
       state.selectedUseCaseSlug = data.use_case.slug;
       await refreshAll();
+    });
+    item.querySelector("[data-use-case-export]").addEventListener("click", async () => {
+      const data = await api(`/api/use-cases/${useCase.slug}/export`);
+      elements.importUseCaseJson.value = jsonText(data);
+      elements.importUseCaseStatus.textContent = `Export ready: ${useCase.slug}`;
     });
     elements.useCaseList.appendChild(item);
   }
@@ -372,6 +383,25 @@ async function saveUseCaseFromEditor(useCase) {
     await loadQueue();
   } catch (error) {
     status.textContent = error.message;
+  }
+}
+
+async function importUseCaseFromTextarea() {
+  try {
+    const payload = JSON.parse(elements.importUseCaseJson.value);
+    const data = await api("/api/use-cases/import", {
+      method: "POST",
+      body: {
+        conflict: elements.importConflict.value,
+        ...payload,
+      },
+    });
+    state.selectedUseCaseSlug = data.use_case.slug;
+    elements.importUseCaseStatus.textContent = `Imported: ${data.import_status}`;
+    elements.importUseCaseJson.value = "";
+    await refreshAll();
+  } catch (error) {
+    elements.importUseCaseStatus.textContent = error.message;
   }
 }
 
