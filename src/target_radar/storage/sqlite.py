@@ -272,6 +272,45 @@ class SQLiteStore:
             raise NotFoundError(f"search profile not found: {search_profile_id}")
         return _search_profile_from_row(row)
 
+    def list_search_profiles(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        rows = self.connection.execute(
+            """
+            SELECT
+                search_profiles.*,
+                profiles.name AS profile_name,
+                use_cases.slug AS use_case_slug,
+                use_cases.name AS use_case_name
+            FROM search_profiles
+            INNER JOIN profiles
+                ON profiles.id = search_profiles.profile_id
+            LEFT JOIN use_cases
+                ON use_cases.id = search_profiles.use_case_id
+            ORDER BY search_profiles.created_at DESC, search_profiles.id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [_search_profile_payload_from_row(row) for row in rows]
+
+    def update_search_profile_use_case(
+        self,
+        search_profile_id: int,
+        use_case_id: int,
+    ) -> SearchProfile:
+        self.get_use_case(use_case_id)
+        cursor = self.connection.execute(
+            """
+            UPDATE search_profiles
+            SET use_case_id = ?
+            WHERE id = ?
+            """,
+            (use_case_id, search_profile_id),
+        )
+        if cursor.rowcount == 0:
+            raise NotFoundError(f"search profile not found: {search_profile_id}")
+        self.connection.commit()
+        return self.get_search_profile(search_profile_id)
+
     def create_pipeline_run(self, run: PipelineRun) -> PipelineRun:
         use_case_id, use_case_version, use_case_snapshot = self._pipeline_use_case_context(run)
         cursor = self.connection.execute(
@@ -890,9 +929,21 @@ class SQLiteStore:
         *,
         limit: int = 50,
         offset: int = 0,
+        use_case_id: int | None = None,
     ) -> list[dict[str, Any]]:
+        use_case_filter = ""
+        params: list[object] = [
+            TargetStatus.NEEDS_REVIEW.value,
+            TargetStatus.RATING_PARTIAL.value,
+            TargetStatus.DRAFT_PENDING.value,
+            TargetStatus.DRAFT_FAILED.value,
+        ]
+        if use_case_id is not None:
+            use_case_filter = "AND pipeline_runs.use_case_id = ?"
+            params.append(use_case_id)
+        params.extend([limit, offset])
         rows = self.connection.execute(
-            """
+            f"""
             SELECT
                 targets.id,
                 targets.domain,
@@ -900,11 +951,17 @@ class SQLiteStore:
                 targets.source,
                 targets.status,
                 targets.updated_at,
+                latest_score.pipeline_run_id AS score_pipeline_run_id,
                 latest_score.rule_score,
                 latest_score.ai_score,
                 latest_score.confidence,
                 latest_score.recommended_action,
-                latest_score.rating_status
+                latest_score.rating_status,
+                pipeline_runs.id AS pipeline_run_id,
+                pipeline_runs.search_profile_id,
+                pipeline_runs.use_case_id,
+                use_cases.slug AS use_case_slug,
+                use_cases.name AS use_case_name
             FROM targets
             LEFT JOIN (
                 SELECT target_scores.*
@@ -918,7 +975,28 @@ class SQLiteStore:
                     AND latest.max_id = target_scores.id
             ) latest_score
                 ON latest_score.target_id = targets.id
+            LEFT JOIN (
+                SELECT target_status_log.target_id, target_status_log.pipeline_run_id
+                FROM target_status_log
+                INNER JOIN (
+                    SELECT target_id, MAX(id) AS max_id
+                    FROM target_status_log
+                    WHERE pipeline_run_id IS NOT NULL
+                    GROUP BY target_id
+                ) latest_log
+                    ON latest_log.target_id = target_status_log.target_id
+                    AND latest_log.max_id = target_status_log.id
+            ) latest_status_log
+                ON latest_status_log.target_id = targets.id
+            LEFT JOIN pipeline_runs
+                ON pipeline_runs.id = COALESCE(
+                    latest_score.pipeline_run_id,
+                    latest_status_log.pipeline_run_id
+                )
+            LEFT JOIN use_cases
+                ON use_cases.id = pipeline_runs.use_case_id
             WHERE targets.status IN (?, ?, ?, ?)
+            {use_case_filter}
             ORDER BY
                 CASE latest_score.recommended_action
                     WHEN 'draft' THEN 0
@@ -932,14 +1010,7 @@ class SQLiteStore:
                 targets.id DESC
             LIMIT ? OFFSET ?
             """,
-            (
-                TargetStatus.NEEDS_REVIEW.value,
-                TargetStatus.RATING_PARTIAL.value,
-                TargetStatus.DRAFT_PENDING.value,
-                TargetStatus.DRAFT_FAILED.value,
-                limit,
-                offset,
-            ),
+            tuple(params),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1024,6 +1095,27 @@ def _search_profile_from_row(row: sqlite3.Row) -> SearchProfile:
         draft_language=row["draft_language"],
         created_at=_parse_dt(row["created_at"]),
     )
+
+
+def _search_profile_payload_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "profile_id": int(row["profile_id"]),
+        "profile_name": row["profile_name"],
+        "use_case_id": row["use_case_id"],
+        "use_case_slug": row["use_case_slug"],
+        "use_case_name": row["use_case_name"],
+        "name": row["name"],
+        "roles": _json_loads(row["roles_json"], []),
+        "regions": _json_loads(row["regions_json"], []),
+        "tech_keywords": _json_loads(row["tech_keywords_json"], []),
+        "industry_keywords": _json_loads(row["industry_keywords_json"], []),
+        "exclude_keywords": _json_loads(row["exclude_keywords_json"], []),
+        "attributes": _json_loads(row["attributes_json"], {}),
+        "manual_query": row["manual_query"],
+        "draft_language": row["draft_language"],
+        "created_at": row["created_at"],
+    }
 
 
 def _target_from_row(row: sqlite3.Row) -> Target:

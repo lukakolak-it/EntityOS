@@ -28,6 +28,7 @@ from target_radar.pipeline import (
     PipelineRunRequest,
 )
 from target_radar.storage import NotFoundError, SQLiteStore
+from target_radar.use_cases import UseCaseConfig, validate_use_case_config
 
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -77,6 +78,12 @@ def _make_handler(database_url: str):
                     self._send_static(parsed.path.removeprefix("/static/"))
                 elif parsed.path == "/api/health":
                     self._send_json({"status": "ok", "host": "127.0.0.1"})
+                elif parsed.path == "/api/use-cases":
+                    self._handle_use_cases()
+                elif parsed.path.startswith("/api/use-cases/"):
+                    self._handle_use_case_detail(parsed.path)
+                elif parsed.path == "/api/search-profiles":
+                    self._handle_search_profiles(parsed.query)
                 elif parsed.path == "/api/review-queue":
                     self._handle_review_queue(parsed.query)
                 elif parsed.path == "/api/pipeline-runs":
@@ -95,6 +102,8 @@ def _make_handler(database_url: str):
             try:
                 if parsed.path == "/api/pipeline-runs/fake":
                     self._handle_fake_run()
+                elif parsed.path.startswith("/api/use-cases/"):
+                    self._handle_use_case_action(parsed.path)
                 elif parsed.path.startswith("/api/targets/"):
                     self._handle_target_action(parsed.path)
                 else:
@@ -109,6 +118,8 @@ def _make_handler(database_url: str):
             try:
                 if parsed.path.startswith("/api/drafts/"):
                     self._handle_draft_patch(parsed.path)
+                elif parsed.path.startswith("/api/search-profiles/"):
+                    self._handle_search_profile_patch(parsed.path)
                 else:
                     self._send_error(HTTPStatus.NOT_FOUND, "not found")
             except NotFoundError as exc:
@@ -126,6 +137,8 @@ def _make_handler(database_url: str):
             params = parse_qs(query)
             limit = int(params.get("limit", ["50"])[0])
             offset = int(params.get("offset", ["0"])[0])
+            raw_use_case_id = params.get("use_case_id", [None])[0]
+            use_case_id = int(raw_use_case_id) if raw_use_case_id else None
             store = self._store()
             try:
                 self._send_json(
@@ -133,9 +146,67 @@ def _make_handler(database_url: str):
                         "items": store.list_review_queue_items(
                             limit=limit,
                             offset=offset,
+                            use_case_id=use_case_id,
                         )
                     }
                 )
+            finally:
+                store.close()
+
+        def _handle_use_cases(self) -> None:
+            store = self._store()
+            try:
+                use_cases = [
+                    _use_case_payload(store, use_case)
+                    for use_case in store.list_use_cases()
+                ]
+                self._send_json({"use_cases": use_cases})
+            finally:
+                store.close()
+
+        def _handle_use_case_detail(self, path: str) -> None:
+            slug, action = _parse_use_case_path(path)
+            if action is not None:
+                self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "use POST for actions")
+                return
+
+            store = self._store()
+            try:
+                self._send_json(
+                    {"use_case": _use_case_payload(store, store.get_use_case_by_slug(slug))}
+                )
+            finally:
+                store.close()
+
+        def _handle_use_case_action(self, path: str) -> None:
+            slug, action = _parse_use_case_path(path)
+            if action != "clone":
+                self._send_error(HTTPStatus.NOT_FOUND, "unknown use case action")
+                return
+
+            payload = self._read_json(default={})
+            store = self._store()
+            try:
+                source = store.get_use_case_by_slug(slug)
+                cloned = _clone_use_case(
+                    store,
+                    source,
+                    name=payload.get("name"),
+                    slug=payload.get("slug"),
+                )
+                self._send_json(
+                    {"use_case": _use_case_payload(store, cloned)},
+                    status=HTTPStatus.CREATED,
+                )
+            finally:
+                store.close()
+
+        def _handle_search_profiles(self, query: str) -> None:
+            params = parse_qs(query)
+            limit = int(params.get("limit", ["50"])[0])
+            store = self._store()
+            try:
+                self._send_json({"search_profiles": store.list_search_profiles(limit=limit)})
             finally:
                 store.close()
 
@@ -185,6 +256,14 @@ def _make_handler(database_url: str):
                         roles=tuple(payload.get("roles") or ["Werkstudent IT"]),
                         regions=tuple(payload.get("regions") or ["Essen"]),
                         tech_keywords=tuple(payload.get("tech_keywords") or ["Python"]),
+                        industry_keywords=tuple(payload.get("industry_keywords") or ()),
+                        exclude_keywords=tuple(payload.get("exclude_keywords") or ()),
+                        use_case_id=(
+                            int(payload["use_case_id"])
+                            if payload.get("use_case_id") is not None
+                            else None
+                        ),
+                        attributes=dict(payload.get("attributes") or {}),
                     )
                 )
                 result = PipelineOrchestrator(
@@ -301,6 +380,21 @@ def _make_handler(database_url: str):
             finally:
                 store.close()
 
+        def _handle_search_profile_patch(self, path: str) -> None:
+            search_profile_id = _parse_id_path(path, "/api/search-profiles/")
+            payload = self._read_json(default={})
+            if payload.get("use_case_id") is None:
+                raise ValueError("use_case_id is required")
+            store = self._store()
+            try:
+                search_profile = store.update_search_profile_use_case(
+                    search_profile_id,
+                    int(payload["use_case_id"]),
+                )
+                self._send_json({"search_profile": _search_profile_payload(search_profile)})
+            finally:
+                store.close()
+
         def _read_json(self, *, default: dict[str, Any]) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length") or 0)
             if length == 0:
@@ -355,6 +449,80 @@ def _parse_id_path(path: str, prefix: str) -> int:
     if "/" in raw or not raw:
         raise ValueError("invalid id path")
     return int(raw)
+
+
+def _parse_use_case_path(path: str) -> tuple[str, str | None]:
+    raw = path.removeprefix("/api/use-cases/").strip("/")
+    parts = raw.split("/")
+    if not parts or not parts[0]:
+        raise ValueError("missing use case slug")
+    slug = parts[0]
+    action = parts[1] if len(parts) > 1 else None
+    return slug, action
+
+
+def _use_case_payload(store: SQLiteStore, use_case: UseCaseConfig) -> dict[str, Any]:
+    payload = use_case.to_dict()
+    payload["db_id"] = store.get_use_case_id_by_slug(use_case.id)
+    payload["slug"] = use_case.id
+    return payload
+
+
+def _clone_use_case(
+    store: SQLiteStore,
+    source: UseCaseConfig,
+    *,
+    name: object = None,
+    slug: object = None,
+) -> UseCaseConfig:
+    selected_slug = str(slug or "").strip()
+    if selected_slug:
+        selected_slug = _slugify(selected_slug)
+        if _use_case_slug_exists(store, selected_slug):
+            raise ValueError(f"use case already exists: {selected_slug}")
+    else:
+        selected_slug = _unique_clone_slug(store, source.id)
+
+    payload = source.to_dict()
+    payload["id"] = selected_slug
+    payload["name"] = str(name or f"{source.name} Copy").strip()
+    payload["status"] = "active"
+    payload["created_from_template"] = source.created_from_template or source.id
+    cloned = validate_use_case_config(payload)
+    store.save_use_case(cloned)
+    return store.get_use_case_by_slug(cloned.id)
+
+
+def _unique_clone_slug(store: SQLiteStore, source_slug: str) -> str:
+    base = _slugify(f"{source_slug}_copy")
+    candidate = base
+    suffix = 2
+    while _use_case_slug_exists(store, candidate):
+        candidate = f"{base}_{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _use_case_slug_exists(store: SQLiteStore, slug: str) -> bool:
+    try:
+        store.get_use_case_id_by_slug(slug)
+    except NotFoundError:
+        return False
+    return True
+
+
+def _slugify(value: str) -> str:
+    cleaned = "".join(
+        char.lower() if ("a" <= char.lower() <= "z" or char.isdigit()) else "_"
+        for char in value.strip()
+    )
+    parts = [part for part in cleaned.split("_") if part]
+    slug = "_".join(parts)
+    if not slug:
+        raise ValueError("use case slug must not be empty")
+    if not slug[0].isalpha():
+        slug = f"use_case_{slug}"
+    return slug
 
 
 def _target_context(
@@ -413,6 +581,10 @@ def _pipeline_run_payload(run) -> dict[str, Any]:
     return {
         "id": run.id,
         "search_profile_id": run.search_profile_id,
+        "use_case_id": run.use_case_id,
+        "use_case_version": run.use_case_version,
+        "use_case_slug": run.use_case_snapshot.get("id"),
+        "use_case_name": run.use_case_snapshot.get("name"),
         "mode": run.mode,
         "status": run.status.value,
         "phases": [phase.value for phase in run.phases],
@@ -499,12 +671,39 @@ def _status_log_payload(log) -> dict[str, Any]:
     }
 
 
+def _search_profile_payload(search_profile: SearchProfile) -> dict[str, Any]:
+    return {
+        "id": search_profile.id,
+        "profile_id": search_profile.profile_id,
+        "use_case_id": search_profile.use_case_id,
+        "name": search_profile.name,
+        "roles": list(search_profile.roles),
+        "regions": list(search_profile.regions),
+        "tech_keywords": list(search_profile.tech_keywords),
+        "industry_keywords": list(search_profile.industry_keywords),
+        "exclude_keywords": list(search_profile.exclude_keywords),
+        "attributes": search_profile.attributes,
+        "manual_query": search_profile.manual_query,
+        "draft_language": search_profile.draft_language,
+        "created_at": _dt(search_profile.created_at),
+    }
+
+
 def _search_terms(search_profile: SearchProfile) -> tuple[str, ...]:
+    attribute_terms: list[str] = []
+    for value in search_profile.attributes.values():
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple, set)):
+            attribute_terms.extend(str(item) for item in value if item is not None)
+        else:
+            attribute_terms.append(str(value))
     return (
         search_profile.roles
         + search_profile.regions
         + search_profile.tech_keywords
         + search_profile.industry_keywords
+        + tuple(item.strip() for item in attribute_terms if item.strip())
     )
 
 

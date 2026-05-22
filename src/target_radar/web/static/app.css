@@ -56,6 +56,16 @@ button.danger {
   color: var(--red);
 }
 
+select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  padding: 0 10px;
+}
+
 .topbar {
   position: sticky;
   top: 0;
@@ -132,6 +142,10 @@ label,
   grid-column: 1 / -1;
 }
 
+.detail-panel {
+  grid-row: span 2;
+}
+
 .panel-head {
   display: flex;
   align-items: center;
@@ -140,6 +154,12 @@ label,
   min-height: 46px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
+}
+
+.panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .count,
@@ -169,9 +189,15 @@ label,
 
 .status-pill.review,
 .status-pill.needs_review,
-.status-pill.rating_partial {
+.status-pill.rating_partial,
+.status-pill.template {
   background: #fff2dc;
   color: var(--amber);
+}
+
+.status-pill.active {
+  background: #e9f0ff;
+  color: var(--blue);
 }
 
 .table-wrap {
@@ -264,6 +290,15 @@ label {
   background: #fbfcfd;
 }
 
+.item.selectable {
+  cursor: default;
+}
+
+.selected-card {
+  border-color: var(--blue);
+  background: #f4f8ff;
+}
+
 .item-header {
   display: flex;
   justify-content: space-between;
@@ -300,7 +335,8 @@ label {
 }
 
 textarea,
-input {
+input,
+select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -314,6 +350,30 @@ textarea {
   resize: vertical;
 }
 
+.toolbar select,
+.panel-controls select {
+  width: auto;
+}
+
+.plain-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.empty.inline {
+  padding: 0;
+}
+
+.usecase-detail {
+  border-top: 1px solid var(--line);
+}
+
+.detail-grid.compact {
+  margin-bottom: 12px;
+}
+
 @media (max-width: 940px) {
   .layout,
   .split,
@@ -321,9 +381,23 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .detail-panel {
+    grid-row: auto;
+  }
+
   .topbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .toolbar,
+  .panel-controls {
+    width: 100%;
+  }
+
+  .toolbar select,
+  .panel-controls select {
+    width: 100%;
   }
 
   .table-wrap {

@@ -25,6 +25,29 @@ class WebServerTests(unittest.TestCase):
                     method="POST",
                     payload={},
                 )
+                use_cases_payload = _http_json(f"{base_url}/api/use-cases")
+                application_use_case = next(
+                    item
+                    for item in use_cases_payload["use_cases"]
+                    if item["slug"] == "application_student"
+                )
+                use_case_detail_payload = _http_json(
+                    f"{base_url}/api/use-cases/application_student"
+                )
+                filtered_queue_payload = _http_json(
+                    f"{base_url}/api/review-queue?use_case_id={application_use_case['db_id']}"
+                )
+                search_profiles_payload = _http_json(f"{base_url}/api/search-profiles")
+                cloned_use_case_payload = _http_json(
+                    f"{base_url}/api/use-cases/application_student/clone",
+                    method="POST",
+                    payload={"name": "Application Copy", "slug": "application_copy"},
+                )
+                patched_profile_payload = _http_json(
+                    f"{base_url}/api/search-profiles/{search_profiles_payload['search_profiles'][0]['id']}",
+                    method="PATCH",
+                    payload={"use_case_id": cloned_use_case_payload["use_case"]["db_id"]},
+                )
                 queue_payload = _http_json(f"{base_url}/api/review-queue")
                 target_id = queue_payload["items"][0]["id"]
                 detail_payload = _http_json(f"{base_url}/api/targets/{target_id}")
@@ -50,6 +73,16 @@ class WebServerTests(unittest.TestCase):
 
         self.assertIn("Target Radar", index)
         self.assertEqual(run_payload["run"]["status"], "completed")
+        self.assertGreaterEqual(len(use_cases_payload["use_cases"]), 2)
+        self.assertEqual(use_case_detail_payload["use_case"]["slug"], "application_student")
+        self.assertGreaterEqual(len(filtered_queue_payload["items"]), 1)
+        self.assertEqual(filtered_queue_payload["items"][0]["use_case_slug"], "application_student")
+        self.assertGreaterEqual(len(search_profiles_payload["search_profiles"]), 1)
+        self.assertEqual(cloned_use_case_payload["use_case"]["slug"], "application_copy")
+        self.assertEqual(
+            patched_profile_payload["search_profile"]["use_case_id"],
+            cloned_use_case_payload["use_case"]["db_id"],
+        )
         self.assertGreaterEqual(len(queue_payload["items"]), 1)
         self.assertEqual(detail_payload["target"]["id"], target_id)
         self.assertEqual(rerate_payload["reprocess"]["rated_count"], 1)

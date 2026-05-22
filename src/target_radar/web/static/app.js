@@ -1,30 +1,45 @@
 const state = {
   selectedTargetId: null,
+  selectedUseCaseSlug: null,
   queue: [],
+  useCases: [],
 };
 
 const elements = {
   serverStatus: document.querySelector("#serverStatus"),
   queueBody: document.querySelector("#queueBody"),
   queueCount: document.querySelector("#queueCount"),
+  queueUseCaseFilter: document.querySelector("#queueUseCaseFilter"),
+  runUseCaseSelect: document.querySelector("#runUseCaseSelect"),
   detailEmpty: document.querySelector("#detailEmpty"),
   detailContent: document.querySelector("#detailContent"),
   detailStatus: document.querySelector("#detailStatus"),
   targetDomain: document.querySelector("#targetDomain"),
   targetSource: document.querySelector("#targetSource"),
+  targetUseCase: document.querySelector("#targetUseCase"),
   targetUpdated: document.querySelector("#targetUpdated"),
   ratingsList: document.querySelector("#ratingsList"),
   draftsList: document.querySelector("#draftsList"),
   evidenceList: document.querySelector("#evidenceList"),
   statusLogList: document.querySelector("#statusLogList"),
   runsList: document.querySelector("#runsList"),
+  useCaseCount: document.querySelector("#useCaseCount"),
+  useCaseList: document.querySelector("#useCaseList"),
+  useCaseDetail: document.querySelector("#useCaseDetail"),
+  searchProfilesList: document.querySelector("#searchProfilesList"),
 };
 
 document.querySelector("#refreshButton").addEventListener("click", refreshAll);
 document.querySelector("#runFakeButton").addEventListener("click", async () => {
-  await api("/api/pipeline-runs/fake", { method: "POST", body: {} });
+  const useCaseId = selectedNumber(elements.runUseCaseSelect.value);
+  await api("/api/pipeline-runs/fake", {
+    method: "POST",
+    body: fakeRunPayload(useCaseId),
+  });
   await refreshAll();
 });
+
+elements.queueUseCaseFilter.addEventListener("change", loadQueue);
 
 document.querySelectorAll("[data-action]").forEach((button) => {
   button.addEventListener("click", async () => {
@@ -40,12 +55,186 @@ refreshAll();
 
 async function refreshAll() {
   const health = await api("/api/health");
-  elements.serverStatus.textContent = `${health.host} · ${health.status}`;
-  await Promise.all([loadQueue(), loadRuns()]);
+  elements.serverStatus.textContent = `${health.host} - ${health.status}`;
+  await loadUseCases();
+  await Promise.all([loadQueue(), loadRuns(), loadSearchProfiles()]);
+}
+
+async function loadUseCases() {
+  const data = await api("/api/use-cases");
+  state.useCases = data.use_cases;
+  elements.useCaseCount.textContent = String(state.useCases.length);
+  renderUseCaseOptions();
+  renderUseCases();
+}
+
+function renderUseCaseOptions() {
+  const queueValue = elements.queueUseCaseFilter.value;
+  elements.queueUseCaseFilter.innerHTML = `<option value="">Alle Use Cases</option>`;
+  for (const useCase of state.useCases) {
+    elements.queueUseCaseFilter.appendChild(useCaseOption(useCase));
+  }
+  elements.queueUseCaseFilter.value = optionExists(elements.queueUseCaseFilter, queueValue)
+    ? queueValue
+    : "";
+
+  const runValue = elements.runUseCaseSelect.value;
+  elements.runUseCaseSelect.innerHTML = "";
+  for (const useCase of state.useCases) {
+    elements.runUseCaseSelect.appendChild(useCaseOption(useCase));
+  }
+  const defaultUseCase = state.useCases.find((item) => item.slug === "application_student");
+  elements.runUseCaseSelect.value = optionExists(elements.runUseCaseSelect, runValue)
+    ? runValue
+    : String(defaultUseCase?.db_id || state.useCases[0]?.db_id || "");
+}
+
+function useCaseOption(useCase) {
+  const option = document.createElement("option");
+  option.value = String(useCase.db_id);
+  option.textContent = useCase.name;
+  return option;
+}
+
+function optionExists(select, value) {
+  return Array.from(select.options).some((option) => option.value === value);
+}
+
+function renderUseCases() {
+  elements.useCaseList.innerHTML = "";
+  if (state.useCases.length === 0) {
+    elements.useCaseList.appendChild(emptyItem("Keine Use Cases."));
+    elements.useCaseDetail.classList.add("hidden");
+    return;
+  }
+
+  if (!state.selectedUseCaseSlug) {
+    state.selectedUseCaseSlug = state.useCases[0].slug;
+  }
+  const selected = state.useCases.find((item) => item.slug === state.selectedUseCaseSlug)
+    || state.useCases[0];
+  state.selectedUseCaseSlug = selected.slug;
+
+  for (const useCase of state.useCases) {
+    const item = document.createElement("article");
+    item.className = `item selectable ${useCase.slug === selected.slug ? "selected-card" : ""}`;
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(useCase.name)}</span>
+        ${pill(useCase.status)}
+      </div>
+      <p>${escapeHtml(useCase.slug)} - v${displayNumber(useCase.version)}</p>
+      <p>${escapeHtml(useCase.draft_policy.draft_type)} - ${useCase.rating_policy.criteria.length} Kriterien</p>
+      <div class="actions">
+        <button type="button" data-use-case-detail="${escapeAttribute(useCase.slug)}">Details</button>
+        <button type="button" data-use-case-clone="${escapeAttribute(useCase.slug)}">Clone</button>
+      </div>
+    `;
+    item.querySelector("[data-use-case-detail]").addEventListener("click", () => {
+      state.selectedUseCaseSlug = useCase.slug;
+      renderUseCases();
+    });
+    item.querySelector("[data-use-case-clone]").addEventListener("click", async () => {
+      const data = await api(`/api/use-cases/${useCase.slug}/clone`, { method: "POST", body: {} });
+      state.selectedUseCaseSlug = data.use_case.slug;
+      await refreshAll();
+    });
+    elements.useCaseList.appendChild(item);
+  }
+
+  renderUseCaseDetail(selected);
+}
+
+function renderUseCaseDetail(useCase) {
+  elements.useCaseDetail.classList.remove("hidden");
+  elements.useCaseDetail.innerHTML = `
+    <div class="detail-grid compact">
+      <div>
+        <label>Name</label>
+        <strong>${escapeHtml(useCase.name)}</strong>
+      </div>
+      <div>
+        <label>Draft</label>
+        <span>${escapeHtml(useCase.draft_policy.draft_type)}</span>
+      </div>
+      <div>
+        <label>LLM</label>
+        <span>${escapeHtml(useCase.rating_policy.llm_mode)}</span>
+      </div>
+    </div>
+    <div class="split">
+      <section>
+        <h3>Felder</h3>
+        ${renderList(useCase.attribute_schema.fields.map((field) => `${field.key}: ${field.type}`))}
+      </section>
+      <section>
+        <h3>Rating</h3>
+        ${renderList(useCase.rating_policy.criteria.map((criterion) => (
+          `${criterion.key} ${criterion.weight}% ${criterion.evaluation}`
+        )))}
+      </section>
+    </div>
+    <div class="split">
+      <section>
+        <h3>Queries</h3>
+        ${renderList(useCase.query_policy.templates)}
+      </section>
+      <section>
+        <h3>Quellen</h3>
+        ${renderList([
+          `preferred: ${useCase.source_policy.preferred_source_types.join(", ") || "-"}`,
+          `context: ${useCase.source_policy.context_source_types.join(", ") || "-"}`,
+          `blocked: ${useCase.source_policy.blocked_source_types.join(", ") || "-"}`,
+        ])}
+      </section>
+    </div>
+  `;
+}
+
+async function loadSearchProfiles() {
+  const data = await api("/api/search-profiles?limit=50");
+  elements.searchProfilesList.innerHTML = "";
+  if (data.search_profiles.length === 0) {
+    elements.searchProfilesList.appendChild(emptyItem("Keine Search Profiles."));
+    return;
+  }
+  for (const profile of data.search_profiles) {
+    const item = document.createElement("article");
+    item.className = "item";
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(profile.name)}</span>
+        ${pill(profile.use_case_slug || "none")}
+      </div>
+      <p>${escapeHtml(profile.profile_name)} - ${escapeHtml(formatSearchTerms(profile))}</p>
+      <label>Use Case</label>
+      <select data-profile-use-case="${profile.id}">
+        ${state.useCases.map((useCase) => `
+          <option value="${useCase.db_id}" ${useCase.db_id === profile.use_case_id ? "selected" : ""}>
+            ${escapeHtml(useCase.name)}
+          </option>
+        `).join("")}
+      </select>
+      <div class="actions">
+        <button type="button" data-save-profile="${profile.id}">Save</button>
+      </div>
+    `;
+    item.querySelector("[data-save-profile]").addEventListener("click", async () => {
+      const select = item.querySelector(`[data-profile-use-case="${profile.id}"]`);
+      await api(`/api/search-profiles/${profile.id}`, {
+        method: "PATCH",
+        body: { use_case_id: selectedNumber(select.value) },
+      });
+      await refreshAll();
+    });
+    elements.searchProfilesList.appendChild(item);
+  }
 }
 
 async function loadQueue() {
-  const data = await api("/api/review-queue?limit=50");
+  const selectedUseCaseId = selectedNumber(elements.queueUseCaseFilter.value);
+  const query = selectedUseCaseId ? `?limit=50&use_case_id=${selectedUseCaseId}` : "?limit=50";
+  const data = await api(`/api/review-queue${query}`);
   state.queue = data.items;
   elements.queueCount.textContent = String(data.items.length);
   elements.queueBody.innerHTML = "";
@@ -55,6 +244,7 @@ async function loadQueue() {
     row.className = item.id === state.selectedTargetId ? "selected" : "";
     row.innerHTML = `
       <td>${escapeHtml(item.domain)}</td>
+      <td>${pill(item.use_case_slug || "none")}</td>
       <td>${pill(item.status)}</td>
       <td>${pill(item.recommended_action || "none")}</td>
       <td>${displayScore(item.ai_score, item.rule_score)}</td>
@@ -80,7 +270,7 @@ async function loadRuns() {
         <span class="item-title">Run #${run.id}</span>
         ${pill(run.status)}
       </div>
-      <p>${escapeHtml(run.mode)} · ${escapeHtml(formatDate(run.created_at))}</p>
+      <p>${escapeHtml(run.use_case_name || "no use case")} - ${escapeHtml(formatDate(run.created_at))}</p>
       <p>${escapeHtml(JSON.stringify(run.stats || {}))}</p>
     `;
     elements.runsList.appendChild(item);
@@ -92,6 +282,7 @@ async function loadTarget(targetId) {
   await loadQueue();
   const data = await api(`/api/targets/${targetId}`);
   const target = data.target;
+  const queueItem = state.queue.find((item) => item.id === targetId);
 
   elements.detailEmpty.classList.add("hidden");
   elements.detailContent.classList.remove("hidden");
@@ -100,6 +291,7 @@ async function loadTarget(targetId) {
   elements.targetDomain.textContent = target.domain;
   elements.targetDomain.href = target.base_url;
   elements.targetSource.textContent = target.source;
+  elements.targetUseCase.textContent = queueItem?.use_case_name || queueItem?.use_case_slug || "-";
   elements.targetUpdated.textContent = formatDate(target.updated_at);
 
   renderRatings(data.ratings);
@@ -122,7 +314,7 @@ function renderRatings(ratings) {
         <span class="item-title">${escapeHtml(rating.rating_version)}</span>
         ${pill(rating.recommended_action)}
       </div>
-      <p>Rule ${displayNumber(rating.rule_score)} · AI ${displayNumber(rating.ai_score)} · Confidence ${formatConfidence(rating.confidence)}</p>
+      <p>Rule ${displayNumber(rating.rule_score)} - AI ${displayNumber(rating.ai_score)} - Confidence ${formatConfidence(rating.confidence)}</p>
       ${rating.error_message ? `<p class="muted">${escapeHtml(rating.error_type || "rating_error")}: ${escapeHtml(rating.error_message)}</p>` : ""}
       ${renderFacts("Reasons", rating.reasons || [])}
       ${renderFacts("Risks", rating.risks || [])}
@@ -142,7 +334,7 @@ function renderDrafts(drafts) {
     item.className = "item";
     item.innerHTML = `
       <div class="item-header">
-        <span class="item-title">Draft #${draft.id}</span>
+        <span class="item-title">Draft #${draft.id} - ${escapeHtml(draft.draft_type)}</span>
         ${pill(draft.status)}
       </div>
       <label>Subject</label>
@@ -222,6 +414,25 @@ async function api(path, options = {}) {
   return data;
 }
 
+function fakeRunPayload(useCaseId) {
+  const useCase = state.useCases.find((item) => item.db_id === useCaseId);
+  if (useCase?.slug === "company_osint") {
+    return {
+      use_case_id: useCaseId,
+      search_name: "Local OSINT Search",
+      attributes: {
+        topics: ["Solar Services"],
+        industries: ["IT"],
+        regions: ["Essen"],
+      },
+      roles: [],
+      regions: ["Essen"],
+      tech_keywords: [],
+    };
+  }
+  return { use_case_id: useCaseId };
+}
+
 function pill(value, id) {
   const clean = value || "none";
   const idPart = id ? ` id="${id}"` : "";
@@ -242,6 +453,26 @@ function renderFacts(label, facts) {
     return `<li>${escapeHtml(String(text))}</li>`;
   }).join("");
   return `<div class="fact-list"><span>${escapeHtml(label)}</span><ul>${items}</ul></div>`;
+}
+
+function renderList(items) {
+  if (!items.length) return `<div class="empty inline">-</div>`;
+  return `<ul class="plain-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+function formatSearchTerms(profile) {
+  const terms = [
+    ...(profile.roles || []),
+    ...(profile.tech_keywords || []),
+    ...(profile.regions || []),
+    ...Object.values(profile.attributes || {}).flat(),
+  ].filter(Boolean);
+  return terms.length ? terms.join(", ") : "-";
+}
+
+function selectedNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
 function displayScore(aiScore, ruleScore) {
