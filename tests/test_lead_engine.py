@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 import unittest
 
 from target_radar.domain import LeadResultStatus, Profile, SearchProfile
@@ -17,6 +19,9 @@ from target_radar.engines.lead import (
 )
 from target_radar.storage import SQLiteStore
 from target_radar.use_cases import get_default_use_case
+
+
+BASELINE_FIXTURE = Path(__file__).with_name("fixtures") / "source_quality_e1_baseline.json"
 
 
 class LeadEngineTests(unittest.TestCase):
@@ -345,6 +350,41 @@ class LeadEngineTests(unittest.TestCase):
         self.assertIn("context_source", [risk["type"] for risk in directory.risks])
         self.assertNotEqual(job_board.recommended_action, SourceImportAction.BLOCK)
 
+    def test_source_quality_e1_baseline_stable_cases(self) -> None:
+        classifier = SourceQualityClassifier.from_source_policy(
+            get_default_use_case("company_osint").source_policy
+        )
+        cases = [case for case in _source_quality_baseline_cases() if not case.get("known_gap")]
+
+        self.assertGreaterEqual(len(cases), 8)
+        for case in cases:
+            with self.subTest(case=case["id"]):
+                result = classifier.classify(_search_result_from_baseline(case))
+                self.assertEqual(result.source_type, SourceType(case["expected_source_type"]))
+                self.assertEqual(
+                    result.recommended_action,
+                    SourceImportAction(case["expected_action"]),
+                )
+
+    @unittest.expectedFailure
+    def test_source_quality_e1_known_gap_regiomanager_is_context_source(self) -> None:
+        classifier = SourceQualityClassifier.from_source_policy(
+            get_default_use_case("company_osint").source_policy
+        )
+        case = next(
+            item
+            for item in _source_quality_baseline_cases()
+            if item["id"] == "run19_regiomanager"
+        )
+
+        result = classifier.classify(_search_result_from_baseline(case))
+
+        self.assertEqual(result.source_type, SourceType(case["expected_source_type"]))
+        self.assertEqual(
+            result.recommended_action,
+            SourceImportAction(case["expected_action"]),
+        )
+
     def test_lead_engine_prioritizes_direct_domains_before_portals(self) -> None:
         search_profile = SearchProfile(
             profile_id=1,
@@ -404,6 +444,23 @@ def _signal_points(result, signal_type: str) -> int | None:
         if signal["type"] == signal_type:
             return signal["points"]
     return None
+
+
+def _source_quality_baseline_cases() -> list[dict[str, object]]:
+    payload = json.loads(BASELINE_FIXTURE.read_text(encoding="utf-8"))
+    return list(payload["cases"])
+
+
+def _search_result_from_baseline(case: dict[str, object]) -> SearchResult:
+    metadata = {}
+    if case.get("provider_rank") is not None:
+        metadata["provider_rank"] = case["provider_rank"]
+    return SearchResult(
+        url=str(case["url"]),
+        title=str(case.get("title") or ""),
+        snippet=str(case.get("snippet") or ""),
+        metadata=metadata,
+    )
 
 
 if __name__ == "__main__":

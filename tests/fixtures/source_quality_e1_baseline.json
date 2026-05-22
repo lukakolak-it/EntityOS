@@ -1,0 +1,105 @@
+{
+  "name": "source_quality_e1_baseline",
+  "source": "Local UI Run #19, company_osint, Brave, light LLM, 2026-05-22",
+  "classifier": "company_osint",
+  "cases": [
+    {
+      "id": "run19_wattmacher",
+      "scope": "run_19",
+      "url": "https://www.wattmacher.nrw/",
+      "title": "Photovoltaik in Essen - NRW | Wattmacher GmbH",
+      "snippet": "Wattmacher GmbH bietet individuelle Solarleistungen fuer Privatpersonen, Unternehmen und Wohnungswirtschaft.",
+      "provider_rank": 1,
+      "expected_source_type": "company_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "run19_solargenossenschaft",
+      "scope": "run_19",
+      "url": "https://www.solargenossenschaft-essen.de/",
+      "title": "Solargenossenschaft Essen eG",
+      "snippet": "Internetseite der Solargenossenschaft Essen eG mit Angaben zur Kontaktaufnahme.",
+      "provider_rank": 2,
+      "expected_source_type": "company_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "run19_solar_richter_home",
+      "scope": "run_19",
+      "url": "https://www.solar-richter.com/",
+      "title": "Solarenergie Essen - Nachhaltige Solaranlagen",
+      "snippet": "Solarenergie fuer Essen, effiziente Solaranlagen und Photovoltaik.",
+      "provider_rank": 1,
+      "expected_source_type": "company_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "run19_solar_richter_referenzen",
+      "scope": "run_19",
+      "url": "https://www.solar-richter.com/referenzen",
+      "title": "Unsere Referenzen | Essen | Solar Richter GmbH",
+      "snippet": "Auswahl von Projekten und Loesungen fuer Kunden in Essen und darueber hinaus.",
+      "provider_rank": 2,
+      "expected_source_type": "company_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "run19_systemhaus_ruhrgebiet",
+      "scope": "run_19",
+      "url": "https://systemhaus-ruhrgebiet.de/it-systemhaus/essen/",
+      "title": "IT-Systemhaus Ruhrgebiet GmbH | IT-Dienstleister fuer Essen",
+      "snippet": "IT-Service, IT-Betreuung und IT-Beratung fuer individuelle IT-Loesungen in Essen.",
+      "provider_rank": 1,
+      "expected_source_type": "company_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "run19_regiomanager",
+      "scope": "run_19",
+      "url": "https://www.regiomanager.de/ranking/digital/it-dienstleister/essen/",
+      "title": "Die groessten IT-Dienstleister in Essen - Regio Manager",
+      "snippet": "Ranking des IT-Dienstleistungsmarkts in Essen mit mehreren Unternehmen.",
+      "provider_rank": 2,
+      "expected_source_type": "directory",
+      "expected_action": "review_source",
+      "known_gap": true,
+      "gap_reason": "Ranking and publisher domain should be a context source, not an imported company target."
+    },
+    {
+      "id": "control_official_bund",
+      "scope": "control",
+      "url": "https://service.bund.de/karriere",
+      "title": "Service Bund Karriere",
+      "snippet": "Offizielle Informationen.",
+      "expected_source_type": "official_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "control_directory_northdata",
+      "scope": "control",
+      "url": "https://www.northdata.de/Alpha+GmbH,+Essen/HRB",
+      "title": "Alpha GmbH, Essen - North Data",
+      "snippet": "Firmendaten, Registerinformationen und wirtschaftliche Kennzahlen.",
+      "expected_source_type": "directory",
+      "expected_action": "review_source"
+    },
+    {
+      "id": "control_news_tagesschau",
+      "scope": "control",
+      "url": "https://www.tagesschau.de/wirtschaft/unternehmen/alpha-100.html",
+      "title": "Alpha investiert in Essen",
+      "snippet": "Nachricht ueber ein Unternehmen in der Region.",
+      "expected_source_type": "news",
+      "expected_action": "review_source"
+    },
+    {
+      "id": "control_job_board_studentjob",
+      "scope": "control",
+      "url": "https://www.studentjob.de/stellenangebote/werkstudent-it-essen",
+      "title": "Werkstudent IT Jobs in Essen",
+      "snippet": "Jobsuche und Stellenangebote fuer Studierende.",
+      "expected_source_type": "job_board",
+      "expected_action": "block"
+    }
+  ]
+}

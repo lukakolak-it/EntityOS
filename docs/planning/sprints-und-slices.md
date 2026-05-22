@@ -1549,18 +1549,72 @@ Akzeptanzkriterien:
 - Nutzer kann erkennen, ob ein Run wegen Provider, Modell, Budget oder Policy
   scheitern wuerde.
 
+## Sprint 14: Engine-Qualitaet und Evaluationsbasis
+
+Ziel: Nach dem ersten echten lokalen OSINT-Lauf werden LeadEngine, Evidence,
+Rating und Draft nicht blind optimiert, sondern gegen kleine, feste
+Evaluationsfaelle verbessert.
+
+### Slice E1: Source-Quality-Evaluation-Baseline
+
+Status: umgesetzt.
+
+Ziel:
+
+Die SourceQualityClassifier-Qualitaet wird messbar, bevor Heuristiken geaendert
+werden.
+
+Umfang:
+
+- echte Treffer aus lokalem Run `#19` als Fixture erfassen
+- Kontrollfaelle fuer `company_site`, `directory`, `news`, `official_site` und
+  `job_board` erfassen
+- erwartete Source-Type- und Import-Action-Entscheidungen festhalten
+- stabile Faelle als normale Regressionstests ausfuehren
+- bekannte Fehlklassifizierung `regiomanager.de` als `expectedFailure`
+  dokumentieren
+
+Akzeptanzkriterien:
+
+- `tests/fixtures/source_quality_e1_baseline.json` enthaelt die
+  Evaluationsfaelle.
+- `test_source_quality_e1_baseline_stable_cases` prueft die stabilen Faelle.
+- `test_source_quality_e1_known_gap_regiomanager_is_context_source` beschreibt
+  die naechste Soll-Aenderung fuer E2.
+- Die Baseline laeuft ohne echte Provider-Secrets.
+
+### Slice E2: Source Classification verbessern
+
+Ziel:
+
+Die bekannte Fehlklassifizierung aus E1 wird behoben und weitere
+publisher-/directory-aehnliche Domains werden als Kontextquellen behandelt.
+
+Umfang:
+
+- `regiomanager.de` als `directory` oder `news` klassifizieren
+- Ranking-/Toplisten-Pfade als Directory-/Listing-Signal nutzen
+- Import-Policy fuer Kontextquellen gegen direkte Targets schaerfen
+- E1-`expectedFailure` in einen normalen Regressionstest ueberfuehren
+
+Akzeptanzkriterien:
+
+- `regiomanager.de` wird nicht mehr als `company_site/import` behandelt.
+- Kontextquellen bleiben fuer Evidence nutzbar, werden aber nicht als
+  Zielunternehmen importiert.
+- E1-Baseline bleibt gruen.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
 LeadEngine-Qualitaet. Sprint 12 produktisiert die UI, damit echte kleine Runs
 kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
-Arbeitsweisen konfigurierbar. Danach ist die sinnvolle Reihenfolge:
+Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
+Danach ist die sinnvolle Reihenfolge:
 
-1. Search Profiles in der UI vollstaendig editierbar machen.
-2. Run-Maske dynamisch aus dem gewaehlten Use Case bauen.
-3. Run-Phasen, Fetch-Modus, Draft-Erzeugung und Max Pages steuerbar machen.
-4. Provider- und Modell-Auswahl inklusive Ollama-Modellliste ergaenzen.
-5. Domain-Policies und Review-Feedback in der UI verwalten.
-6. Query-/Source-Preview vor dem Run anzeigen.
-7. Use-Case-Editor ohne JSON-Zwang ausbauen.
-8. Lokale Defaults und Diagnose-Seite ergaenzen.
+1. E2 Source Classification verbessern.
+2. E3 Import Policy fuer direkte Targets vs. Kontextquellen schaerfen.
+3. E4 Query Quality pro Use Case verbessern.
+4. E5 Evidence Engine mit typisierten Belegen ausbauen.
+5. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
+6. DraftEngine erst danach weiter optimieren.
