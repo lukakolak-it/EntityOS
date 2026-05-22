@@ -1364,15 +1364,203 @@ Akzeptanzkriterien:
 - Navigation zwischen Unterseiten bricht nicht.
 - Tests koennen lokal ohne echte Provider-Secrets laufen.
 
+## Sprint 13: UI-Einstellungen und Nutzerkontrolle
+
+Ziel: Nutzer koennen die lokale Pipeline ohne Code sinnvoll konfigurieren. Sprint
+12 macht echte Runs aus der UI moeglich; Sprint 13 schliesst die Luecken bei
+Search Profiles, Use-Case-spezifischen Eingaben, Provider-/LLM-Auswahl und
+lokaler Policy-Verwaltung.
+
+### Slice 13.1: Search Profiles erstellen und bearbeiten
+
+Ziel:
+
+Search Profiles sind vollstaendig ueber die UI verwaltbar.
+
+Umfang:
+
+- neues Search Profile anlegen
+- bestehendes Search Profile bearbeiten
+- Rollen, Regionen, Tech-, Branchen- und Ausschlussbegriffe pflegen
+- freie Attribute speichern
+- Use Case zuweisen
+- Search Profile loeschen oder archivieren
+
+Akzeptanzkriterien:
+
+- Ein Nutzer kann einen neuen Run starten, ohne vorher CLI oder Datenbank zu
+  nutzen.
+- Search Profiles behalten ihre Use-Case-Zuordnung.
+- Ungueltige leere Pflichtwerte werden vor dem Speichern angezeigt.
+
+### Slice 13.2: Dynamische Run-Maske aus Use Case
+
+Ziel:
+
+Die Run-Eingaben passen sich an den gewaehlten Use Case an.
+
+Umfang:
+
+- Felder aus `attribute_schema` rendern
+- Feldtypen `text`, `list`, `number`, `boolean` und `select` bedienen
+- Pflichtfelder markieren und validieren
+- Quick-Run-Werte in SearchProfile-Attribute uebernehmen
+- generische Labels wie `Rollen / Topics` durch Use-Case-Labels ersetzen
+
+Akzeptanzkriterien:
+
+- `company_osint` zeigt `topics`, `industries` und `regions`.
+- `application_student` zeigt Rollen, Technologien, Branchen und Regionen.
+- Der Run-Payload enthaelt nur valide Attribute fuer den gewaehlten Use Case.
+
+### Slice 13.3: Run-Ausfuehrung granular steuern
+
+Ziel:
+
+Nutzer koennen kontrollieren, welche Pipeline-Teile pro Run ausgefuehrt werden.
+
+Umfang:
+
+- Provider-Modus `fake`, `brave`, `configured`
+- LLM-Modus `off`, `light`
+- Fetch-Modus `fake` oder `http`
+- Phasen-Auswahl:
+  - nur Discovery
+  - Discovery und Fetch
+  - Full Pipeline
+  - nur Rerating
+- Draft-Erzeugung an/aus
+- Request Budget, Results per Query und Max Pages per Target einstellen
+
+Akzeptanzkriterien:
+
+- Kleine echte Runs bleiben strikt budgetiert.
+- Discovery-only Runs erzeugen keine Fetch-/Rating-Arbeit.
+- Drafts koennen pro Run deaktiviert werden.
+- UI zeigt die aktiven Phasen im Run-Datensatz.
+
+### Slice 13.4: Provider- und Modell-Auswahl
+
+Ziel:
+
+Die lokale UI macht Provider-Konfiguration sichtbar und auswaehlbar, ohne Secrets
+offenzulegen.
+
+Umfang:
+
+- Brave-Status anzeigen
+- Ollama-Erreichbarkeit anzeigen
+- installierte Ollama-Modelle auflisten
+- Light-Modell pro Run waehlen
+- Default-Light-Modell lokal speichern
+- Heavy-Modell weiter als optional markieren
+
+Akzeptanzkriterien:
+
+- Secrets erscheinen nie in UI, Logs oder Exporten.
+- Nutzer sieht, ob das gewaehlte Modell lokal verfuegbar ist.
+- `qwen3:8b`, `qwen3.5:27b` und `qwen3:30b-a3b-q4_K_M` koennen ausgewaehlt
+  werden, wenn Ollama sie meldet.
+
+### Slice 13.5: Lokale Domain-Policies verwalten
+
+Ziel:
+
+Nutzer koennen Quellenentscheidungen direkt in der UI nachvollziehen und
+anpassen.
+
+Umfang:
+
+- Blacklist anzeigen
+- Domain manuell zur Blacklist hinzufuegen
+- Domain aus Blacklist entfernen
+- Denylist-Vorschlaege aus wiederholten Rejects anzeigen
+- Preferred Domains pflegen
+- Blocked Domains pro Use Case oder lokalem Profil pflegen
+- Trennung zwischen Nutzer-Blacklist und systemischer Source-Denylist anzeigen
+
+Akzeptanzkriterien:
+
+- Eine blacklisted Domain wird in spaeteren Runs nicht erneut importiert.
+- Wiederholte Rejects erzeugen nur Vorschlaege, keine automatische Sperre.
+- Nutzer kann eine versehentlich blacklisted Domain wieder freigeben.
+
+### Slice 13.6: Query- und Source-Preview vor dem Run
+
+Ziel:
+
+Nutzer sehen vor dem Start, welche Suchanfragen und Quellenregeln aktiv sind.
+
+Umfang:
+
+- gerenderte Query Templates anzeigen
+- Template-Variablen mit konkreten Attributwerten darstellen
+- Source Policy Preview anzeigen
+- bevorzugte und blockierte Quellentypen anzeigen
+- erwartete Budgets je Query anzeigen
+
+Akzeptanzkriterien:
+
+- Ein Run kann vor dem Start fachlich plausibilisiert werden.
+- Fehlende Template-Variablen blockieren den Run.
+- Preferred, context und blocked source types sind sichtbar.
+
+### Slice 13.7: Strukturierter Use-Case-Editor Ausbau
+
+Ziel:
+
+Use Cases lassen sich dauerhaft ohne JSON-Kenntnisse pflegen.
+
+Umfang:
+
+- Attribute als Formularzeilen bearbeiten
+- Query Templates als einzelne Eintraege bearbeiten
+- Source Types per Mehrfachauswahl pflegen
+- Rating-Kriterien mit Gewichtung per Formular bearbeiten
+- Draft Policy strukturiert bearbeiten
+- JSON-Modus nur als Expertenansicht
+
+Akzeptanzkriterien:
+
+- Ein einfacher neuer Use Case kann ohne JSON erstellt werden.
+- Gewichtssumme `100` wird direkt beim Bearbeiten validiert.
+- Ungueltige Source Types, Review Actions und Draft Sections werden klar
+  angezeigt.
+
+### Slice 13.8: Lokale Defaults und Diagnose
+
+Ziel:
+
+Wiederkehrende lokale Einstellungen muessen nicht pro Run neu gesetzt werden.
+
+Umfang:
+
+- Default Provider speichern
+- Default LLM-Modus speichern
+- Default Light-Modell speichern
+- Default Budgets speichern
+- Fetch-Timeout und Max Pages per Target anzeigen
+- Diagnose-Seite fuer Provider-, Datenbank- und Modellstatus
+
+Akzeptanzkriterien:
+
+- Defaults werden lokal persistiert.
+- Diagnose zeigt Konfigurationsprobleme ohne Secrets.
+- Nutzer kann erkennen, ob ein Run wegen Provider, Modell, Budget oder Policy
+  scheitern wuerde.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
 LeadEngine-Qualitaet. Sprint 12 produktisiert die UI, damit echte kleine Runs
-kontrolliert bedienbar werden. Danach ist die sinnvolle Reihenfolge:
+kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
+Arbeitsweisen konfigurierbar. Danach ist die sinnvolle Reihenfolge:
 
-1. Konfigurierbare UI-Runs mit kleinem Budget anbinden.
-2. Provider-Status und Light-LLM-Routing sichtbar machen.
-3. Evidence-, Source- und Rating-Gruende in der Review Queue darstellen.
-4. Review-Feedback als lokales LeadEngine-Signal nutzen.
-5. Use-Case-Editor und Import/Export ergonomischer machen.
-6. Metriken und UI-Regressionstests ergaenzen.
+1. Search Profiles in der UI vollstaendig editierbar machen.
+2. Run-Maske dynamisch aus dem gewaehlten Use Case bauen.
+3. Run-Phasen, Fetch-Modus, Draft-Erzeugung und Max Pages steuerbar machen.
+4. Provider- und Modell-Auswahl inklusive Ollama-Modellliste ergaenzen.
+5. Domain-Policies und Review-Feedback in der UI verwalten.
+6. Query-/Source-Preview vor dem Run anzeigen.
+7. Use-Case-Editor ohne JSON-Zwang ausbauen.
+8. Lokale Defaults und Diagnose-Seite ergaenzen.
