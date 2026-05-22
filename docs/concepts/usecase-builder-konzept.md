@@ -515,6 +515,7 @@ use_cases
 
 search_profiles
   use_case_id
+  attributes_json
 
 pipeline_runs
   use_case_id
@@ -542,13 +543,16 @@ MVP-Migrationsstrategie:
 1. Tabelle `use_cases` anlegen.
 2. Default-Template `application_student` einspielen.
 3. `ALTER TABLE search_profiles ADD COLUMN use_case_id INTEGER NULL`.
-4. `ALTER TABLE pipeline_runs ADD COLUMN use_case_id INTEGER NULL`.
-5. `ALTER TABLE pipeline_runs ADD COLUMN use_case_version TEXT NULL`.
-6. `ALTER TABLE pipeline_runs ADD COLUMN use_case_snapshot_json TEXT NULL`.
-7. Bestehende `search_profiles` optional auf `application_student` backfillen.
-8. Historische `pipeline_runs` duerfen `NULL` behalten, weil kein Snapshot existiert.
+4. `ALTER TABLE search_profiles ADD COLUMN attributes_json TEXT NOT NULL DEFAULT '{}'`.
+5. `ALTER TABLE pipeline_runs ADD COLUMN use_case_id INTEGER NULL`.
+6. `ALTER TABLE pipeline_runs ADD COLUMN use_case_version INTEGER NULL`.
+7. `ALTER TABLE pipeline_runs ADD COLUMN use_case_snapshot_json TEXT NULL`.
+8. Bestehende `search_profiles` optional auf `application_student` backfillen.
+9. Historische `pipeline_runs` duerfen `NULL` behalten, weil kein Snapshot existiert.
 
 Neue Suchprofile muessen nach der Migration einen Use Case setzen. Fuer alte Profile gilt: Wenn `use_case_id` noch `NULL` ist, nutzt die Anwendung beim Lesen den Default `application_student`.
+
+`search_profiles.attributes_json` speichert use-case-spezifische Eingabefelder wie `topics` oder `industries`, die nicht in den bisherigen Bewerbungsfeldern abgebildet sind. Bestehende Felder wie `roles`, `regions`, `tech_keywords` und `industry_keywords` bleiben erhalten und koennen als Fallback fuer Default-Use-Cases dienen.
 
 SQLite-Hinweis:
 

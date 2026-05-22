@@ -19,6 +19,7 @@ from target_radar.engines.lead.source_quality import (
     SourceQualityResult,
 )
 from target_radar.storage import SQLiteStore
+from target_radar.use_cases import UseCaseConfig
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,7 +50,13 @@ class LeadEngine:
             self.source_quality_classifier = SourceQualityClassifier(
                 extra_blocked_domains=self.source_quality_classifier.extra_blocked_domains,
                 block_threshold=self.config.source_block_threshold,
+                import_threshold=self.source_quality_classifier.import_threshold,
+                preferred_source_types=self.source_quality_classifier.preferred_source_types,
+                context_source_types=self.source_quality_classifier.context_source_types,
                 blocked_source_types=self.source_quality_classifier.blocked_source_types,
+                preferred_domains=self.source_quality_classifier.preferred_domains,
+                relevant_path_tokens=self.source_quality_classifier.relevant_path_tokens,
+                listing_path_tokens=self.source_quality_classifier.listing_path_tokens,
             )
 
     def discover(
@@ -62,11 +69,14 @@ class LeadEngine:
             self.config.request_budget,
             limit if limit is not None else self.config.request_budget,
         )
+        use_case = self._use_case_for(search_profile)
         queries = self.query_builder.build(
             search_profile,
             template_set=self.config.template_set,
             limit=request_budget,
+            use_case=use_case,
         )
+        source_quality_classifier = self._source_quality_classifier_for(use_case)
 
         candidates: list[TargetCandidate] = []
         seen_domains: set[str] = set()
@@ -83,7 +93,10 @@ class LeadEngine:
                 query.text,
                 limit=self.config.results_per_query,
             )
-            classified_results = self._prioritize_results(results)
+            classified_results = self._prioritize_results(
+                results,
+                source_quality_classifier=source_quality_classifier,
+            )
             for result, source_quality in classified_results:
                 candidate = self._candidate_from_result(
                     result,
@@ -105,9 +118,12 @@ class LeadEngine:
     def _prioritize_results(
         self,
         results: list[SearchResult],
+        *,
+        source_quality_classifier: SourceQualityClassifier | None = None,
     ) -> list[tuple[SearchResult, SourceQualityResult]]:
+        classifier = source_quality_classifier or self.source_quality_classifier
         classified = [
-            (result, self.source_quality_classifier.classify(result))
+            (result, classifier.classify(result))
             for result in results
         ]
         return sorted(
@@ -117,6 +133,27 @@ class LeadEngine:
                 -item[1].score,
                 _provider_rank(item[0]),
             ),
+        )
+
+    def _use_case_for(self, search_profile: SearchProfile) -> UseCaseConfig | None:
+        if self.store is None:
+            return None
+        use_case_id = search_profile.use_case_id
+        if use_case_id is None and search_profile.id is not None:
+            use_case_id = self.store.get_search_profile(search_profile.id).use_case_id
+        if use_case_id is None:
+            return None
+        return self.store.get_use_case(use_case_id)
+
+    def _source_quality_classifier_for(
+        self,
+        use_case: UseCaseConfig | None,
+    ) -> SourceQualityClassifier:
+        if use_case is None:
+            return self.source_quality_classifier
+        return SourceQualityClassifier.from_source_policy(
+            use_case.source_policy,
+            extra_blocked_domains=self.source_quality_classifier.extra_blocked_domains,
         )
 
     def _candidate_from_result(

@@ -16,6 +16,7 @@ from target_radar.engines.lead import (
     create_search_provider,
 )
 from target_radar.storage import SQLiteStore
+from target_radar.use_cases import get_default_use_case
 
 
 class LeadEngineTests(unittest.TestCase):
@@ -34,6 +35,30 @@ class LeadEngineTests(unittest.TestCase):
         self.assertEqual(len({query.query_hash for query in queries}), 2)
         self.assertEqual(queries[0].template_set, "application_student")
         self.assertIn("Werkstudent IT Python Essen", queries[0].text)
+
+    def test_query_builder_renders_use_case_templates(self) -> None:
+        search_profile = SearchProfile(
+            profile_id=1,
+            name="Company OSINT",
+            regions=("Essen",),
+            attributes={
+                "topics": ("Zero Trust",),
+                "industries": ("IT Dienstleister",),
+            },
+        )
+
+        queries = QueryBuilder().build(
+            search_profile,
+            use_case=get_default_use_case("company_osint"),
+            limit=3,
+        )
+
+        self.assertEqual(queries[0].template_set, "company_osint")
+        self.assertEqual(queries[0].text, "Zero Trust Unternehmen Essen")
+        self.assertIn(
+            "IT Dienstleister Anbieter Essen",
+            {query.text for query in queries},
+        )
 
     def test_lead_engine_filters_dedupes_and_stores_serp_results(self) -> None:
         store = SQLiteStore.open(":memory:")
@@ -102,6 +127,50 @@ class LeadEngineTests(unittest.TestCase):
         self.assertEqual(source_query_count, 1)
         self.assertEqual(serp_result_count, 3)
         self.assertIn("source_quality", alpha_metadata)
+
+    def test_lead_engine_uses_persisted_use_case_policy(self) -> None:
+        store = SQLiteStore.open(":memory:")
+        try:
+            profile = store.create_profile(Profile(name="OSINT Profile"))
+            search_profile = store.create_search_profile(
+                SearchProfile(
+                    profile_id=profile.id,
+                    name="Company OSINT",
+                    regions=("Essen",),
+                    attributes={"topics": ("Zero Trust",)},
+                    use_case_id=store.get_use_case_id_by_slug("company_osint"),
+                )
+            )
+            provider = FakeSearchProvider(
+                results_by_query={
+                    "Zero Trust Unternehmen Essen": [
+                        SearchResult(
+                            url="https://linkedin.com/company/example",
+                            title="Example LinkedIn",
+                        )
+                    ]
+                }
+            )
+            engine = LeadEngine(
+                provider=provider,
+                config=LeadEngineConfig(request_budget=1, results_per_query=1),
+                store=store,
+            )
+
+            candidates = engine.discover(search_profile)
+            source_query = store.connection.execute(
+                "SELECT query_text, template_set FROM source_queries LIMIT 1"
+            ).fetchone()
+        finally:
+            store.close()
+
+        self.assertEqual(source_query["query_text"], "Zero Trust Unternehmen Essen")
+        self.assertEqual(source_query["template_set"], "company_osint")
+        self.assertEqual(candidates[0].status, LeadResultStatus.BLOCKED_SOURCE)
+        self.assertEqual(
+            candidates[0].metadata["source_quality"]["source_type"],
+            SourceType.SOCIAL.value,
+        )
 
     def test_source_quality_blocks_job_boards_and_scores_direct_domains(self) -> None:
         classifier = SourceQualityClassifier()
@@ -254,6 +323,27 @@ class LeadEngineTests(unittest.TestCase):
         self.assertEqual(_signal_points(rank_one, "provider_rank"), 8)
         self.assertEqual(_signal_points(rank_seven, "provider_rank"), 2)
         self.assertIn("deep_url", [risk["type"] for risk in deep_url.risks])
+
+    def test_source_quality_can_be_configured_from_source_policy(self) -> None:
+        classifier = SourceQualityClassifier.from_source_policy(
+            get_default_use_case("company_osint").source_policy
+        )
+
+        directory = classifier.classify(
+            SearchResult(
+                url="https://www.kununu.com/de/example",
+                title="Example Bewertungen",
+            )
+        )
+        job_board = classifier.classify(
+            SearchResult(
+                url="https://studentjob.de/about",
+                title="StudentJob Company Info",
+            )
+        )
+
+        self.assertIn("context_source", [risk["type"] for risk in directory.risks])
+        self.assertNotEqual(job_board.recommended_action, SourceImportAction.BLOCK)
 
     def test_lead_engine_prioritizes_direct_domains_before_portals(self) -> None:
         search_profile = SearchProfile(

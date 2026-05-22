@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 from dataclasses import dataclass
 
 from target_radar.domain import SearchProfile
+from target_radar.use_cases import UseCaseConfig, template_variables
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,9 +28,14 @@ class QueryBuilder:
         *,
         template_set: str | None = None,
         limit: int | None = None,
+        use_case: UseCaseConfig | None = None,
     ) -> list[QueryCandidate]:
-        selected_template_set = template_set or self._infer_template_set(search_profile)
-        rendered = self._render(search_profile, selected_template_set)
+        if use_case is not None:
+            selected_template_set = template_set or use_case.query_policy.default_template_set
+            rendered = self._render_use_case(search_profile, use_case)
+        else:
+            selected_template_set = template_set or self._infer_template_set(search_profile)
+            rendered = self._render(search_profile, selected_template_set)
 
         seen: set[str] = set()
         candidates: list[QueryCandidate] = []
@@ -118,6 +125,36 @@ class QueryBuilder:
 
         return sorted(rendered, key=lambda item: item[2], reverse=True)
 
+    def _render_use_case(
+        self,
+        search_profile: SearchProfile,
+        use_case: UseCaseConfig,
+    ) -> list[tuple[str, str, int]]:
+        rendered: list[tuple[str, str, int]] = []
+        if search_profile.manual_query:
+            rendered.append((search_profile.manual_query, "manual_query", 100))
+
+        values_by_field = _search_profile_values(search_profile)
+        for index, template in enumerate(use_case.query_policy.templates):
+            variables = sorted(template_variables(template))
+            value_sets: list[tuple[str, tuple[str, ...]]] = []
+            for variable in variables:
+                field_key = use_case.query_policy.variable_map.get(variable, variable)
+                values = values_by_field.get(field_key, ())
+                if not values:
+                    break
+                value_sets.append((variable, values))
+            else:
+                score = _use_case_template_score(template, index)
+                for values in itertools.product(*(item[1] for item in value_sets)):
+                    context = {
+                        variable: value
+                        for (variable, _field_values), value in zip(value_sets, values)
+                    }
+                    rendered.append((template.format(**context), template, score))
+
+        return sorted(rendered, key=lambda item: item[2], reverse=True)
+
 
 def normalize_query(query: str) -> str:
     return " ".join(query.split()).strip()
@@ -126,3 +163,41 @@ def normalize_query(query: str) -> str:
 def hash_query(provider: str, normalized_query: str) -> str:
     payload = f"{provider}:{normalized_query.lower()}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _search_profile_values(search_profile: SearchProfile) -> dict[str, tuple[str, ...]]:
+    values: dict[str, tuple[str, ...]] = {
+        "roles": search_profile.roles,
+        "regions": search_profile.regions,
+        "tech_keywords": search_profile.tech_keywords,
+        "industry_keywords": search_profile.industry_keywords,
+        "exclude_keywords": search_profile.exclude_keywords,
+    }
+    for key, value in search_profile.attributes.items():
+        values[key] = _coerce_values(value)
+
+    values.setdefault("topics", search_profile.roles)
+    values.setdefault("industries", search_profile.industry_keywords)
+    return values
+
+
+def _coerce_values(value: object) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value.strip(),) if value.strip() else ()
+    if isinstance(value, (list, tuple, set)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    return (str(value).strip(),) if str(value).strip() else ()
+
+
+def _use_case_template_score(template: str, index: int) -> int:
+    variables = template_variables(template)
+    score = 100 - index * 5
+    if {"role", "tech", "region"} <= variables:
+        score += 20
+    if {"topic", "region"} <= variables:
+        score += 10
+    if "karriere" in template.lower():
+        score += 5
+    return score

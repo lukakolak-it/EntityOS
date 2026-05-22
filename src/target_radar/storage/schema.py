@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS search_profiles (
     tech_keywords_json TEXT NOT NULL DEFAULT '[]',
     industry_keywords_json TEXT NOT NULL DEFAULT '[]',
     exclude_keywords_json TEXT NOT NULL DEFAULT '[]',
+    attributes_json TEXT NOT NULL DEFAULT '{}',
     manual_query TEXT,
     draft_language TEXT,
     created_at TEXT NOT NULL
@@ -234,6 +235,12 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
     )
     _add_column_if_missing(connection, "pipeline_runs", "use_case_version", "INTEGER")
     _add_column_if_missing(connection, "pipeline_runs", "use_case_snapshot_json", "TEXT")
+    _add_column_if_missing(
+        connection,
+        "search_profiles",
+        "attributes_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
     connection.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_search_profiles_use_case_id

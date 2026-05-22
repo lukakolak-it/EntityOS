@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlparse
 
 from target_radar.domain import domain_from_url, normalize_domain
 from target_radar.engines.lead.provider import SearchResult
+from target_radar.use_cases import SourcePolicy
 
 
 class SourceType(StrEnum):
@@ -28,6 +29,32 @@ class SourceImportAction(StrEnum):
     IMPORT = "import"
     REVIEW_SOURCE = "review_source"
     BLOCK = "block"
+
+
+_RELEVANT_PATH_TOKENS = (
+    "career",
+    "careers",
+    "karriere",
+    "jobs",
+    "kontakt",
+    "contact",
+    "impressum",
+    "about",
+    "ueber",
+    "uber",
+    "team",
+    "services",
+)
+_LISTING_TOKENS = (
+    "search",
+    "suche",
+    "stellenangebote",
+    "jobboerse",
+    "jobsuche",
+    "vacancies",
+    "results",
+    "listing",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,18 +90,62 @@ class SourceQualityClassifier:
 
     extra_blocked_domains: tuple[str, ...] = ()
     block_threshold: int = 35
+    import_threshold: int = 65
+    preferred_source_types: tuple[SourceType, ...] = (
+        SourceType.COMPANY_SITE,
+        SourceType.OFFICIAL_SITE,
+    )
+    context_source_types: tuple[SourceType, ...] = (
+        SourceType.REPOSITORY,
+        SourceType.NEWS,
+        SourceType.REGISTRY,
+    )
     blocked_source_types: tuple[SourceType, ...] = (
         SourceType.JOB_BOARD,
         SourceType.SOCIAL,
         SourceType.MARKETPLACE,
     )
+    preferred_domains: tuple[str, ...] = ()
+    relevant_path_tokens: tuple[str, ...] = _RELEVANT_PATH_TOKENS
+    listing_path_tokens: tuple[str, ...] = _LISTING_TOKENS
     _extra_blocked: frozenset[str] = field(init=False, repr=False)
+    _preferred_domains: frozenset[str] = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
             "_extra_blocked",
             frozenset(normalize_domain(domain) for domain in self.extra_blocked_domains),
+        )
+        object.__setattr__(
+            self,
+            "_preferred_domains",
+            frozenset(normalize_domain(domain) for domain in self.preferred_domains),
+        )
+
+    @classmethod
+    def from_source_policy(
+        cls,
+        source_policy: SourcePolicy,
+        *,
+        extra_blocked_domains: tuple[str, ...] = (),
+        block_threshold: int | None = None,
+    ) -> SourceQualityClassifier:
+        blocked_domains = tuple(extra_blocked_domains) + tuple(source_policy.blocked_domains)
+        return cls(
+            extra_blocked_domains=blocked_domains,
+            block_threshold=(
+                source_policy.review_threshold
+                if block_threshold is None
+                else block_threshold
+            ),
+            import_threshold=source_policy.import_threshold,
+            preferred_source_types=_source_types(source_policy.preferred_source_types),
+            context_source_types=_source_types(source_policy.context_source_types),
+            blocked_source_types=_source_types(source_policy.blocked_source_types),
+            preferred_domains=source_policy.preferred_domains,
+            relevant_path_tokens=source_policy.relevant_path_tokens or _RELEVANT_PATH_TOKENS,
+            listing_path_tokens=source_policy.listing_path_tokens or _LISTING_TOKENS,
         )
 
     def classify(self, result: SearchResult) -> SourceQualityResult:
@@ -101,24 +172,35 @@ class SourceQualityClassifier:
                 risks=tuple(risks),
             )
 
-        if source_type in {SourceType.COMPANY_SITE, SourceType.OFFICIAL_SITE}:
+        if domain in self._preferred_domains:
+            score += 20
+            signals.append({"type": "preferred_domain", "value": domain, "points": 20})
+        elif source_type in self.preferred_source_types:
             score += 20
             signals.append({"type": "direct_domain", "value": domain, "points": 20})
-        elif source_type == SourceType.DIRECTORY:
-            score -= 20
-            risks.append({"type": "secondary_source", "value": source_type.value})
-        elif source_type in {SourceType.REPOSITORY, SourceType.NEWS, SourceType.REGISTRY}:
+        elif source_type in self.context_source_types:
             score -= 10
             risks.append({"type": "context_source", "value": source_type.value})
         elif source_type in self.blocked_source_types:
             score -= 40
             risks.append({"type": "blocked_source_type", "value": source_type.value})
+        elif source_type == SourceType.DIRECTORY:
+            score -= 20
+            risks.append({"type": "secondary_source", "value": source_type.value})
 
-        if _has_relevant_path(path) and source_type not in self.blocked_source_types:
+        if (
+            _has_relevant_path(path, self.relevant_path_tokens)
+            and source_type not in self.blocked_source_types
+        ):
             score += 15
             signals.append({"type": "relevant_path", "value": path or "/", "points": 15})
 
-        if _looks_like_listing_page(path, query_params, text_haystack):
+        if _looks_like_listing_page(
+            path,
+            query_params,
+            text_haystack,
+            self.listing_path_tokens,
+        ):
             score -= 25
             risks.append({"type": "listing_or_search_page", "value": path or "/"})
 
@@ -155,6 +237,7 @@ class SourceQualityClassifier:
             source_type=source_type,
             score=score,
             block_threshold=self.block_threshold,
+            import_threshold=self.import_threshold,
             blocked_source_types=self.blocked_source_types,
         )
         return SourceQualityResult(
@@ -216,30 +299,6 @@ _JOB_BOARD_TOKENS = (
     "praktikum",
     "werkstudent",
 )
-_RELEVANT_PATH_TOKENS = (
-    "career",
-    "careers",
-    "karriere",
-    "jobs",
-    "kontakt",
-    "contact",
-    "impressum",
-    "about",
-    "ueber",
-    "uber",
-    "team",
-    "services",
-)
-_LISTING_TOKENS = (
-    "search",
-    "suche",
-    "stellenangebote",
-    "jobboerse",
-    "jobsuche",
-    "vacancies",
-    "results",
-    "listing",
-)
 _LOGIN_TOKENS = ("login", "signin", "signup", "register", "bewerben")
 _DOMAIN_JOB_BOARD_TOKENS = frozenset({"jobs", "stellen", "karriere", "career"})
 _MARKETPLACE_TOKENS = frozenset({"marketplace", "shop", "store"})
@@ -265,16 +324,17 @@ def _classify_domain(domain: str, path: str = "") -> SourceType:
     return SourceType.COMPANY_SITE
 
 
-def _has_relevant_path(path: str) -> bool:
-    return any(token in path for token in _RELEVANT_PATH_TOKENS)
+def _has_relevant_path(path: str, relevant_path_tokens: tuple[str, ...]) -> bool:
+    return any(token in path for token in relevant_path_tokens)
 
 
 def _looks_like_listing_page(
     path: str,
     query_params: dict[str, list[str]],
     text_haystack: str,
+    listing_path_tokens: tuple[str, ...],
 ) -> bool:
-    if any(token in path for token in _LISTING_TOKENS):
+    if any(token in path for token in listing_path_tokens):
         return True
     if _LISTING_QUERY_KEYS & {key.lower() for key in query_params}:
         return True
@@ -342,17 +402,22 @@ def _is_news_path(path: str) -> bool:
     return re.search(r"/20\d{2}/\d{1,2}/\d{1,2}/", path) is not None
 
 
+def _source_types(values: tuple[str, ...]) -> tuple[SourceType, ...]:
+    return tuple(SourceType(value) for value in values)
+
+
 def _recommended_action(
     *,
     source_type: SourceType,
     score: int,
     block_threshold: int,
+    import_threshold: int,
     blocked_source_types: tuple[SourceType, ...],
 ) -> SourceImportAction:
     if source_type in blocked_source_types:
         return SourceImportAction.BLOCK
     if score < block_threshold:
         return SourceImportAction.BLOCK
-    if score >= 65:
+    if score >= import_threshold:
         return SourceImportAction.IMPORT
     return SourceImportAction.REVIEW_SOURCE

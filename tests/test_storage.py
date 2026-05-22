@@ -67,7 +67,11 @@ class SQLiteStorageTests(unittest.TestCase):
         profile = self.store.create_profile(Profile(name="Default Use Case Profile"))
 
         search_profile = self.store.create_search_profile(
-            SearchProfile(profile_id=profile.id, name="Werkstudent IT Essen")
+            SearchProfile(
+                profile_id=profile.id,
+                name="Werkstudent IT Essen",
+                attributes={"topics": ["Fallback Topic"]},
+            )
         )
 
         self.assertEqual(
@@ -77,6 +81,10 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(
             self.store.get_search_profile(search_profile.id).use_case_id,
             search_profile.use_case_id,
+        )
+        self.assertEqual(
+            self.store.get_search_profile(search_profile.id).attributes,
+            {"topics": ["Fallback Topic"]},
         )
 
     def test_pipeline_run_stores_use_case_snapshot(self) -> None:
@@ -179,6 +187,7 @@ class SQLiteStorageTests(unittest.TestCase):
             connection.close()
 
         self.assertIn("use_case_id", search_columns)
+        self.assertIn("attributes_json", search_columns)
         self.assertIn("use_case_snapshot_json", run_columns)
         self.assertIsNotNone(migrated_search_profile["use_case_id"])
 

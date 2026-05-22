@@ -226,10 +226,10 @@ class SQLiteStore:
             INSERT INTO search_profiles (
                 profile_id, use_case_id, name, roles_json, regions_json,
                 tech_keywords_json, industry_keywords_json,
-                exclude_keywords_json, manual_query, draft_language,
-                created_at
+                exclude_keywords_json, attributes_json, manual_query,
+                draft_language, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 search_profile.profile_id,
@@ -240,6 +240,7 @@ class SQLiteStore:
                 _json_dumps(list(search_profile.tech_keywords)),
                 _json_dumps(list(search_profile.industry_keywords)),
                 _json_dumps(list(search_profile.exclude_keywords)),
+                _json_dumps(search_profile.attributes),
                 search_profile.manual_query,
                 search_profile.draft_language,
                 _format_dt(search_profile.created_at),
@@ -256,6 +257,7 @@ class SQLiteStore:
             tech_keywords=search_profile.tech_keywords,
             industry_keywords=search_profile.industry_keywords,
             exclude_keywords=search_profile.exclude_keywords,
+            attributes=dict(search_profile.attributes),
             manual_query=search_profile.manual_query,
             draft_language=search_profile.draft_language,
             created_at=search_profile.created_at,
@@ -1017,6 +1019,7 @@ def _search_profile_from_row(row: sqlite3.Row) -> SearchProfile:
         tech_keywords=tuple(_json_loads(row["tech_keywords_json"], [])),
         industry_keywords=tuple(_json_loads(row["industry_keywords_json"], [])),
         exclude_keywords=tuple(_json_loads(row["exclude_keywords_json"], [])),
+        attributes=_json_loads(row["attributes_json"], {}),
         manual_query=row["manual_query"],
         draft_language=row["draft_language"],
         created_at=_parse_dt(row["created_at"]),

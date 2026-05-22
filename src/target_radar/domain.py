@@ -182,6 +182,7 @@ class SearchProfile:
     manual_query: str | None = None
     draft_language: str | None = None
     use_case_id: int | None = None
+    attributes: dict[str, Any] = field(default_factory=dict)
     id: int | None = None
     created_at: datetime = field(default_factory=utc_now)
 
@@ -204,6 +205,7 @@ class SearchProfile:
             self.manual_query = self.manual_query.strip() or None
         if self.draft_language is not None:
             self.draft_language = self.draft_language.strip() or None
+        self.attributes = dict(self.attributes)
 
 
 @dataclass(slots=True)
