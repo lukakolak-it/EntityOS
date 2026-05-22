@@ -374,10 +374,59 @@ textarea {
   margin-bottom: 12px;
 }
 
+.tabbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.tabbar button {
+  min-height: 30px;
+}
+
+.tabbar button.active-tab {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #ffffff;
+}
+
+.editor-form {
+  display: grid;
+  gap: 10px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.short-textarea {
+  min-height: 78px;
+}
+
+.code-input {
+  min-height: 210px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.editor-status {
+  min-height: 20px;
+  color: var(--amber);
+}
+
+.preview-item {
+  background: #ffffff;
+}
+
 @media (max-width: 940px) {
   .layout,
   .split,
-  .detail-grid {
+  .detail-grid,
+  .form-grid {
     grid-template-columns: 1fr;
   }
 

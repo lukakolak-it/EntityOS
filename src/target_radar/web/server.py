@@ -116,7 +116,9 @@ def _make_handler(database_url: str):
         def do_PATCH(self) -> None:
             parsed = urlparse(self.path)
             try:
-                if parsed.path.startswith("/api/drafts/"):
+                if parsed.path.startswith("/api/use-cases/"):
+                    self._handle_use_case_patch(parsed.path)
+                elif parsed.path.startswith("/api/drafts/"):
                     self._handle_draft_patch(parsed.path)
                 elif parsed.path.startswith("/api/search-profiles/"):
                     self._handle_search_profile_patch(parsed.path)
@@ -207,6 +209,32 @@ def _make_handler(database_url: str):
             store = self._store()
             try:
                 self._send_json({"search_profiles": store.list_search_profiles(limit=limit)})
+            finally:
+                store.close()
+
+        def _handle_use_case_patch(self, path: str) -> None:
+            slug, action = _parse_use_case_path(path)
+            if action is not None:
+                self._send_error(HTTPStatus.METHOD_NOT_ALLOWED, "use PATCH on the use case")
+                return
+
+            payload = self._read_json(default={})
+            config = payload.get("config") if "config" in payload else payload
+            if not isinstance(config, dict):
+                raise ValueError("config must be an object")
+            next_config = dict(config)
+            if next_config.get("id") not in {None, slug}:
+                raise ValueError("use case id cannot be changed")
+            next_config["id"] = slug
+
+            store = self._store()
+            try:
+                store.get_use_case_by_slug(slug)
+                updated = validate_use_case_config(next_config)
+                store.save_use_case(updated)
+                self._send_json(
+                    {"use_case": _use_case_payload(store, store.get_use_case_by_slug(slug))}
+                )
             finally:
                 store.close()
 

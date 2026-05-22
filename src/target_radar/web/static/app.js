@@ -1,9 +1,14 @@
 const state = {
   selectedTargetId: null,
   selectedUseCaseSlug: null,
+  useCaseTab: "basis",
   queue: [],
   useCases: [],
 };
+
+const USE_CASE_TABS = (
+  ["basis", "fields", "queries", "sources", "rating", "output", "review"]
+);
 
 const elements = {
   serverStatus: document.querySelector("#serverStatus"),
@@ -147,48 +152,413 @@ function renderUseCases() {
 
 function renderUseCaseDetail(useCase) {
   elements.useCaseDetail.classList.remove("hidden");
+  const selectedTab = USE_CASE_TABS.includes(state.useCaseTab) ? state.useCaseTab : "basis";
   elements.useCaseDetail.innerHTML = `
-    <div class="detail-grid compact">
+    <div class="tabbar">
+      ${USE_CASE_TABS.map((tab) => `
+        <button type="button" class="${tab === selectedTab ? "active-tab" : ""}" data-use-case-tab="${tab}">
+          ${escapeHtml(tabLabel(tab))}
+        </button>
+      `).join("")}
+    </div>
+    <form id="useCaseEditor" class="editor-form">
+      ${renderUseCaseTab(useCase, selectedTab)}
+      <div id="useCaseEditorStatus" class="editor-status"></div>
+      <div id="useCasePreview" class="item preview-item"></div>
+      <div class="actions">
+        <button type="button" class="primary" id="saveUseCaseButton">Save Use Case</button>
+        <button type="button" id="resetUseCaseButton">Reset</button>
+      </div>
+    </form>
+  `;
+
+  elements.useCaseDetail.querySelectorAll("[data-use-case-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.useCaseTab = button.dataset.useCaseTab;
+      renderUseCaseDetail(useCase);
+    });
+  });
+  elements.useCaseDetail.querySelector("#saveUseCaseButton").addEventListener("click", async () => {
+    await saveUseCaseFromEditor(useCase);
+  });
+  elements.useCaseDetail.querySelector("#resetUseCaseButton").addEventListener("click", () => {
+    renderUseCaseDetail(useCase);
+  });
+  elements.useCaseDetail.querySelector("#useCaseEditor").addEventListener("input", () => {
+    updateUseCasePreview(useCase);
+  });
+  updateUseCasePreview(useCase);
+}
+
+function renderUseCaseTab(useCase, tab) {
+  if (tab === "basis") return renderBasisTab(useCase);
+  if (tab === "fields") return renderFieldsTab(useCase);
+  if (tab === "queries") return renderQueriesTab(useCase);
+  if (tab === "sources") return renderSourcesTab(useCase);
+  if (tab === "rating") return renderRatingTab(useCase);
+  if (tab === "output") return renderOutputTab(useCase);
+  return renderReviewTab(useCase);
+}
+
+function renderBasisTab(useCase) {
+  return `
+    <div class="form-grid">
+      <div>
+        <label>Slug</label>
+        <input id="uc-slug" value="${escapeAttribute(useCase.slug)}" disabled>
+      </div>
       <div>
         <label>Name</label>
-        <strong>${escapeHtml(useCase.name)}</strong>
+        <input id="uc-name" value="${escapeAttribute(useCase.name)}">
       </div>
       <div>
-        <label>Draft</label>
-        <span>${escapeHtml(useCase.draft_policy.draft_type)}</span>
+        <label>Status</label>
+        <select id="uc-status">
+          ${selectOptions(["template", "active", "inactive", "archived"], useCase.status)}
+        </select>
       </div>
       <div>
-        <label>LLM</label>
-        <span>${escapeHtml(useCase.rating_policy.llm_mode)}</span>
+        <label>Version</label>
+        <input id="uc-version" type="number" min="1" value="${escapeAttribute(useCase.version)}">
       </div>
     </div>
-    <div class="split">
-      <section>
-        <h3>Felder</h3>
-        ${renderList(useCase.attribute_schema.fields.map((field) => `${field.key}: ${field.type}`))}
-      </section>
-      <section>
-        <h3>Rating</h3>
-        ${renderList(useCase.rating_policy.criteria.map((criterion) => (
-          `${criterion.key} ${criterion.weight}% ${criterion.evaluation}`
-        )))}
-      </section>
-    </div>
-    <div class="split">
-      <section>
-        <h3>Queries</h3>
-        ${renderList(useCase.query_policy.templates)}
-      </section>
-      <section>
-        <h3>Quellen</h3>
-        ${renderList([
-          `preferred: ${useCase.source_policy.preferred_source_types.join(", ") || "-"}`,
-          `context: ${useCase.source_policy.context_source_types.join(", ") || "-"}`,
-          `blocked: ${useCase.source_policy.blocked_source_types.join(", ") || "-"}`,
-        ])}
-      </section>
-    </div>
+    <label>Description</label>
+    <textarea id="uc-description" class="short-textarea">${escapeHtml(useCase.description || "")}</textarea>
   `;
+}
+
+function renderFieldsTab(useCase) {
+  return `
+    <label>Attribute Schema Fields</label>
+    <textarea id="uc-fields-json" class="code-input">${escapeHtml(jsonText(useCase.attribute_schema.fields))}</textarea>
+  `;
+}
+
+function renderQueriesTab(useCase) {
+  return `
+    <div class="form-grid">
+      <div>
+        <label>Template Set</label>
+        <input id="uc-query-template-set" value="${escapeAttribute(useCase.query_policy.default_template_set)}">
+      </div>
+      <div>
+        <label>Request Budget</label>
+        <input id="uc-query-budget" type="number" min="1" value="${escapeAttribute(useCase.query_policy.request_budget_default)}">
+      </div>
+      <div>
+        <label>Results Per Query</label>
+        <input id="uc-query-results" type="number" min="1" value="${escapeAttribute(useCase.query_policy.results_per_query_default)}">
+      </div>
+    </div>
+    <label>Templates</label>
+    <textarea id="uc-query-templates" class="code-input">${escapeHtml(useCase.query_policy.templates.join("\n"))}</textarea>
+    <label>Variable Map</label>
+    <textarea id="uc-variable-map" class="code-input">${escapeHtml(jsonText(useCase.query_policy.variable_map))}</textarea>
+  `;
+}
+
+function renderSourcesTab(useCase) {
+  return `
+    <div class="form-grid">
+      <div>
+        <label>Import Threshold</label>
+        <input id="uc-source-import-threshold" type="number" min="0" max="100" value="${escapeAttribute(useCase.source_policy.import_threshold)}">
+      </div>
+      <div>
+        <label>Review Threshold</label>
+        <input id="uc-source-review-threshold" type="number" min="0" max="100" value="${escapeAttribute(useCase.source_policy.review_threshold)}">
+      </div>
+    </div>
+    <label>Preferred Source Types</label>
+    <input id="uc-source-preferred" value="${escapeAttribute(useCase.source_policy.preferred_source_types.join(", "))}">
+    <label>Context Source Types</label>
+    <input id="uc-source-context" value="${escapeAttribute(useCase.source_policy.context_source_types.join(", "))}">
+    <label>Blocked Source Types</label>
+    <input id="uc-source-blocked" value="${escapeAttribute(useCase.source_policy.blocked_source_types.join(", "))}">
+    <label>Blocked Domains</label>
+    <input id="uc-source-blocked-domains" value="${escapeAttribute(useCase.source_policy.blocked_domains.join(", "))}">
+    <label>Preferred Domains</label>
+    <input id="uc-source-preferred-domains" value="${escapeAttribute(useCase.source_policy.preferred_domains.join(", "))}">
+    <label>Relevant Path Tokens</label>
+    <input id="uc-source-relevant-paths" value="${escapeAttribute(useCase.source_policy.relevant_path_tokens.join(", "))}">
+    <label>Listing Path Tokens</label>
+    <input id="uc-source-listing-paths" value="${escapeAttribute(useCase.source_policy.listing_path_tokens.join(", "))}">
+  `;
+}
+
+function renderRatingTab(useCase) {
+  return `
+    <div class="form-grid">
+      <div>
+        <label>LLM Mode</label>
+        <select id="uc-rating-llm-mode">
+          ${selectOptions(["off", "light", "heavy"], useCase.rating_policy.llm_mode)}
+        </select>
+      </div>
+      <div>
+        <label>Review Score</label>
+        <input id="uc-rating-review-score" type="number" min="0" max="100" value="${escapeAttribute(useCase.rating_policy.min_score_for_review)}">
+      </div>
+      <div>
+        <label>Draft Score</label>
+        <input id="uc-rating-draft-score" type="number" min="0" max="100" value="${escapeAttribute(useCase.rating_policy.min_score_for_draft)}">
+      </div>
+    </div>
+    <label>Criteria</label>
+    <textarea id="uc-rating-criteria" class="code-input">${escapeHtml(jsonText(useCase.rating_policy.criteria))}</textarea>
+  `;
+}
+
+function renderOutputTab(useCase) {
+  return `
+    <div class="form-grid">
+      <div>
+        <label>Draft Type</label>
+        <select id="uc-draft-type">
+          ${selectOptions(["application_email", "research_summary", "none"], useCase.draft_policy.draft_type)}
+        </select>
+      </div>
+      <div>
+        <label>Language</label>
+        <input id="uc-draft-language" value="${escapeAttribute(useCase.draft_policy.language)}">
+      </div>
+      <div>
+        <label>Max Length</label>
+        <input id="uc-draft-max-length" type="number" min="1" value="${escapeAttribute(useCase.draft_policy.max_length_chars)}">
+      </div>
+      <div>
+        <label>Include Sources</label>
+        <select id="uc-draft-include-sources">
+          ${selectOptions(["true", "false"], String(Boolean(useCase.draft_policy.include_sources)))}
+        </select>
+      </div>
+    </div>
+    <label>Required Sections</label>
+    <input id="uc-draft-required-sections" value="${escapeAttribute(useCase.draft_policy.required_sections.join(", "))}">
+    <label>Forbidden Claims</label>
+    <input id="uc-draft-forbidden-claims" value="${escapeAttribute(useCase.draft_policy.forbidden_claims.join(", "))}">
+  `;
+}
+
+function renderReviewTab(useCase) {
+  return `
+    <div class="form-grid">
+      <div>
+        <label>Default Scope</label>
+        <select id="uc-review-scope">
+          ${selectOptions(["all", "use_case"], useCase.review_policy.default_scope)}
+        </select>
+      </div>
+    </div>
+    <label>Actions</label>
+    <input id="uc-review-actions" value="${escapeAttribute(useCase.review_policy.actions.join(", "))}">
+    <label>Columns</label>
+    <input id="uc-review-columns" value="${escapeAttribute(useCase.review_policy.columns.join(", "))}">
+  `;
+}
+
+async function saveUseCaseFromEditor(useCase) {
+  const status = elements.useCaseDetail.querySelector("#useCaseEditorStatus");
+  try {
+    const config = buildUseCaseConfigFromEditor(useCase);
+    const data = await api(`/api/use-cases/${useCase.slug}`, {
+      method: "PATCH",
+      body: { config },
+    });
+    state.selectedUseCaseSlug = data.use_case.slug;
+    status.textContent = "Saved";
+    await loadUseCases();
+    await loadSearchProfiles();
+    await loadQueue();
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+function updateUseCasePreview(useCase) {
+  const preview = elements.useCaseDetail.querySelector("#useCasePreview");
+  const status = elements.useCaseDetail.querySelector("#useCaseEditorStatus");
+  if (!preview) return;
+  try {
+    const config = buildUseCaseConfigFromEditor(useCase);
+    status.textContent = "";
+    preview.innerHTML = `
+      <div class="split">
+        <section>
+          <h3>Query Preview</h3>
+          ${renderList(queryPreview(config))}
+        </section>
+        <section>
+          <h3>Source Policy Preview</h3>
+          ${renderList(sourcePolicyPreview(config))}
+        </section>
+      </div>
+    `;
+  } catch (error) {
+    preview.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function buildUseCaseConfigFromEditor(useCase) {
+  const config = editableUseCaseConfig(useCase);
+  const get = (id) => elements.useCaseDetail.querySelector(`#${id}`);
+
+  if (get("uc-name")) {
+    config.name = get("uc-name").value.trim();
+    config.description = get("uc-description").value.trim();
+    config.status = get("uc-status").value;
+    config.version = numberValue(get("uc-version").value);
+  }
+  if (get("uc-fields-json")) {
+    config.attribute_schema.fields = parseJsonField("uc-fields-json", "Attribute Schema Fields");
+  }
+  if (get("uc-query-templates")) {
+    config.query_policy.default_template_set = get("uc-query-template-set").value.trim();
+    config.query_policy.request_budget_default = numberValue(get("uc-query-budget").value);
+    config.query_policy.results_per_query_default = numberValue(get("uc-query-results").value);
+    config.query_policy.templates = parseLines(get("uc-query-templates").value);
+    config.query_policy.variable_map = parseJsonObject("uc-variable-map", "Variable Map");
+  }
+  if (get("uc-source-preferred")) {
+    config.source_policy.import_threshold = numberValue(get("uc-source-import-threshold").value);
+    config.source_policy.review_threshold = numberValue(get("uc-source-review-threshold").value);
+    config.source_policy.preferred_source_types = parseCsv(get("uc-source-preferred").value);
+    config.source_policy.context_source_types = parseCsv(get("uc-source-context").value);
+    config.source_policy.blocked_source_types = parseCsv(get("uc-source-blocked").value);
+    config.source_policy.blocked_domains = parseCsv(get("uc-source-blocked-domains").value);
+    config.source_policy.preferred_domains = parseCsv(get("uc-source-preferred-domains").value);
+    config.source_policy.relevant_path_tokens = parseCsv(get("uc-source-relevant-paths").value);
+    config.source_policy.listing_path_tokens = parseCsv(get("uc-source-listing-paths").value);
+  }
+  if (get("uc-rating-criteria")) {
+    config.rating_policy.llm_mode = get("uc-rating-llm-mode").value;
+    config.rating_policy.min_score_for_review = numberValue(get("uc-rating-review-score").value);
+    config.rating_policy.min_score_for_draft = numberValue(get("uc-rating-draft-score").value);
+    config.rating_policy.criteria = parseJsonField("uc-rating-criteria", "Criteria");
+  }
+  if (get("uc-draft-type")) {
+    config.draft_policy.draft_type = get("uc-draft-type").value;
+    config.draft_policy.language = get("uc-draft-language").value.trim();
+    config.draft_policy.max_length_chars = numberValue(get("uc-draft-max-length").value);
+    config.draft_policy.include_sources = get("uc-draft-include-sources").value === "true";
+    config.draft_policy.required_sections = parseCsv(get("uc-draft-required-sections").value);
+    config.draft_policy.forbidden_claims = parseCsv(get("uc-draft-forbidden-claims").value);
+  }
+  if (get("uc-review-actions")) {
+    config.review_policy.default_scope = get("uc-review-scope").value;
+    config.review_policy.actions = parseCsv(get("uc-review-actions").value);
+    config.review_policy.columns = parseCsv(get("uc-review-columns").value);
+  }
+  return config;
+}
+
+function editableUseCaseConfig(useCase) {
+  const config = JSON.parse(JSON.stringify(useCase));
+  delete config.db_id;
+  delete config.slug;
+  return config;
+}
+
+function parseJsonField(id, label) {
+  const value = elements.useCaseDetail.querySelector(`#${id}`).value;
+  const parsed = JSON.parse(value);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON array`);
+  }
+  return parsed;
+}
+
+function parseJsonObject(id, label) {
+  const value = elements.useCaseDetail.querySelector(`#${id}`).value;
+  const parsed = JSON.parse(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return parsed;
+}
+
+function parseLines(value) {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
+}
+
+function parseCsv(value) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function numberValue(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new Error("number field is invalid");
+  }
+  return parsed;
+}
+
+function queryPreview(config) {
+  return config.query_policy.templates.slice(0, 6).map((template) => {
+    let rendered = template;
+    for (const variable of templateVariables(template)) {
+      const fieldKey = config.query_policy.variable_map[variable] || variable;
+      rendered = rendered.replaceAll(`{${variable}}`, sampleValue(fieldKey));
+    }
+    return rendered;
+  });
+}
+
+function sourcePolicyPreview(config) {
+  return [
+    `import >= ${config.source_policy.import_threshold}`,
+    `review >= ${config.source_policy.review_threshold}`,
+    `preferred: ${config.source_policy.preferred_source_types.join(", ") || "-"}`,
+    `context: ${config.source_policy.context_source_types.join(", ") || "-"}`,
+    `blocked: ${config.source_policy.blocked_source_types.join(", ") || "-"}`,
+  ];
+}
+
+function templateVariables(template) {
+  const variables = new Set();
+  for (const match of template.matchAll(/\{([a-z][a-z0-9_]*)\}/g)) {
+    variables.add(match[1]);
+  }
+  return Array.from(variables);
+}
+
+function sampleValue(fieldKey) {
+  const samples = {
+    roles: "Werkstudent IT",
+    role: "Werkstudent IT",
+    tech_keywords: "Python",
+    tech: "Python",
+    regions: "Essen",
+    region: "Essen",
+    industry_keywords: "IT",
+    industries: "IT",
+    industry: "IT",
+    topics: "Solar Services",
+    topic: "Solar Services",
+  };
+  return samples[fieldKey] || fieldKey;
+}
+
+function tabLabel(tab) {
+  return {
+    basis: "Basis",
+    fields: "Felder",
+    queries: "Queries",
+    sources: "Quellen",
+    rating: "Rating",
+    output: "Output",
+    review: "Review",
+  }[tab] || tab;
+}
+
+function selectOptions(values, selected) {
+  return values.map((value) => (
+    `<option value="${escapeAttribute(value)}" ${String(value) === String(selected) ? "selected" : ""}>${escapeHtml(value)}</option>`
+  )).join("");
+}
+
+function jsonText(value) {
+  return JSON.stringify(value, null, 2);
 }
 
 async function loadSearchProfiles() {

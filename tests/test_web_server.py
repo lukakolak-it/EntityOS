@@ -43,6 +43,14 @@ class WebServerTests(unittest.TestCase):
                     method="POST",
                     payload={"name": "Application Copy", "slug": "application_copy"},
                 )
+                edited_config = cloned_use_case_payload["use_case"]
+                edited_config["name"] = "Application Edited"
+                edited_config["query_policy"]["templates"].append("{role} remote {region}")
+                updated_use_case_payload = _http_json(
+                    f"{base_url}/api/use-cases/application_copy",
+                    method="PATCH",
+                    payload={"config": edited_config},
+                )
                 patched_profile_payload = _http_json(
                     f"{base_url}/api/search-profiles/{search_profiles_payload['search_profiles'][0]['id']}",
                     method="PATCH",
@@ -79,6 +87,11 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(filtered_queue_payload["items"][0]["use_case_slug"], "application_student")
         self.assertGreaterEqual(len(search_profiles_payload["search_profiles"]), 1)
         self.assertEqual(cloned_use_case_payload["use_case"]["slug"], "application_copy")
+        self.assertEqual(updated_use_case_payload["use_case"]["name"], "Application Edited")
+        self.assertIn(
+            "{role} remote {region}",
+            updated_use_case_payload["use_case"]["query_policy"]["templates"],
+        )
         self.assertEqual(
             patched_profile_payload["search_profile"]["use_case_id"],
             cloned_use_case_payload["use_case"]["db_id"],
