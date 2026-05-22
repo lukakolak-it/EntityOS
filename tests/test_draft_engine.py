@@ -18,6 +18,7 @@ from target_radar.engines.draft import (
     DraftValidator,
 )
 from target_radar.storage import SQLiteStore
+from target_radar.use_cases import get_default_use_case
 
 
 class DraftEngineTests(unittest.TestCase):
@@ -110,6 +111,33 @@ class DraftEngineTests(unittest.TestCase):
                 rating=rating,
                 evidence=[],
             )
+
+    def test_draft_policy_creates_research_summary(self) -> None:
+        rating = self.store.save_rating(RatingResult(
+            target_id=self.target.id,
+            recommended_action=RecommendedAction.DRAFT,
+            rule_score=82,
+            ai_score=90,
+            confidence=0.88,
+            rating_status="use_case_rated",
+            rating_version="rules-v1+usecase-v1",
+            risks=[{"type": "source_quality", "value": "check manually"}],
+        ))
+
+        draft = DraftEngine().create_draft(
+            profile=self.profile,
+            target=self.target,
+            rating=rating,
+            evidence=self.evidence,
+            draft_policy=get_default_use_case("company_osint").draft_policy,
+        )
+
+        self.assertEqual(draft.draft_type, "research_summary")
+        self.assertEqual(draft.draft_version, "research-summary-v1")
+        self.assertIn("Research Summary: example.com", draft.subject)
+        self.assertIn("Key Findings", draft.body)
+        self.assertIn("Risks Or Uncertainties", draft.body)
+        self.assertEqual(draft.used_context["draft_policy"]["draft_type"], "research_summary")
 
 
 if __name__ == "__main__":

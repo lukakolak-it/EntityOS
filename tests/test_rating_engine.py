@@ -17,15 +17,16 @@ from target_radar.engines.rating import (
     RuleRater,
 )
 from target_radar.storage import SQLiteStore
+from target_radar.use_cases import get_default_use_case
 
 
 class RatingEngineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.store = SQLiteStore.open(":memory:")
-        profile = self.store.create_profile(Profile(name="Rating Profile"))
+        self.profile = self.store.create_profile(Profile(name="Rating Profile"))
         self.search_profile = self.store.create_search_profile(
             SearchProfile(
-                profile_id=profile.id,
+                profile_id=self.profile.id,
                 name="Werkstudent IT Essen",
                 roles=("Werkstudent IT",),
                 regions=("Essen",),
@@ -153,6 +154,116 @@ class RatingEngineTests(unittest.TestCase):
         self.assertEqual(rating.rating_status, "rating_partial")
         self.assertEqual(rating.error_type, "ValueError")
         self.assertIn("invalid ai json", rating.error_message)
+
+    def test_use_case_rules_rating_can_draft_without_ai(self) -> None:
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/jobs",
+                text="Werkstudent IT in Essen mit Python und Kontakt jobs@example.com",
+                context_type="career",
+            )
+        ]
+
+        rating = RatingEngine().rate(
+            self.target,
+            self.search_profile,
+            evidence,
+            use_case=get_default_use_case("application_student"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.DRAFT)
+        self.assertEqual(rating.rating_status, "use_case_rated")
+        self.assertEqual(rating.rating_version, "rules-v1+usecase-v1")
+        self.assertEqual(rating.rule_score, 100)
+        self.assertIsNone(rating.ai_score)
+        self.assertEqual(rating.input_snapshot["use_case_id"], "application_student")
+        self.assertTrue(
+            any(reason.get("criterion") == "role_fit" for reason in rating.reasons)
+        )
+
+    def test_use_case_llm_rating_uses_ai_criteria_and_source_quality(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "regions": ["Essen"]},
+        )
+        self.target.metadata["lead_metadata"] = {
+            "source_quality": {
+                "source_type": "company_site",
+                "source_quality_score": 82,
+            }
+        }
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/about",
+                text="Example GmbH bietet Solar Services in Essen mit Impressum und Kontakt.",
+                context_type="about",
+            )
+        ]
+        engine = RatingEngine(
+            ai_provider=FakeAIRatingProvider(
+                AIRatingResponse(
+                    ai_score=90,
+                    confidence=0.88,
+                    recommended_action=RecommendedAction.DRAFT,
+                    reasons=[
+                        {
+                            "text": "Relevante OSINT-Evidence.",
+                            "source_url": "https://example.com/about",
+                            "evidence": "Solar Services in Essen",
+                        }
+                    ],
+                )
+            )
+        )
+
+        rating = engine.rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.DRAFT)
+        self.assertEqual(rating.rating_status, "use_case_rated")
+        self.assertEqual(rating.ai_score, 90)
+        self.assertEqual(rating.input_snapshot["use_case_id"], "company_osint")
+        self.assertTrue(
+            any(reason.get("criterion") == "credibility" for reason in rating.reasons)
+        )
+
+    def test_use_case_missing_required_llm_becomes_partial_review(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "regions": ["Essen"]},
+        )
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/about",
+                text="Example GmbH bietet Solar Services in Essen mit Kontakt.",
+                context_type="about",
+            )
+        ]
+
+        rating = RatingEngine().rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.REVIEW)
+        self.assertEqual(rating.rating_status, "rating_partial")
+        self.assertTrue(
+            any(risk.get("type") == "missing_ai_provider" for risk in rating.risks)
+        )
 
     def test_evidence_can_be_loaded_for_rating(self) -> None:
         saved = self.store.add_evidence(

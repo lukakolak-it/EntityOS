@@ -27,6 +27,7 @@ from target_radar.pipeline.extractor import ExtractedPage
 from target_radar.pipeline.fetcher import FetchedPage
 from target_radar.pipeline.importer import TargetImportResult, TargetImporter
 from target_radar.storage import SQLiteStore
+from target_radar.use_cases import DraftPolicy, UseCaseConfig
 
 
 class LeadEngine(Protocol):
@@ -57,6 +58,7 @@ class RatingEngine(Protocol):
         evidence: list[Evidence],
         *,
         pipeline_run_id: int | None = None,
+        use_case: UseCaseConfig | None = None,
     ) -> RatingResult:
         """Rate a target from persisted evidence."""
 
@@ -70,6 +72,7 @@ class DraftEngine(Protocol):
         rating: RatingResult,
         evidence: list[Evidence],
         draft_type: str = "application_email",
+        draft_policy: DraftPolicy | None = None,
         language: str | None = None,
         regenerated_from_draft_id: int | None = None,
     ) -> Draft:
@@ -301,12 +304,14 @@ class PipelineOrchestrator:
             raise ValueError("target has no rating to draft from")
 
         latest_draft = next(iter(self.store.list_drafts(target_id)), None)
+        use_case = self._use_case_for_search_profile(search_profile)
         counts = self._create_draft(
             target=target,
             rating=ratings[0],
             evidence=self.store.list_evidence(target_id),
             language=search_profile.draft_language,
             pipeline_run_id=pipeline_run_id,
+            draft_policy=use_case.draft_policy if use_case is not None else None,
             regenerated_from_draft_id=latest_draft.id if latest_draft else None,
         )
         return TargetReprocessResult.from_counts(
@@ -567,11 +572,13 @@ class PipelineOrchestrator:
         try:
             persisted_target = self.store.get_target(target.id)
             evidence = self.store.list_evidence(target.id)
+            use_case = self._use_case_for_search_profile(request.search_profile)
             rating = self.rating_engine.rate(
                 persisted_target,
                 request.search_profile,
                 evidence,
                 pipeline_run_id=pipeline_run_id,
+                use_case=use_case,
             )
             saved_rating = self.store.save_rating(rating)
             counts.rated_count += 1
@@ -615,6 +622,7 @@ class PipelineOrchestrator:
                 evidence=evidence,
                 language=request.search_profile.draft_language,
                 pipeline_run_id=pipeline_run_id,
+                draft_policy=use_case.draft_policy if use_case is not None else None,
             )
         )
         return counts
@@ -627,6 +635,7 @@ class PipelineOrchestrator:
         evidence: list[Evidence],
         language: str | None,
         pipeline_run_id: int | None,
+        draft_policy: DraftPolicy | None = None,
         regenerated_from_draft_id: int | None = None,
     ) -> _PipelineCounts:
         counts = _PipelineCounts()
@@ -660,6 +669,7 @@ class PipelineOrchestrator:
                 target=persisted_target,
                 rating=rating,
                 evidence=evidence,
+                draft_policy=draft_policy,
                 language=language,
                 regenerated_from_draft_id=regenerated_from_draft_id,
             )
@@ -692,6 +702,17 @@ class PipelineOrchestrator:
             counts.error_count += 1
             counts.review_target_count += 1
             return counts
+
+    def _use_case_for_search_profile(
+        self,
+        search_profile: SearchProfile,
+    ) -> UseCaseConfig | None:
+        use_case_id = search_profile.use_case_id
+        if use_case_id is None and search_profile.id is not None:
+            use_case_id = self.store.get_search_profile(search_profile.id).use_case_id
+        if use_case_id is None:
+            return None
+        return self.store.get_use_case(use_case_id)
 
     def _set_rating_review_status(
         self,

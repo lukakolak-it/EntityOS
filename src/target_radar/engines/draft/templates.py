@@ -7,6 +7,8 @@ from target_radar.engines.draft.context import DraftContext
 
 class TemplateDraftGenerator:
     def generate(self, context: DraftContext, *, draft_type: str) -> tuple[str, str]:
+        if draft_type == "research_summary":
+            return _research_summary(context)
         if draft_type != "application_email":
             raise ValueError(f"unsupported draft_type: {draft_type}")
 
@@ -29,3 +31,35 @@ class TemplateDraftGenerator:
             ]
         )
         return subject, body
+
+
+def _research_summary(context: DraftContext) -> tuple[str, str]:
+    snippets = context.evidence_snippets[:3]
+    subject = f"Research Summary: {context.target_domain}"
+    findings = "\n".join(
+        f"- {snippet}" for snippet in snippets
+    )
+    if not findings:
+        findings = "- Keine belastbaren Belege gefunden."
+    risks = "\n".join(
+        f"- {risk.get('type', 'risk')}: {risk.get('value', '')}"
+        for risk in context.risks[:5]
+    )
+    if not risks:
+        risks = "- Keine expliziten Risiken im Rating."
+
+    body = "\n\n".join(
+        [
+            f"Title\n{subject}",
+            (
+                "Summary\n"
+                f"{context.target_domain} wurde anhand der lokalen Evidence fuer "
+                "den gewaehlten Use Case bewertet."
+            ),
+            f"Key Findings\n{findings}",
+            f"Evidence\n{findings}",
+            f"Risks Or Uncertainties\n{risks}",
+            "Next Steps\n- Quellen manuell pruefen und Entscheidung in der Review Queue treffen.",
+        ]
+    )
+    return subject, body

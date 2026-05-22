@@ -16,6 +16,9 @@ class AIRatingRequest:
     search_terms: tuple[str, ...]
     context_text: str
     rule_score: int
+    criterion_key: str | None = None
+    criterion_label: str | None = None
+    llm_instruction: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +115,9 @@ def _rating_prompt(request: AIRatingRequest) -> str:
             "target_domain": request.target_domain,
             "search_terms": request.search_terms,
             "rule_score": request.rule_score,
+            "criterion_key": request.criterion_key,
+            "criterion_label": request.criterion_label,
+            "llm_instruction": request.llm_instruction,
             "context_text": request.context_text,
         },
         ensure_ascii=True,

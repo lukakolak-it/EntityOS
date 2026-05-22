@@ -16,7 +16,7 @@ from target_radar.domain import (
 from target_radar.engines.draft import DraftEngine
 from target_radar.engines.lead import FakeLeadEngine
 from target_radar.engines.lead import FakeSearchProvider, LeadEngine, LeadEngineConfig, SearchResult
-from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine
+from target_radar.engines.rating import AIRatingResponse, FakeAIRatingProvider, RatingEngine
 from target_radar.pipeline import (
     FakeFetcher,
     FetchedPage,
@@ -173,6 +173,83 @@ class PipelineSkeletonTests(unittest.TestCase):
         self.assertIn("Werkstudent IT", evidence[0].text)
         self.assertEqual(ratings[0].recommended_action, RecommendedAction.DRAFT)
         self.assertEqual(drafts[0].score_id, ratings[0].id)
+
+    def test_pipeline_uses_use_case_rating_and_draft_policy(self) -> None:
+        use_case_id = self.store.get_use_case_id_by_slug("company_osint")
+        search_profile = self.store.create_search_profile(
+            SearchProfile(
+                profile_id=self.profile.id,
+                name="Company OSINT",
+                use_case_id=use_case_id,
+                attributes={"topics": ["Solar"], "regions": ["Essen"]},
+            )
+        )
+        url = "https://osint.example/about"
+        lead_engine = FakeLeadEngine(
+            candidates=[TargetCandidate(url=url, source="fake")]
+        )
+        fetcher = FakeFetcher(
+            {
+                url: FetchedPage(
+                    url=url,
+                    status_code=200,
+                    body=(
+                        "<html><head><title>Example Solar</title></head><body>"
+                        "<h1>Example GmbH</h1>"
+                        "<p>Solar Services in Essen mit Referenzen und Impressum.</p>"
+                        "<p>Kontakt: info@osint.example</p>"
+                        "</body></html>"
+                    ),
+                    content_type="text/html; charset=utf-8",
+                )
+            }
+        )
+        ai_provider = FakeAIRatingProvider(
+            AIRatingResponse(
+                ai_score=90,
+                confidence=0.88,
+                recommended_action=RecommendedAction.DRAFT,
+                reasons=[
+                    {
+                        "text": "OSINT-Kontext passt.",
+                        "source_url": url,
+                        "evidence": "Solar Services in Essen",
+                    }
+                ],
+            )
+        )
+        orchestrator = PipelineOrchestrator(
+            self.store,
+            lead_engine,
+            fetcher=fetcher,
+            extractor=HtmlExtractor(),
+            rating_engine=RatingEngine(ai_provider=ai_provider),
+            draft_engine=DraftEngine(),
+            profile=self.profile,
+        )
+
+        result = orchestrator.run(
+            PipelineRunRequest(
+                search_profile=search_profile,
+                phases=(
+                    PipelinePhase.LEAD,
+                    PipelinePhase.IMPORT,
+                    PipelinePhase.FETCH,
+                    PipelinePhase.EXTRACT,
+                    PipelinePhase.RATING,
+                    PipelinePhase.DRAFT,
+                ),
+            )
+        )
+        target = self.store.list_review_targets()[0]
+        ratings = self.store.list_ratings(target.id)
+        drafts = self.store.list_drafts(target.id)
+
+        self.assertEqual(result.drafted_count, 1)
+        self.assertEqual(ratings[0].rating_status, "use_case_rated")
+        self.assertIn("usecase-v1", ratings[0].rating_version)
+        self.assertEqual(drafts[0].draft_type, "research_summary")
+        self.assertEqual(drafts[0].draft_version, "research-summary-v1")
 
     def test_pipeline_fetches_relevant_same_domain_pages(self) -> None:
         base_url = "https://multi.example/"
