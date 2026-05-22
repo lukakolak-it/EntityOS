@@ -12,6 +12,7 @@
 - `concepts/leadengine-konzept.md`: Discovery und Query-Fanout
 - `concepts/ratingengine-konzept.md`: Bewertung, Evidence Checks und Scores
 - `concepts/draftengine-konzept.md`: Draft-Erzeugung, Validierung und Review
+- `concepts/usecase-builder-konzept.md`: konfigurierbare Use Cases fuer UI, Engines und OSINT-Erweiterung
 
 ## Planung
 
