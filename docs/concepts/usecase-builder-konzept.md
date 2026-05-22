@@ -130,10 +130,21 @@ Inhalt:
 
 - Template-Set
 - Query-Templates
+- Template-Variablen-Mapping
 - Priorisierung
 - Budget-Defaults
 - erlaubte Provider
 - optionale Ausschlussbegriffe
+
+Template-Variablen muessen eindeutig auf Felder aus `attribute_schema` zeigen.
+
+MVP-Regel:
+
+- Eine Variable im Template darf exakt einem Feld-Key entsprechen, z. B. `{regions}`.
+- Alternativ darf sie ueber `variable_map` auf einen Feld-Key gemappt werden, z. B. `region -> regions`.
+- Ohne exakten Feld-Key oder Mapping ist der Use Case ungueltig.
+- Listenfelder werden einzeln expandiert. Ein Template mit mehreren Listenfeldern erzeugt ein kontrolliertes kartesisches Produkt.
+- Die QueryBuilder-Priorisierung begrenzt die Anzahl gerenderter Kombinationen ueber Budget und Template-Score.
 
 Beispiel:
 
@@ -142,6 +153,10 @@ query_policy:
   default_template_set: supplier_search
   request_budget_default: 25
   results_per_query_default: 5
+  variable_map:
+    industry: industries
+    product: products
+    region: regions
   templates:
     - "{industry} Anbieter {region}"
     - "{product} Hersteller {region}"
@@ -155,12 +170,19 @@ Definiert, welche Quellen gut, neutral, kontextuell oder blockiert sind.
 Inhalt:
 
 - bevorzugte Source Types
+- kontextuelle Source Types
 - blockierte Source Types
 - bekannte blockierte Domains
 - bekannte bevorzugte Domains
 - relevante URL-Pfade
 - Listing- und Suchseiten-Tokens
 - Import-Schwellen
+
+`context_source_types` sind Quellen, die fuer Evidence und Orientierung nuetzlich sind, aber nicht automatisch als primaere Targets gelten. Beispiele sind Register, Verzeichnisse oder News-Seiten.
+
+MVP-Entscheidung:
+
+`source_policy` konfiguriert den bestehenden `SourceQualityClassifier`. Es werden in Slice U3 keine separaten Policy-Klassen eingefuehrt. Neue Policy-Klassen sind erst sinnvoll, wenn die Konfigurationslogik im bestehenden Classifier zu komplex wird.
 
 Beispiel:
 
@@ -191,12 +213,40 @@ Inhalt:
 
 - Rating-Kriterien
 - Gewichtungen
+- Auswertungsart pro Kriterium
 - harte Ausschlussregeln
 - positive Signale
 - Risiken
 - Mindestscore fuer Review
 - Mindestscore fuer Draft
 - LLM-Modus
+
+Rating-Kriterien sind keine magischen Namen.
+
+Jedes Kriterium muss definieren, wie es ausgewertet wird:
+
+- `evaluation: rules`: nutzt ein bekanntes Rule-Set.
+- `evaluation: llm`: wird ueber LLM anhand von Evidence und Instruktion bewertet.
+- `evaluation: hybrid`: nutzt Rule-Set als Basisscore und LLM fuer Kontextbewertung.
+
+Bekannte Rule-Sets fuer den MVP:
+
+- `role_keyword_match`
+- `tech_keyword_match`
+- `region_keyword_match`
+- `source_quality`
+- `contactability`
+- `evidence_quality`
+
+Custom-Keys ohne bekanntes Rule-Set sind nur erlaubt, wenn `evaluation: llm` gesetzt ist und eine kurze `llm_instruction` vorhanden ist.
+
+Jedes Kriterium erzeugt einen Score von `0` bis `100`. Der finale Rating-Score ist die gewichtete Summe:
+
+```text
+criterion_score * weight / 100
+```
+
+Die Summe aller Gewichte muss im MVP exakt `100` sein.
 
 Beispiel:
 
@@ -209,12 +259,19 @@ rating_policy:
     - key: relevance
       label: Fachliche Relevanz
       weight: 40
+      evaluation: llm
+      llm_instruction: "Bewerte, ob das Target fachlich zum Suchprofil passt."
     - key: credibility
       label: Seriositaet
       weight: 30
+      evaluation: hybrid
+      rule_set: source_quality
+      llm_instruction: "Bewerte, ob die Quelle serioes und direkt genug ist."
     - key: contactability
       label: Kontaktierbarkeit
       weight: 30
+      evaluation: rules
+      rule_set: contactability
 ```
 
 ### `draft_policy`
@@ -240,6 +297,31 @@ Inhalt:
 - maximale Laenge
 - Quellenhinweise ja/nein
 
+Bekannte Draft Types fuer den Use Case Builder MVP:
+
+- `application_email`: strukturierter Bewerbungsentwurf.
+- `research_summary`: kurze OSINT-/Research-Zusammenfassung.
+- `none`: keine automatische Draft-Erzeugung, nur Review.
+
+`research_summary` ist kein Placeholder, sondern bekommt ein eigenes Output-Schema:
+
+```text
+title
+summary
+key_findings
+evidence
+risks_or_uncertainties
+next_steps
+```
+
+Validierungsregeln fuer `research_summary`:
+
+- Jede sachliche Kernaussage braucht Evidence-Bezug oder Source-URL.
+- Unsichere Aussagen werden als Unsicherheit markiert.
+- Keine Kontaktaufnahme, keine Bewerbung, kein Outreach-Text.
+- Keine Behauptung ueber interne Fakten ohne Beleg.
+- Default-Laenge maximal 2500 Zeichen.
+
 ### `review_policy`
 
 Definiert, wie Ergebnisse in der UI erscheinen.
@@ -251,11 +333,13 @@ Inhalt:
 - erlaubte Aktionen
 - Label fuer Entscheidungen
 - Feedback-Felder
+- Use-Case-Filter und Badge
 
 Beispiel:
 
 ```yaml
 review_policy:
+  default_scope: use_case
   actions:
     - approve
     - reject
@@ -267,6 +351,15 @@ review_policy:
     - recommended_action
     - main_reason
 ```
+
+Wenn mehrere Use Cases aktiv sind, muss die Review Queue Ergebnisse trennen koennen.
+
+MVP-Regel:
+
+- Jedes Review-Item bekommt `use_case_id`, `use_case_name` und `use_case_version`.
+- Die UI zeigt mindestens einen Use-Case-Filter und ein Use-Case-Badge pro Ergebnis.
+- Die sichtbaren Spalten und Aktionen werden aus der `review_policy` des jeweiligen Use-Case-Snapshots gelesen.
+- Die Standardansicht kann alle offenen Items zeigen, muss aber nach Use Case filterbar sein.
 
 ## 5. UI-Konzept
 
@@ -347,6 +440,13 @@ Wichtig:
 
 Die LeadEngine bleibt eine Such- und Filter-Engine. Sie bewertet keine finale fachliche Passung.
 
+Template-Rendering:
+
+- Die LeadEngine loest Template-Variablen ueber `query_policy.variable_map` auf.
+- Danach muessen alle Variablen auf Felder aus `attribute_schema` zeigen.
+- Listenfelder werden einzeln expandiert, nicht als rohe Liste in eine Query geschrieben.
+- Fehlende Pflichtfelder verhindern den Lauf.
+
 ### RatingEngine
 
 Die RatingEngine liest aus dem Use Case:
@@ -363,6 +463,13 @@ skip / review / draft
 
 Der Use Case bestimmt, welche Kriterien und Gewichtungen gelten.
 
+MVP-Auswertung:
+
+- Bekannte Rule-Sets liefern pro Kriterium einen Score von `0` bis `100`.
+- LLM-Kriterien bekommen Suchprofil, Evidence, Source-Quality und die `llm_instruction`.
+- Hybrid-Kriterien nutzen Rule-Score und LLM-Score gemeinsam; im MVP ist der einfache Merge `max(rule_score, llm_score)`, damit gute harte Signale nicht durch unsichere LLM-Auswertung verloren gehen.
+- Wenn ein LLM-Kriterium wegen fehlendem Provider nicht bewertet werden kann, wird das Target nicht automatisch zu `draft`, sondern landet mit Risiko in `review`.
+
 ### DraftEngine
 
 Die DraftEngine liest aus dem Use Case:
@@ -375,6 +482,8 @@ Die DraftEngine liest aus dem Use Case:
 
 Sie erzeugt keinen generischen Bewerbungstext mehr, wenn der Use Case z. B. `research_summary` verlangt.
 
+Jeder `draft_type` braucht ein bekanntes Output-Schema und eigene Validierungsregeln. Unbekannte Draft Types sind ungueltig.
+
 ### Pipeline
 
 Die Pipeline speichert bei jedem Lauf:
@@ -384,6 +493,8 @@ Die Pipeline speichert bei jedem Lauf:
 - Snapshot der wirksamen Konfiguration
 
 Dadurch bleiben spaetere Bewertungen nachvollziehbar, auch wenn der Use Case danach geaendert wird.
+
+Die Review Queue verwendet ebenfalls den Snapshot. Dadurch kann ein altes Ergebnis noch mit der Policy angezeigt werden, mit der es erzeugt wurde.
 
 ## 7. Datenmodell
 
@@ -398,7 +509,7 @@ use_cases
   version
   status
   config_json
-  source_template
+  created_from_template
   created_at
   updated_at
 
@@ -413,7 +524,7 @@ pipeline_runs
 
 `config_json` enthaelt das validierte Use-Case-Objekt.
 
-`source_template` zeigt, ob der Use Case aus einem mitgelieferten Template entstanden ist.
+`created_from_template` zeigt, welches mitgelieferte Template der Ursprung dieser lokalen Instanz ist.
 
 Moegliche Status:
 
@@ -422,19 +533,46 @@ Moegliche Status:
 - `inactive`
 - `archived`
 
+### SQLite-Migration
+
+Die bestehenden Tabellen `search_profiles` und `pipeline_runs` werden nicht neu angelegt.
+
+MVP-Migrationsstrategie:
+
+1. Tabelle `use_cases` anlegen.
+2. Default-Template `application_student` einspielen.
+3. `ALTER TABLE search_profiles ADD COLUMN use_case_id INTEGER NULL`.
+4. `ALTER TABLE pipeline_runs ADD COLUMN use_case_id INTEGER NULL`.
+5. `ALTER TABLE pipeline_runs ADD COLUMN use_case_version TEXT NULL`.
+6. `ALTER TABLE pipeline_runs ADD COLUMN use_case_snapshot_json TEXT NULL`.
+7. Bestehende `search_profiles` optional auf `application_student` backfillen.
+8. Historische `pipeline_runs` duerfen `NULL` behalten, weil kein Snapshot existiert.
+
+Neue Suchprofile muessen nach der Migration einen Use Case setzen. Fuer alte Profile gilt: Wenn `use_case_id` noch `NULL` ist, nutzt die Anwendung beim Lesen den Default `application_student`.
+
+SQLite-Hinweis:
+
+`ALTER TABLE ADD COLUMN` ist fuer nullable Spalten ausreichend. Falls spaeter echte Foreign-Key-Constraints oder `NOT NULL` erzwungen werden sollen, braucht SQLite eine Table-Rebuild-Migration. Das ist nicht Teil des ersten MVP.
+
 ## 8. Validierung
 
 Ein Use Case ist nur gueltig, wenn:
 
 - `id`, `name` und `version` gesetzt sind,
 - mindestens ein Query-Template vorhanden ist,
-- Query-Templates nur bekannte Attribute referenzieren,
+- Query-Templates nur bekannte Attribute oder Variablen aus `query_policy.variable_map` referenzieren,
+- alle Eintraege in `query_policy.variable_map` auf vorhandene `attribute_schema`-Felder zeigen,
 - Source Types existieren,
-- Rating-Gewichte sinnvoll sind,
+- `preferred_source_types`, `context_source_types` und `blocked_source_types` keine widerspruechlichen Eintraege enthalten,
+- Rating-Kriterien eine gueltige `evaluation` haben,
+- Rule-Kriterien ein bekanntes `rule_set` referenzieren,
+- LLM-Kriterien eine `llm_instruction` haben,
+- Rating-Gewichte exakt zu `100` summieren,
 - Draft-Typ bekannt ist,
+- Draft-Typ ein bekanntes Output-Schema hat,
 - Review-Aktionen erlaubt sind.
 
-Rating-Gewichte sollten fuer den MVP auf `100` normalisiert werden.
+Rating-Gewichte muessen fuer den MVP exakt zu `100` summieren.
 
 Beispiel:
 
@@ -445,7 +583,7 @@ contactability 30
 = 100
 ```
 
-Wenn die Summe nicht `100` ist, kann die UI entweder normalisieren oder einen Fehler anzeigen. Fuer den MVP ist ein Fehler besser, weil die Konfiguration dadurch explizit bleibt.
+Wenn die Summe nicht `100` ist, zeigt die UI einen Fehler. Automatische Normalisierung ist im MVP bewusst nicht vorgesehen, weil die Konfiguration dadurch explizit bleibt.
 
 ## 9. Import und Export
 
@@ -480,10 +618,18 @@ attribute_schema:
     - key: tech_keywords
       label: Technologien
       type: list
+    - key: industry_keywords
+      label: Branchen
+      type: list
     - key: regions
       label: Regionen
       type: list
 query_policy:
+  variable_map:
+    role: roles
+    tech: tech_keywords
+    industry: industry_keywords
+    region: regions
   templates:
     - "{role} {region} Karriere"
     - "{role} {tech} {region}"
@@ -504,16 +650,24 @@ rating_policy:
     - key: role_fit
       label: Rollenfit
       weight: 40
+      evaluation: rules
+      rule_set: role_keyword_match
     - key: tech_fit
       label: Tech-Fit
       weight: 30
+      evaluation: rules
+      rule_set: tech_keyword_match
     - key: region_fit
       label: Regionaler Fit
       weight: 30
+      evaluation: rules
+      rule_set: region_keyword_match
 draft_policy:
   draft_type: application_email
   language: de
+  max_length_chars: 3500
 review_policy:
+  default_scope: use_case
   actions:
     - approve
     - reject
@@ -539,6 +693,10 @@ attribute_schema:
       label: Regionen
       type: list
 query_policy:
+  variable_map:
+    topic: topics
+    industry: industries
+    region: regions
   templates:
     - "{topic} Unternehmen {region}"
     - "{industry} Anbieter {region}"
@@ -561,16 +719,31 @@ rating_policy:
     - key: relevance
       label: Relevanz
       weight: 40
+      evaluation: llm
+      llm_instruction: "Bewerte, ob das Target fachlich zum OSINT-Thema passt."
     - key: credibility
       label: Seriositaet
       weight: 30
+      evaluation: hybrid
+      rule_set: source_quality
+      llm_instruction: "Bewerte, ob Quelle und Target serioes genug sind."
     - key: evidence_quality
       label: Belegqualitaet
       weight: 30
+      evaluation: hybrid
+      rule_set: evidence_quality
+      llm_instruction: "Bewerte, ob die gefundenen Belege konkret und belastbar sind."
 draft_policy:
   draft_type: research_summary
   language: de
+  max_length_chars: 2500
+  required_sections:
+    - summary
+    - key_findings
+    - evidence
+    - risks_or_uncertainties
 review_policy:
+  default_scope: use_case
   actions:
     - approve
     - reject
@@ -589,6 +762,9 @@ Umfang:
 
 - Python-Domainmodell fuer Use Cases
 - Validierung
+- `query_policy.variable_map`
+- Rating-Kriterien mit `evaluation`, `rule_set` und `llm_instruction`
+- bekannte Draft Types `application_email`, `research_summary` und `none`
 - Default-Templates als versionierte Dateien oder Python-Konfiguration
 - Tests fuer gueltige und ungueltige Use Cases
 
@@ -603,7 +779,7 @@ Umfang:
 - Tabelle `use_cases`
 - `search_profiles.use_case_id`
 - Snapshot in `pipeline_runs`
-- Migration
+- SQLite-Migration mit nullable Spalten und Default-Use-Case-Fallback
 - Tests fuer Laden, Speichern und Snapshot
 
 ### Slice U3: LeadEngine-Anbindung
@@ -615,7 +791,8 @@ LeadEngine nutzt Query- und Source-Policy aus dem Use Case.
 Umfang:
 
 - QueryBuilder liest Templates aus Use Case
-- SourceQualityClassifier bekommt Use-Case-Policy
+- QueryBuilder loest Template-Variablen ueber `variable_map`
+- SourceQualityClassifier bekommt Use-Case-Policy als Konfiguration
 - bestehender Bewerbungs-Use-Case bleibt Default
 - Tests fuer mindestens zwei Use Cases
 
@@ -627,9 +804,11 @@ RatingEngine und DraftEngine verwenden Use-Case-Policies.
 
 Umfang:
 
-- Rating-Kriterien aus `rating_policy`
-- Draft-Typ aus `draft_policy`
+- Rating-Kriterien aus `rating_policy` inklusive `rules`, `llm` und `hybrid`
+- bekannte Rule-Sets fuer Bewerbungs- und OSINT-Kriterien
+- Draft-Typ aus `draft_policy` inklusive Output-Schema
 - LLM-Modus aus Use Case, weiterhin lokal ueberschreibbar
+- Validierung fuer `research_summary`
 - Tests fuer `application_email` und `research_summary`
 
 ### Slice U5: UI-Basis
@@ -644,6 +823,7 @@ Umfang:
 - Detailansicht
 - Clone-from-template
 - Suchprofil-Auswahl des Use Case
+- Review Queue zeigt Use-Case-Badge und Use-Case-Filter
 
 ### Slice U6: UI-Builder
 
@@ -679,9 +859,13 @@ Teil des ersten Use Case Builder MVP:
 - mindestens ein zweites Template fuer `company_osint`
 - lokale Speicherung
 - Clone-from-template
+- klares Template-Variablen-Mapping
 - Query- und Source-Policy konfigurierbar
+- bekannte Rule-Sets plus LLM-Kriterien fuer Rating
+- `research_summary` als spezifizierter Draft Type
 - Suchprofil kann Use Case auswaehlen
 - Pipeline speichert Use-Case-Snapshot
+- Review Queue kann nach Use Case filtern
 
 Nicht Teil des ersten MVP:
 
@@ -694,10 +878,15 @@ Nicht Teil des ersten MVP:
 ## 14. Offene Entscheidungen
 
 - Ob Use Cases als YAML-Dateien im Repository oder nur als Datenbankeintraege ausgeliefert werden.
-- Ob `source_policy` den bestehenden SourceQualityClassifier konfiguriert oder spaeter eigene Policy-Klassen erzeugt.
-- Ob Rating-Kriterien zuerst regelbasiert oder direkt ueber LLM-Evaluation parametrisiert werden.
 - Wie stark Draft-Policies eigene Prompt-Templates erlauben sollen.
-- Ob die UI fuer Rating-Gewichte Normalisierung anbietet oder harte `100` erzwingt.
+- Ob die Review Queue standardmaessig alle offenen Items zeigt oder den zuletzt aktiven Use Case filtert.
+- Ob SQLite-Foreign-Keys fuer `use_case_id` im ersten MVP erzwungen werden oder erst nach einer Table-Rebuild-Migration.
+
+Bereits fuer den MVP entschieden:
+
+- `source_policy` konfiguriert den bestehenden `SourceQualityClassifier`.
+- Rating-Kriterien werden hybrid umgesetzt: bekannte Rule-Sets plus LLM-Auswertung fuer Custom-Kriterien.
+- Rating-Gewichte muessen exakt zu `100` summieren; die UI normalisiert nicht automatisch.
 
 ## 15. Zielbild
 
