@@ -6,6 +6,8 @@ import unittest
 from target_radar.domain import (
     Draft,
     Evidence,
+    ImportStatus,
+    LeadResultStatus,
     PipelinePhase,
     PipelineRun,
     Profile,
@@ -318,6 +320,57 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertEqual(
             self.store.get_latest_pipeline_run_for_target(target.id).id,
             run.id,
+        )
+
+    def test_context_sources_are_listed_from_serp_results(self) -> None:
+        profile = self.store.create_profile(Profile(name="Context Profile"))
+        osint_use_case_id = self.store.get_use_case_id_by_slug("company_osint")
+        search_profile = self.store.create_search_profile(
+            SearchProfile(
+                profile_id=profile.id,
+                name="Context Search",
+                use_case_id=osint_use_case_id,
+            )
+        )
+        run = self.store.create_pipeline_run(
+            PipelineRun(search_profile_id=search_profile.id)
+        )
+        source_query_id = self.store.create_source_query(
+            provider="brave",
+            query_text="IT Anbieter Essen",
+            query_hash="hash-context",
+            pipeline_run_id=run.id,
+            query_template="{industry} Anbieter {region}",
+            template_set="company_osint",
+            query_score=95,
+        )
+        self.store.create_serp_result(
+            source_query_id=source_query_id,
+            url="https://www.regiomanager.de/ranking/digital/it-dienstleister/essen/",
+            domain="regiomanager.de",
+            title="Die groessten IT-Dienstleister in Essen",
+            snippet="Ranking mit mehreren Unternehmen.",
+            status=LeadResultStatus.REVIEW_SOURCE,
+            import_status=ImportStatus.REVIEW_SOURCE,
+            metadata={
+                "source_quality": {
+                    "source_type": "directory",
+                    "source_quality_score": 40,
+                    "recommended_import_action": "review_source",
+                    "source_risks": [{"type": "context_source", "value": "directory"}],
+                }
+            },
+        )
+
+        sources = self.store.list_context_sources(pipeline_run_id=run.id)
+
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]["domain"], "regiomanager.de")
+        self.assertEqual(sources[0]["query_text"], "IT Anbieter Essen")
+        self.assertEqual(sources[0]["use_case_slug"], "company_osint")
+        self.assertEqual(
+            sources[0]["metadata"]["source_quality"]["source_type"],
+            "directory",
         )
 
     def test_review_queue_returns_actionable_targets(self) -> None:

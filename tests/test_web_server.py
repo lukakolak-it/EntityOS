@@ -30,6 +30,7 @@ class WebServerTests(unittest.TestCase):
                 index = _http_text(f"{base_url}/")
                 provider_status_payload = _http_json(f"{base_url}/api/provider-status")
                 local_settings_payload = _http_json(f"{base_url}/api/local-settings")
+                context_sources_payload = _http_json(f"{base_url}/api/context-sources")
                 saved_local_settings_payload = _http_json(
                     f"{base_url}/api/local-settings",
                     method="POST",
@@ -193,6 +194,7 @@ class WebServerTests(unittest.TestCase):
         self.assertIn("#secrets", index)
         self.assertIn("Run konfigurieren", index)
         self.assertIn("Provider Status", index)
+        self.assertIn("Context Sources", index)
         self.assertTrue(provider_status_payload["search"]["mock_ready"])
         self.assertIn("models", provider_status_payload["llm"]["light"])
         self.assertNotIn("api_key", json.dumps(provider_status_payload).lower())
@@ -205,6 +207,7 @@ class WebServerTests(unittest.TestCase):
         self.assertTrue(saved_brave_field["configured"])
         self.assertEqual(saved_brave_field["value"], "")
         self.assertNotIn("test-secret-value", json.dumps(saved_local_settings_payload))
+        self.assertEqual(context_sources_payload["context_sources"], [])
         self.assertEqual(run_payload["run"]["status"], "completed")
         self.assertEqual(ui_run_payload["provider_mode"], "fake")
         self.assertEqual(ui_run_payload["llm_mode"], "off")

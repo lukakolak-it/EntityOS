@@ -102,6 +102,11 @@ Abgrenzung:
 
 `duplicate_domain` ist kein Target-Importstatus, sondern ein LeadEngine-Status fuer SERP-Ergebnisse innerhalb eines Discovery-Laufs. Wenn der deduplizierte Kandidat an den Target Import uebergeben wird, wird daraus je nach lokaler Lage `imported`, `existing`, `review_source`, `blocked_source`, `blacklisted` oder `invalid`.
 
+Kontextquellen mit `review_source` bleiben in `serp_results` erhalten und sind
+ueber `GET /api/context-sources` mit Query-, Run- und Source-Quality-Metadaten
+abrufbar. Sie werden nicht als `targets` angelegt und erscheinen deshalb nicht
+in der Review Queue fuer Zielunternehmen.
+
 ## 4. Target
 
 Ein Target ist die lokale, normalisierte Arbeitseinheit.

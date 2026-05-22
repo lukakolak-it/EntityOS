@@ -217,6 +217,11 @@ class PipelineOrchestrator:
                         for result in import_results
                         if result.status == ImportStatus.EXISTING
                     ),
+                    "context_source_count": sum(
+                        1
+                        for result in import_results
+                        if result.status == ImportStatus.REVIEW_SOURCE
+                    ),
                     "fetched_count": counts.fetched_count,
                     "evidence_count": counts.evidence_count,
                     "rated_count": counts.rated_count,

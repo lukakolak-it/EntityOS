@@ -8,6 +8,8 @@ const state = {
   providerStatus: null,
   localSettings: null,
   domainPolicies: null,
+  contextSources: [],
+  selectedContextRunId: null,
   selectedSearchProfileId: null,
   previewTimer: null,
   defaultsApplied: false,
@@ -41,6 +43,10 @@ const elements = {
   pagesList: document.querySelector("#pagesList"),
   statusLogList: document.querySelector("#statusLogList"),
   runsList: document.querySelector("#runsList"),
+  contextSourcesList: document.querySelector("#contextSourcesList"),
+  contextSourceCount: document.querySelector("#contextSourceCount"),
+  contextSourceStatus: document.querySelector("#contextSourceStatus"),
+  clearContextRunFilterButton: document.querySelector("#clearContextRunFilterButton"),
   providerStatusList: document.querySelector("#providerStatusList"),
   secretsProviderStatusList: document.querySelector("#secretsProviderStatusList"),
   runSearchProfileSelect: document.querySelector("#runSearchProfileSelect"),
@@ -124,6 +130,10 @@ elements.saveSearchProfileButton.addEventListener("click", saveSearchProfileFrom
 elements.deleteSearchProfileButton.addEventListener("click", deleteSelectedSearchProfile);
 elements.addBlacklistDomainButton.addEventListener("click", addBlacklistDomain);
 elements.saveLocalSettingsButton.addEventListener("click", saveLocalSettings);
+elements.clearContextRunFilterButton.addEventListener("click", () => {
+  state.selectedContextRunId = null;
+  loadContextSources();
+});
 window.addEventListener("hashchange", renderPage);
 
 document.querySelectorAll("[data-action]").forEach((button) => {
@@ -149,6 +159,7 @@ async function refreshAll() {
     loadDomainPolicies(),
     loadQueue(),
     loadRuns(),
+    loadContextSources(),
     loadSearchProfiles(),
   ]);
   if (!state.defaultsApplied) {
@@ -1477,8 +1488,59 @@ async function loadRuns() {
       <p>${escapeHtml(run.use_case_name || "no use case")} - ${escapeHtml(run.mode)} - ${escapeHtml(formatDate(run.created_at))}</p>
       ${renderMetricChips(run.stats || {})}
       ${run.error_message ? `<p class="muted">${escapeHtml(run.error_message)}</p>` : ""}
+      <div class="actions">
+        <button type="button" data-context-run="${run.id}">Context</button>
+      </div>
     `;
+    item.querySelector("[data-context-run]").addEventListener("click", () => {
+      state.selectedContextRunId = run.id;
+      loadContextSources();
+    });
     elements.runsList.appendChild(item);
+  }
+}
+
+async function loadContextSources() {
+  const query = state.selectedContextRunId
+    ? `?limit=30&pipeline_run_id=${state.selectedContextRunId}`
+    : "?limit=30";
+  const data = await api(`/api/context-sources${query}`);
+  state.contextSources = data.context_sources;
+  renderContextSources(data);
+}
+
+function renderContextSources(data) {
+  const sources = data.context_sources || [];
+  elements.contextSourceCount.textContent = String(sources.length);
+  elements.contextSourceStatus.textContent = state.selectedContextRunId
+    ? `run #${state.selectedContextRunId}`
+    : "all";
+  elements.contextSourcesList.innerHTML = "";
+  if (!sources.length) {
+    elements.contextSourcesList.appendChild(emptyItem("Keine Context Sources."));
+    return;
+  }
+  for (const source of sources) {
+    const item = document.createElement("article");
+    item.className = "item";
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(source.domain)}</span>
+        ${pill(source.source_type || source.status)}
+      </div>
+      <p>
+        <a href="${escapeAttribute(source.url)}" target="_blank" rel="noreferrer">${escapeHtml(source.title || source.url)}</a>
+      </p>
+      <p>${escapeHtml(source.snippet || "")}</p>
+      <div class="metric-grid">
+        <span class="metric-chip">run: ${escapeHtml(source.pipeline_run_id || "-")}</span>
+        <span class="metric-chip">action: ${escapeHtml(source.recommended_import_action || source.import_status || source.status)}</span>
+        <span class="metric-chip">score: ${displayNumber(source.source_quality_score)}</span>
+        <span class="metric-chip">query: ${escapeHtml(source.query_text || "-")}</span>
+      </div>
+      ${renderFacts("Risks", source.source_risks || [])}
+    `;
+    elements.contextSourcesList.appendChild(item);
   }
 }
 
@@ -1690,6 +1752,7 @@ function renderMetricChips(stats) {
     "candidate_count",
     "imported_count",
     "existing_count",
+    "context_source_count",
     "fetched_count",
     "evidence_count",
     "rated_count",

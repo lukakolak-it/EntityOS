@@ -196,6 +196,8 @@ def _make_handler(
                     self._handle_use_case_detail(parsed.path)
                 elif parsed.path == "/api/search-profiles":
                     self._handle_search_profiles(parsed.query)
+                elif parsed.path == "/api/context-sources":
+                    self._handle_context_sources(parsed.query)
                 elif parsed.path == "/api/review-queue":
                     self._handle_review_queue(parsed.query)
                 elif parsed.path == "/api/pipeline-runs":
@@ -409,6 +411,39 @@ def _make_handler(
             store = self._store()
             try:
                 self._send_json({"search_profiles": store.list_search_profiles(limit=limit)})
+            finally:
+                store.close()
+
+        def _handle_context_sources(self, query: str) -> None:
+            params = parse_qs(query)
+            limit = int(params.get("limit", ["50"])[0])
+            offset = int(params.get("offset", ["0"])[0])
+            pipeline_run_id = _optional_positive_int(
+                params.get("pipeline_run_id", [None])[0]
+            )
+            search_profile_id = _optional_positive_int(
+                params.get("search_profile_id", [None])[0]
+            )
+            use_case_id = _optional_positive_int(params.get("use_case_id", [None])[0])
+            store = self._store()
+            try:
+                items = store.list_context_sources(
+                    limit=limit,
+                    offset=offset,
+                    pipeline_run_id=pipeline_run_id,
+                    search_profile_id=search_profile_id,
+                    use_case_id=use_case_id,
+                )
+                self._send_json(
+                    {
+                        "context_sources": [_context_source_payload(item) for item in items],
+                        "filters": {
+                            "pipeline_run_id": pipeline_run_id,
+                            "search_profile_id": search_profile_id,
+                            "use_case_id": use_case_id,
+                        },
+                    }
+                )
             finally:
                 store.close()
 
@@ -1853,6 +1888,41 @@ def _pipeline_run_payload(run) -> dict[str, Any]:
         "started_at": _dt(run.started_at),
         "finished_at": _dt(run.finished_at),
         "created_at": _dt(run.created_at),
+    }
+
+
+def _context_source_payload(item: dict[str, Any]) -> dict[str, Any]:
+    metadata = dict(item.get("metadata") or {})
+    source_quality = metadata.get("source_quality")
+    if not isinstance(source_quality, dict):
+        source_quality = {}
+    return {
+        "id": item["id"],
+        "source_query_id": item["source_query_id"],
+        "target_id": item["target_id"],
+        "pipeline_run_id": item["pipeline_run_id"],
+        "search_profile_id": item["search_profile_id"],
+        "use_case_id": item["use_case_id"],
+        "use_case_slug": item["use_case_slug"],
+        "use_case_name": item["use_case_name"],
+        "provider": item["provider"],
+        "query_text": item["query_text"],
+        "query_template": item["query_template"],
+        "template_set": item["template_set"],
+        "query_score": item["query_score"],
+        "url": item["url"],
+        "domain": item["domain"],
+        "title": item["title"],
+        "snippet": item["snippet"],
+        "status": item["status"],
+        "import_status": item["import_status"],
+        "source_type": source_quality.get("source_type"),
+        "source_quality_score": source_quality.get("source_quality_score"),
+        "recommended_import_action": source_quality.get("recommended_import_action"),
+        "source_signals": source_quality.get("source_signals") or [],
+        "source_risks": source_quality.get("source_risks") or [],
+        "metadata": metadata,
+        "created_at": item["created_at"],
     }
 
 

@@ -1606,6 +1606,8 @@ Akzeptanzkriterien:
 
 ### Slice E3: Kontextquellen fuer Evidence nutzbar machen
 
+Status: umgesetzt als Context-Source-Sichtbarkeit und API-Basis.
+
 Ziel:
 
 `review_source`-Treffer sollen nicht als Targets importiert werden, aber fuer
@@ -1615,17 +1617,24 @@ Umfang:
 
 - `review_source`-SERP-Ergebnisse mit Query- und Source-Quality-Metadaten
   abrufbar machen
-- Kontextquellen einem passenden Target oder Search Profile zuordnen
-- Fetch/Evidence optional fuer Kontextquellen erlauben, ohne Target-Status zu
-  vermischen
+- Kontextquellen ueber Search Profile, Use Case und Pipeline Run einordnen
 - Review-UI sichtbar machen, welche Kontextquellen zu einem Run gehoeren
+- Context-Source-Zaehler in Run-Stats aufnehmen
+- keine Vermischung mit Target-Status und Target-Evidence
 
 Akzeptanzkriterien:
 
 - Kontextquellen werden nicht als Zielunternehmen geratet.
-- Kontextquellen koennen Evidence liefern, wenn sie einem Target zugeordnet
-  werden.
+- `GET /api/context-sources` liefert `review_source`-Treffer mit Query,
+  Source-Quality-Signalen und Run-Kontext.
+- Runs zeigen Kontextquellen in der lokalen UI.
 - Review Queue bleibt auf primaere Targets fokussiert.
+
+Noch offen fuer den naechsten Evidence-Ausbau:
+
+- Kontextquellen gezielt fetchbar machen.
+- Kontextquellen einem konkreten Target zuordnen.
+- Aus Kontextquellen typisierte Evidence ableiten.
 
 ## Empfohlene Reihenfolge
 
@@ -1635,8 +1644,7 @@ kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
 Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
 Danach ist die sinnvolle Reihenfolge:
 
-1. E3 Kontextquellen fuer Evidence nutzbar machen.
-2. E4 Query Quality pro Use Case verbessern.
-3. E5 Evidence Engine mit typisierten Belegen ausbauen.
-4. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
-5. DraftEngine erst danach weiter optimieren.
+1. E4 Query Quality pro Use Case verbessern.
+2. E5 Evidence Engine mit typisierten Belegen und Context-Source-Zuordnung ausbauen.
+3. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
+4. DraftEngine erst danach weiter optimieren.
