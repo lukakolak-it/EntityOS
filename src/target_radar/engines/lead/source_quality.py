@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from target_radar.domain import domain_from_url, normalize_domain
 from target_radar.engines.lead.provider import SearchResult
@@ -81,11 +82,12 @@ class SourceQualityClassifier:
         parsed = urlparse(result.url)
         path = parsed.path.lower()
         query = parsed.query.lower()
+        query_params = parse_qs(parsed.query)
         title = (result.title or "").strip()
         snippet = (result.snippet or "").strip()
-        haystack = " ".join([domain, path, title, snippet]).lower()
+        text_haystack = " ".join([title, snippet]).lower()
 
-        source_type = _classify_domain(domain)
+        source_type = _classify_domain(domain, path)
         score = 50
         signals: list[dict[str, object]] = []
         risks: list[dict[str, object]] = []
@@ -112,17 +114,22 @@ class SourceQualityClassifier:
             score -= 40
             risks.append({"type": "blocked_source_type", "value": source_type.value})
 
-        if _has_relevant_path(path):
+        if _has_relevant_path(path) and source_type not in self.blocked_source_types:
             score += 15
             signals.append({"type": "relevant_path", "value": path or "/", "points": 15})
 
-        if _looks_like_listing_page(path, query, haystack):
+        if _looks_like_listing_page(path, query_params, text_haystack):
             score -= 25
             risks.append({"type": "listing_or_search_page", "value": path or "/"})
 
         if _looks_like_login_or_tracking(path, query):
             score -= 20
             risks.append({"type": "login_or_tracking_page", "value": path or "/"})
+
+        path_depth = _path_depth(path)
+        if path_depth >= 4:
+            score -= 10
+            risks.append({"type": "deep_url", "value": path_depth})
 
         if _has_concrete_title(title):
             score += 5
@@ -132,9 +139,16 @@ class SourceQualityClassifier:
             risks.append({"type": "generic_title", "value": title[:120]})
 
         provider_rank = _provider_rank(result)
-        if provider_rank is not None and provider_rank <= 3:
-            score += 5
-            signals.append({"type": "provider_rank", "value": provider_rank, "points": 5})
+        rank_points = _provider_rank_points(provider_rank)
+        if rank_points:
+            score += rank_points
+            signals.append(
+                {
+                    "type": "provider_rank",
+                    "value": provider_rank,
+                    "points": rank_points,
+                }
+            )
 
         score = max(0, min(100, score))
         action = _recommended_action(
@@ -157,6 +171,14 @@ _DOMAIN_SOURCE_TYPES: dict[str, SourceType] = {
     "stepstone.de": SourceType.JOB_BOARD,
     "indeed.com": SourceType.JOB_BOARD,
     "indeed.de": SourceType.JOB_BOARD,
+    "jooble.org": SourceType.JOB_BOARD,
+    "kimeta.de": SourceType.JOB_BOARD,
+    "jobmensa.de": SourceType.JOB_BOARD,
+    "meinpraktikum.de": SourceType.JOB_BOARD,
+    "get-in-it.de": SourceType.JOB_BOARD,
+    "monster.de": SourceType.JOB_BOARD,
+    "absolventa.de": SourceType.JOB_BOARD,
+    "glassdoor.de": SourceType.JOB_BOARD,
     "linkedin.com": SourceType.SOCIAL,
     "xing.com": SourceType.SOCIAL,
     "facebook.com": SourceType.SOCIAL,
@@ -167,6 +189,7 @@ _DOMAIN_SOURCE_TYPES: dict[str, SourceType] = {
     "gitlab.com": SourceType.REPOSITORY,
     "bitbucket.org": SourceType.REPOSITORY,
     "crunchbase.com": SourceType.DIRECTORY,
+    "kununu.com": SourceType.DIRECTORY,
     "northdata.de": SourceType.DIRECTORY,
     "firmenwissen.de": SourceType.DIRECTORY,
     "gelbeseiten.de": SourceType.DIRECTORY,
@@ -174,6 +197,12 @@ _DOMAIN_SOURCE_TYPES: dict[str, SourceType] = {
     "unternehmensregister.de": SourceType.REGISTRY,
     "handelsregister.de": SourceType.REGISTRY,
     "bundesanzeiger.de": SourceType.REGISTRY,
+    "tagesschau.de": SourceType.NEWS,
+    "spiegel.de": SourceType.NEWS,
+    "zeit.de": SourceType.NEWS,
+    "faz.net": SourceType.NEWS,
+    "sueddeutsche.de": SourceType.NEWS,
+    "heise.de": SourceType.NEWS,
 }
 
 _JOB_BOARD_TOKENS = (
@@ -212,17 +241,26 @@ _LISTING_TOKENS = (
     "listing",
 )
 _LOGIN_TOKENS = ("login", "signin", "signup", "register", "bewerben")
+_DOMAIN_JOB_BOARD_TOKENS = frozenset({"jobs", "stellen", "karriere", "career"})
+_MARKETPLACE_TOKENS = frozenset({"marketplace", "shop", "store"})
+_LISTING_QUERY_KEYS = frozenset({"q", "query", "search", "s", "keyword"})
+_NEWS_PATH_TOKENS = ("/news/", "/article/", "/artikel/", "/meldung/", "/story/")
 
 
-def _classify_domain(domain: str) -> SourceType:
+def _classify_domain(domain: str, path: str = "") -> SourceType:
     if domain in _DOMAIN_SOURCE_TYPES:
         return _DOMAIN_SOURCE_TYPES[domain]
     for known_domain, source_type in _DOMAIN_SOURCE_TYPES.items():
         if domain.endswith(f".{known_domain}"):
             return source_type
-    if any(token in domain for token in ("jobs", "stellen", "career")):
+    if _is_official_domain(domain):
+        return SourceType.OFFICIAL_SITE
+    if _is_news_path(path):
+        return SourceType.NEWS
+    domain_tokens = _domain_tokens(domain)
+    if domain_tokens & _DOMAIN_JOB_BOARD_TOKENS:
         return SourceType.JOB_BOARD
-    if any(token in domain for token in ("marketplace", "shop", "store")):
+    if domain_tokens & _MARKETPLACE_TOKENS:
         return SourceType.MARKETPLACE
     return SourceType.COMPANY_SITE
 
@@ -231,12 +269,16 @@ def _has_relevant_path(path: str) -> bool:
     return any(token in path for token in _RELEVANT_PATH_TOKENS)
 
 
-def _looks_like_listing_page(path: str, query: str, haystack: str) -> bool:
+def _looks_like_listing_page(
+    path: str,
+    query_params: dict[str, list[str]],
+    text_haystack: str,
+) -> bool:
     if any(token in path for token in _LISTING_TOKENS):
         return True
-    if query and any(token in query for token in ("q=", "query=", "search=")):
+    if _LISTING_QUERY_KEYS & {key.lower() for key in query_params}:
         return True
-    generic_hits = sum(1 for token in _JOB_BOARD_TOKENS if token in haystack)
+    generic_hits = len(_text_tokens(text_haystack) & set(_JOB_BOARD_TOKENS))
     return generic_hits >= 4
 
 
@@ -264,6 +306,40 @@ def _provider_rank(result: SearchResult) -> int | None:
         return int(rank)
     except (TypeError, ValueError):
         return None
+
+
+def _provider_rank_points(provider_rank: int | None) -> int:
+    if provider_rank is None:
+        return 0
+    if provider_rank == 1:
+        return 8
+    if provider_rank <= 3:
+        return 5
+    if provider_rank <= 7:
+        return 2
+    return 0
+
+
+def _path_depth(path: str) -> int:
+    return len([segment for segment in path.split("/") if segment])
+
+
+def _domain_tokens(domain: str) -> set[str]:
+    return {token for token in re.split(r"[\.\-_]", domain.lower()) if token}
+
+
+def _text_tokens(value: str) -> set[str]:
+    return {token for token in re.split(r"[^a-z0-9]+", value.lower()) if token}
+
+
+def _is_official_domain(domain: str) -> bool:
+    return domain.endswith((".gov", ".bund.de", ".edu")) or ".ac." in domain
+
+
+def _is_news_path(path: str) -> bool:
+    if any(token in path for token in _NEWS_PATH_TOKENS):
+        return True
+    return re.search(r"/20\d{2}/\d{1,2}/\d{1,2}/", path) is not None
 
 
 def _recommended_action(

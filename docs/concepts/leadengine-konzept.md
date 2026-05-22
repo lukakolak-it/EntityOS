@@ -270,6 +270,7 @@ Jeder SERP-Treffer bekommt vor dem Import transparente Qualitaets-Metadaten:
 
 Erste Source Types:
 
+- `official_site`
 - `company_site`
 - `directory`
 - `job_board`
@@ -282,17 +283,30 @@ Erste Source Types:
 
 Positive Signale:
 
-- direkte Domain ohne bekannten Aggregator-Kontext
-- relevante Pfade wie `karriere`, `jobs`, `kontakt`, `impressum`, `about`, `team`
-- konkreter Titel statt generischer Ergebnisliste
-- guter Provider-Rang
+- `direct_domain` (`+20`): `source_type` ist `company_site` oder `official_site`.
+- `relevant_path` (`+15`): Pfad enthaelt `career`, `careers`, `karriere`, `jobs`, `kontakt`, `contact`, `impressum`, `about`, `ueber`, `uber`, `team` oder `services`; wird nicht fuer geblockte Source Types vergeben.
+- `concrete_title` (`+5`): Titel ist mindestens 8 Zeichen lang, enthaelt Buchstaben und ist nicht generisch.
+- `provider_rank` (`+8`/`+5`/`+2`): Provider-Rang ist 1, 2-3 oder 4-7.
 
 Negative Signale:
 
-- bekannte Jobboerse, Social-Media- oder Marketplace-Domain
-- Such-, Listing-, Login- oder Tracking-Seite
-- generische Titel wie reine Stellenangebots- oder Jobsuche-Seiten
-- lokal konfigurierte Source-Denylist
+- `configured_blocked_domain` (Score `0`): Domain steht in `TARGET_RADAR_BLOCKED_SOURCE_DOMAINS`.
+- `secondary_source` (`-20`): `source_type = directory`.
+- `context_source` (`-10`): `source_type` ist `repository`, `news` oder `registry`.
+- `blocked_source_type` (`-40`): `source_type` ist `job_board`, `social` oder `marketplace`.
+- `listing_or_search_page` (`-25`): Pfad enthaelt `search`, `suche`, `stellenangebote`, `jobboerse`, `jobsuche`, `vacancies`, `results` oder `listing`; Query-Parameter-Key ist `q`, `query`, `search`, `s` oder `keyword`; oder Titel/Snippet enthalten mindestens 4 Jobboersen-Tokens.
+- `login_or_tracking_page` (`-20`): Pfad enthaelt `login`, `signin`, `signup`, `register` oder `bewerben`; oder Query enthaelt `utm_`, `fbclid=` oder `gclid=`.
+- `deep_url` (`-10`): Pfad hat mindestens 4 Segmente.
+- `generic_title` (`-10`): Titel existiert, ist aber nicht konkret genug.
+
+Domain-Klassifizierung:
+
+- Bekannte Domains und deren Subdomains werden zuerst ueber eine feste Mapping-Liste klassifiziert.
+- `official_site`: Domain endet auf `.gov`, `.edu`, `.bund.de` oder enthaelt `.ac.`.
+- `news`: bekannte News-Domain oder artikeltypischer Pfad wie `/news/`, `/article/`, `/artikel/`, `/meldung/`, `/story/` oder Datumsartikelpfad.
+- `job_board`: bekannte Jobboerse oder Domain-Tokens enthalten `jobs`, `stellen`, `karriere` oder `career`; Tokens entstehen durch Split an `.`, `-` und `_`.
+- `marketplace`: Domain-Tokens enthalten `marketplace`, `shop` oder `store`.
+- `company_site`: Fallback fuer direkte Domains.
 
 Die LeadEngine nutzt diese Heuristik nur fuer Discovery-Priorisierung und
 Import-Entscheidung. Die finale fachliche Passung bleibt Aufgabe der
