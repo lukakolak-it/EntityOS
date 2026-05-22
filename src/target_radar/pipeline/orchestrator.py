@@ -204,6 +204,9 @@ class PipelineOrchestrator:
                 run_status,
                 stats={
                     "candidate_count": len(candidates),
+                    "candidate_status_counts": _candidate_status_counts(candidates),
+                    "import_status_counts": _import_status_counts(import_results),
+                    "source_type_counts": _source_type_counts(import_results),
                     "imported_count": sum(
                         1
                         for result in import_results
@@ -815,6 +818,31 @@ def _import_metadata(result: TargetImportResult) -> dict[str, object]:
         "import_status": result.status.value,
         "candidate_url": result.candidate.url,
     }
+
+
+def _candidate_status_counts(candidates: list[TargetCandidate]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        counts[candidate.status.value] = counts.get(candidate.status.value, 0) + 1
+    return counts
+
+
+def _import_status_counts(import_results: list[TargetImportResult]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in import_results:
+        counts[result.status.value] = counts.get(result.status.value, 0) + 1
+    return counts
+
+
+def _source_type_counts(import_results: list[TargetImportResult]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in import_results:
+        source_quality = result.candidate.metadata.get("source_quality")
+        source_type = "unknown"
+        if isinstance(source_quality, dict):
+            source_type = str(source_quality.get("source_type") or source_type)
+        counts[source_type] = counts.get(source_type, 0) + 1
+    return counts
 
 
 def _existing_target_import_result(target: Target) -> TargetImportResult:

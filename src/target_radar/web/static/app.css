@@ -103,6 +103,11 @@ button.danger:hover {
   border-color: var(--red);
 }
 
+button:disabled {
+  cursor: progress;
+  opacity: 0.62;
+}
+
 select,
 input,
 textarea {
@@ -271,9 +276,16 @@ label,
   grid-template-columns: minmax(340px, 0.72fr) minmax(560px, 1.28fr);
 }
 
-.profiles-page.active-page,
-.runs-page.active-page {
+.profiles-page.active-page {
   grid-template-columns: 1fr;
+}
+
+.runs-page.active-page {
+  grid-template-columns: minmax(320px, 0.75fr) minmax(540px, 1.25fr);
+}
+
+.runs-panel {
+  grid-column: 1 / -1;
 }
 
 .panel {
@@ -355,6 +367,27 @@ label,
 .status-pill.active {
   background: var(--blue-soft);
   color: var(--blue);
+}
+
+.status-pill.ready {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.status-pill.missing {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.status-pill.optional,
+.status-pill.completed_with_errors,
+.status-pill.p0,
+.status-pill.p10,
+.status-pill.p20,
+.status-pill.p30,
+.status-pill.p40 {
+  background: var(--amber-soft);
+  color: var(--amber);
 }
 
 .table-wrap {
@@ -446,6 +479,10 @@ label {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+  margin-top: 16px;
+}
+
+.full-detail-section {
   margin-top: 16px;
 }
 
@@ -591,9 +628,34 @@ label {
   background: #ffffff;
 }
 
+.metric-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.metric-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--muted);
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.provider-card .plain-list {
+  font-size: 12px;
+}
+
 @media (max-width: 1120px) {
   .review-page.active-page,
-  .usecases-page.active-page {
+  .usecases-page.active-page,
+  .runs-page.active-page {
     grid-template-columns: 1fr;
   }
 

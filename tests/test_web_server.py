@@ -21,10 +21,21 @@ class WebServerTests(unittest.TestCase):
             base_url = f"http://127.0.0.1:{server.server_port}"
             try:
                 index = _http_text(f"{base_url}/")
+                provider_status_payload = _http_json(f"{base_url}/api/provider-status")
                 run_payload = _http_json(
                     f"{base_url}/api/pipeline-runs/fake",
                     method="POST",
                     payload={},
+                )
+                ui_run_payload = _http_json(
+                    f"{base_url}/api/pipeline-runs",
+                    method="POST",
+                    payload={
+                        "provider_mode": "fake",
+                        "llm_mode": "off",
+                        "request_budget": 1,
+                        "results_per_query": 1,
+                    },
                 )
                 use_cases_payload = _http_json(f"{base_url}/api/use-cases")
                 application_use_case = next(
@@ -102,7 +113,14 @@ class WebServerTests(unittest.TestCase):
         self.assertIn("Target Radar", index)
         self.assertIn("#review", index)
         self.assertIn("#use-cases", index)
+        self.assertIn("Run konfigurieren", index)
+        self.assertIn("Provider Status", index)
+        self.assertTrue(provider_status_payload["search"]["mock_ready"])
+        self.assertNotIn("api_key", json.dumps(provider_status_payload).lower())
         self.assertEqual(run_payload["run"]["status"], "completed")
+        self.assertEqual(ui_run_payload["provider_mode"], "fake")
+        self.assertEqual(ui_run_payload["llm_mode"], "off")
+        self.assertEqual(ui_run_payload["search_provider"], "mock")
         self.assertGreaterEqual(len(use_cases_payload["use_cases"]), 2)
         self.assertEqual(use_case_detail_payload["use_case"]["slug"], "application_student")
         self.assertEqual(use_case_export_payload["format"], "target-radar-use-case-v1")

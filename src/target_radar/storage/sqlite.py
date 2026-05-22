@@ -924,6 +924,19 @@ class SQLiteStore:
         ).fetchall()
         return [_target_from_row(row) for row in rows]
 
+    def list_domains_by_status(self, *statuses: TargetStatus) -> set[str]:
+        if not statuses:
+            return set()
+        placeholders = ", ".join("?" for _ in statuses)
+        rows = self.connection.execute(
+            f"""
+            SELECT domain FROM targets
+            WHERE status IN ({placeholders})
+            """,
+            tuple(status.value for status in statuses),
+        ).fetchall()
+        return {str(row["domain"]) for row in rows}
+
     def list_review_queue_items(
         self,
         *,

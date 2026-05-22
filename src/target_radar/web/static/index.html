@@ -25,8 +25,6 @@
       </nav>
 
       <div class="toolbar">
-        <select id="runUseCaseSelect" aria-label="Run Use Case"></select>
-        <button id="runFakeButton" class="primary" type="button">Run Fake</button>
         <button id="refreshButton" type="button">Refresh</button>
       </div>
     </header>
@@ -84,6 +82,10 @@
                 <label>Aktualisiert</label>
                 <span id="targetUpdated"></span>
               </div>
+              <div>
+                <label>Source Quality</label>
+                <span id="targetSourceQuality"></span>
+              </div>
             </div>
 
             <div class="actions">
@@ -116,6 +118,11 @@
                 <div id="statusLogList" class="stack"></div>
               </section>
             </div>
+
+            <section class="full-detail-section">
+              <h3>Pages</h3>
+              <div id="pagesList" class="stack"></div>
+            </section>
           </div>
         </section>
       </section>
@@ -151,6 +158,8 @@
                 </select>
               </div>
             </div>
+            <label>Datei</label>
+            <input id="importUseCaseFile" type="file" accept="application/json,.json">
             <label>JSON</label>
             <textarea id="importUseCaseJson" class="code-input"></textarea>
             <div id="importUseCaseStatus" class="editor-status"></div>
@@ -171,6 +180,73 @@
       </section>
 
       <section class="page runs-page" data-page="runs" aria-label="Runs">
+        <section class="panel provider-panel" aria-labelledby="providerTitle">
+          <div class="panel-head">
+            <h2 id="providerTitle">Provider Status</h2>
+            <span class="status-pill active">local</span>
+          </div>
+          <div id="providerStatusList" class="stack"></div>
+        </section>
+
+        <section class="panel run-config-panel" aria-labelledby="runConfigTitle">
+          <div class="panel-head">
+            <h2 id="runConfigTitle">Run konfigurieren</h2>
+          </div>
+          <div class="detail">
+            <div class="form-grid">
+              <div>
+                <label>Search Profile</label>
+                <select id="runSearchProfileSelect"></select>
+              </div>
+              <div>
+                <label>Use Case</label>
+                <select id="runUseCaseSelect"></select>
+              </div>
+              <div>
+                <label>Provider</label>
+                <select id="runProviderMode">
+                  <option value="fake">fake</option>
+                  <option value="brave">brave</option>
+                  <option value="configured">configured</option>
+                </select>
+              </div>
+              <div>
+                <label>LLM</label>
+                <select id="runLlmMode">
+                  <option value="off">off</option>
+                  <option value="light">light</option>
+                </select>
+              </div>
+              <div>
+                <label>Request Budget</label>
+                <input id="runRequestBudget" type="number" min="1" max="100" value="5">
+              </div>
+              <div>
+                <label>Results / Query</label>
+                <input id="runResultsPerQuery" type="number" min="1" max="20" value="3">
+              </div>
+            </div>
+            <div class="form-grid">
+              <div>
+                <label>Rollen / Topics</label>
+                <input id="runRoles" value="Werkstudent IT">
+              </div>
+              <div>
+                <label>Regionen</label>
+                <input id="runRegions" value="Essen">
+              </div>
+              <div>
+                <label>Technologien</label>
+                <input id="runTechKeywords" value="Python">
+              </div>
+            </div>
+            <div id="runStatus" class="editor-status"></div>
+            <div class="actions">
+              <button id="runConfiguredButton" class="primary" type="button">Run starten</button>
+            </div>
+          </div>
+        </section>
+
         <section class="panel runs-panel" aria-labelledby="runsTitle">
           <div class="panel-head">
             <h2 id="runsTitle">Runs</h2>

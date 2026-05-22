@@ -309,6 +309,26 @@ class SQLiteStorageTests(unittest.TestCase):
 
         self.assertEqual([target.domain for target in targets], ["review.example"])
 
+    def test_domains_can_be_listed_by_status_for_feedback(self) -> None:
+        self.store.create_target(
+            Target(
+                domain="blacklisted.example",
+                base_url="https://blacklisted.example",
+                status=TargetStatus.BLACKLISTED,
+            )
+        )
+        self.store.create_target(
+            Target(
+                domain="approved.example",
+                base_url="https://approved.example",
+                status=TargetStatus.APPROVED,
+            )
+        )
+
+        domains = self.store.list_domains_by_status(TargetStatus.BLACKLISTED)
+
+        self.assertEqual(domains, {"blacklisted.example"})
+
 
 def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
     rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()

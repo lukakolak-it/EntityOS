@@ -4,6 +4,8 @@ const state = {
   useCaseTab: "basis",
   queue: [],
   useCases: [],
+  searchProfiles: [],
+  providerStatus: null,
 };
 
 const USE_CASE_TABS = (
@@ -26,15 +28,29 @@ const elements = {
   targetSource: document.querySelector("#targetSource"),
   targetUseCase: document.querySelector("#targetUseCase"),
   targetUpdated: document.querySelector("#targetUpdated"),
+  targetSourceQuality: document.querySelector("#targetSourceQuality"),
   ratingsList: document.querySelector("#ratingsList"),
   draftsList: document.querySelector("#draftsList"),
   evidenceList: document.querySelector("#evidenceList"),
+  pagesList: document.querySelector("#pagesList"),
   statusLogList: document.querySelector("#statusLogList"),
   runsList: document.querySelector("#runsList"),
+  providerStatusList: document.querySelector("#providerStatusList"),
+  runSearchProfileSelect: document.querySelector("#runSearchProfileSelect"),
+  runProviderMode: document.querySelector("#runProviderMode"),
+  runLlmMode: document.querySelector("#runLlmMode"),
+  runRequestBudget: document.querySelector("#runRequestBudget"),
+  runResultsPerQuery: document.querySelector("#runResultsPerQuery"),
+  runRoles: document.querySelector("#runRoles"),
+  runRegions: document.querySelector("#runRegions"),
+  runTechKeywords: document.querySelector("#runTechKeywords"),
+  runConfiguredButton: document.querySelector("#runConfiguredButton"),
+  runStatus: document.querySelector("#runStatus"),
   useCaseCount: document.querySelector("#useCaseCount"),
   useCaseList: document.querySelector("#useCaseList"),
   useCaseDetail: document.querySelector("#useCaseDetail"),
   importConflict: document.querySelector("#importConflict"),
+  importUseCaseFile: document.querySelector("#importUseCaseFile"),
   importUseCaseJson: document.querySelector("#importUseCaseJson"),
   importUseCaseStatus: document.querySelector("#importUseCaseStatus"),
   importUseCaseButton: document.querySelector("#importUseCaseButton"),
@@ -42,17 +58,10 @@ const elements = {
 };
 
 document.querySelector("#refreshButton").addEventListener("click", refreshAll);
-document.querySelector("#runFakeButton").addEventListener("click", async () => {
-  const useCaseId = selectedNumber(elements.runUseCaseSelect.value);
-  await api("/api/pipeline-runs/fake", {
-    method: "POST",
-    body: fakeRunPayload(useCaseId),
-  });
-  await refreshAll();
-  showPage("review");
-});
+elements.runConfiguredButton.addEventListener("click", runFromForm);
 
 elements.queueUseCaseFilter.addEventListener("change", loadQueue);
+elements.importUseCaseFile.addEventListener("change", importUseCaseFromFile);
 elements.importUseCaseButton.addEventListener("click", importUseCaseFromTextarea);
 window.addEventListener("hashchange", renderPage);
 
@@ -73,7 +82,7 @@ async function refreshAll() {
   const health = await api("/api/health");
   elements.serverStatus.textContent = `${health.host} - ${health.status}`;
   await loadUseCases();
-  await Promise.all([loadQueue(), loadRuns(), loadSearchProfiles()]);
+  await Promise.all([loadProviderStatus(), loadQueue(), loadRuns(), loadSearchProfiles()]);
   renderPage();
 }
 
@@ -185,6 +194,7 @@ function renderUseCases() {
       const data = await api(`/api/use-cases/${useCase.slug}/export`);
       elements.importUseCaseJson.value = jsonText(data);
       elements.importUseCaseStatus.textContent = `Export ready: ${useCase.slug}`;
+      downloadJson(`${useCase.slug}.target-radar-use-case.json`, data);
     });
     elements.useCaseList.appendChild(item);
   }
@@ -420,20 +430,37 @@ async function saveUseCaseFromEditor(useCase) {
 async function importUseCaseFromTextarea() {
   try {
     const payload = JSON.parse(elements.importUseCaseJson.value);
-    const data = await api("/api/use-cases/import", {
-      method: "POST",
-      body: {
-        conflict: elements.importConflict.value,
-        ...payload,
-      },
-    });
-    state.selectedUseCaseSlug = data.use_case.slug;
-    elements.importUseCaseStatus.textContent = `Imported: ${data.import_status}`;
-    elements.importUseCaseJson.value = "";
-    await refreshAll();
+    await importUseCasePayload(payload);
   } catch (error) {
     elements.importUseCaseStatus.textContent = error.message;
   }
+}
+
+async function importUseCaseFromFile() {
+  const file = elements.importUseCaseFile.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    elements.importUseCaseJson.value = text;
+    await importUseCasePayload(JSON.parse(text));
+    elements.importUseCaseFile.value = "";
+  } catch (error) {
+    elements.importUseCaseStatus.textContent = error.message;
+  }
+}
+
+async function importUseCasePayload(payload) {
+  const data = await api("/api/use-cases/import", {
+    method: "POST",
+    body: {
+      conflict: elements.importConflict.value,
+      ...payload,
+    },
+  });
+  state.selectedUseCaseSlug = data.use_case.slug;
+  elements.importUseCaseStatus.textContent = `Imported: ${data.import_status}`;
+  elements.importUseCaseJson.value = "";
+  await refreshAll();
 }
 
 function updateUseCasePreview(useCase) {
@@ -496,6 +523,10 @@ function buildUseCaseConfigFromEditor(useCase) {
     config.rating_policy.min_score_for_review = numberValue(get("uc-rating-review-score").value);
     config.rating_policy.min_score_for_draft = numberValue(get("uc-rating-draft-score").value);
     config.rating_policy.criteria = parseJsonField("uc-rating-criteria", "Criteria");
+    const weightSum = config.rating_policy.criteria.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+    if (weightSum !== 100) {
+      throw new Error(`Criteria weights must sum to 100, currently ${weightSum}`);
+    }
   }
   if (get("uc-draft-type")) {
     config.draft_policy.draft_type = get("uc-draft-type").value;
@@ -624,6 +655,8 @@ function jsonText(value) {
 
 async function loadSearchProfiles() {
   const data = await api("/api/search-profiles?limit=50");
+  state.searchProfiles = data.search_profiles;
+  renderRunProfileOptions();
   elements.searchProfilesList.innerHTML = "";
   if (data.search_profiles.length === 0) {
     elements.searchProfilesList.appendChild(emptyItem("Keine Search Profiles."));
@@ -659,6 +692,111 @@ async function loadSearchProfiles() {
       await refreshAll();
     });
     elements.searchProfilesList.appendChild(item);
+  }
+}
+
+async function loadProviderStatus() {
+  const data = await api("/api/provider-status");
+  state.providerStatus = data;
+  renderProviderStatus(data);
+}
+
+function renderRunProfileOptions() {
+  const previous = elements.runSearchProfileSelect.value;
+  elements.runSearchProfileSelect.innerHTML = `<option value="">Quick Run</option>`;
+  for (const profile of state.searchProfiles) {
+    const option = document.createElement("option");
+    option.value = String(profile.id);
+    option.textContent = `${profile.name} - ${profile.use_case_name || "no use case"}`;
+    elements.runSearchProfileSelect.appendChild(option);
+  }
+  elements.runSearchProfileSelect.value = optionExists(elements.runSearchProfileSelect, previous)
+    ? previous
+    : "";
+}
+
+function renderProviderStatus(status) {
+  elements.providerStatusList.innerHTML = "";
+  const cards = [
+    {
+      title: "Search",
+      state: status.search.configured_ready ? "ready" : "missing",
+      lines: [
+        `configured: ${status.search.configured_provider}`,
+        `brave: ${status.search.brave_ready ? "ready" : "missing key"}`,
+        `mock: ${status.search.mock_ready ? "ready" : "missing"}`,
+      ],
+    },
+    {
+      title: "Light LLM",
+      state: status.llm.light.configured ? "ready" : "missing",
+      lines: [
+        `${status.llm.light.provider} / ${status.llm.light.model}`,
+        `reachable: ${status.llm.light.reachable === null ? "n/a" : String(status.llm.light.reachable)}`,
+      ],
+    },
+    {
+      title: "Heavy LLM",
+      state: status.llm.heavy.enabled_in_ui ? "ready" : "optional",
+      lines: [
+        `${status.llm.heavy.provider} / ${status.llm.heavy.model}`,
+        "in UI disabled",
+      ],
+    },
+  ];
+  for (const card of cards) {
+    const item = document.createElement("article");
+    item.className = "item provider-card";
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(card.title)}</span>
+        ${pill(card.state)}
+      </div>
+      ${renderList(card.lines)}
+    `;
+    elements.providerStatusList.appendChild(item);
+  }
+}
+
+async function runFromForm() {
+  elements.runStatus.textContent = "Run startet...";
+  elements.runConfiguredButton.disabled = true;
+  try {
+    const useCaseId = selectedNumber(elements.runUseCaseSelect.value);
+    const payload = {
+      provider_mode: elements.runProviderMode.value,
+      llm_mode: elements.runLlmMode.value,
+      search_profile_id: selectedNumber(elements.runSearchProfileSelect.value),
+      use_case_id: useCaseId,
+      request_budget: numberValue(elements.runRequestBudget.value),
+      results_per_query: numberValue(elements.runResultsPerQuery.value),
+      roles: parseCsv(elements.runRoles.value),
+      regions: parseCsv(elements.runRegions.value),
+      tech_keywords: parseCsv(elements.runTechKeywords.value),
+    };
+    const useCase = state.useCases.find((item) => item.db_id === useCaseId);
+    if (!payload.search_profile_id && useCase?.slug === "company_osint") {
+      payload.attributes = {
+        topics: payload.roles.length ? payload.roles : ["Solar Services"],
+        industries: payload.tech_keywords,
+        regions: payload.regions,
+      };
+      payload.roles = [];
+      payload.tech_keywords = [];
+    }
+    const data = await api("/api/pipeline-runs", {
+      method: "POST",
+      body: payload,
+    });
+    elements.runStatus.textContent = data.error
+      ? `Run #${data.run.id}: ${data.error}`
+      : `Run #${data.run.id}: ${data.run.status}`;
+    await refreshAll();
+    showPage("review");
+  } catch (error) {
+    elements.runStatus.textContent = error.message;
+  } finally {
+    elements.runConfiguredButton.disabled = false;
   }
 }
 
@@ -701,8 +839,9 @@ async function loadRuns() {
         <span class="item-title">Run #${run.id}</span>
         ${pill(run.status)}
       </div>
-      <p>${escapeHtml(run.use_case_name || "no use case")} - ${escapeHtml(formatDate(run.created_at))}</p>
-      <p>${escapeHtml(JSON.stringify(run.stats || {}))}</p>
+      <p>${escapeHtml(run.use_case_name || "no use case")} - ${escapeHtml(run.mode)} - ${escapeHtml(formatDate(run.created_at))}</p>
+      ${renderMetricChips(run.stats || {})}
+      ${run.error_message ? `<p class="muted">${escapeHtml(run.error_message)}</p>` : ""}
     `;
     elements.runsList.appendChild(item);
   }
@@ -725,10 +864,12 @@ async function loadTarget(targetId) {
   elements.targetSource.textContent = target.source;
   elements.targetUseCase.textContent = queueItem?.use_case_name || queueItem?.use_case_slug || "-";
   elements.targetUpdated.textContent = formatDate(target.updated_at);
+  elements.targetSourceQuality.textContent = sourceQualitySummary(target.metadata);
 
   renderRatings(data.ratings);
   renderDrafts(data.drafts);
   renderEvidence(data.evidence);
+  renderPages(data.pages);
   renderStatusLogs(data.status_logs);
 }
 
@@ -746,8 +887,10 @@ function renderRatings(ratings) {
         <span class="item-title">${escapeHtml(rating.rating_version)}</span>
         ${pill(rating.recommended_action)}
       </div>
-      <p>Rule ${displayNumber(rating.rule_score)} - AI ${displayNumber(rating.ai_score)} - Confidence ${formatConfidence(rating.confidence)}</p>
+      <p>Rule ${displayNumber(rating.rule_score)} - AI ${displayNumber(rating.ai_score)} - Confidence ${formatConfidence(rating.confidence)} - ${escapeHtml(rating.rating_status)}</p>
+      ${rating.source_quality ? `<p>${escapeHtml(rating.source_quality)}</p>` : ""}
       ${rating.error_message ? `<p class="muted">${escapeHtml(rating.error_type || "rating_error")}: ${escapeHtml(rating.error_message)}</p>` : ""}
+      ${renderCriterionBreakdown(rating.reasons || [])}
       ${renderFacts("Reasons", rating.reasons || [])}
       ${renderFacts("Risks", rating.risks || [])}
     `;
@@ -804,11 +947,35 @@ function renderEvidence(evidence) {
     item.innerHTML = `
       <div class="item-header">
         <span class="item-title">${escapeHtml(entry.context_type)}</span>
+        ${pill(`p${entry.priority}`)}
         <a href="${escapeAttribute(entry.source_url)}" target="_blank" rel="noreferrer">open</a>
       </div>
+      ${entry.metadata?.title ? `<p>${escapeHtml(entry.metadata.title)}</p>` : ""}
       <p>${escapeHtml(entry.text)}</p>
+      ${entry.metadata?.emails?.length ? renderFacts("Emails", entry.metadata.emails.map((value) => ({ value }))) : ""}
     `;
     elements.evidenceList.appendChild(item);
+  }
+}
+
+function renderPages(pages) {
+  elements.pagesList.innerHTML = "";
+  if (pages.length === 0) {
+    elements.pagesList.appendChild(emptyItem("Keine Pages."));
+    return;
+  }
+  for (const page of pages) {
+    const item = document.createElement("article");
+    item.className = "item";
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(page.title || page.url)}</span>
+        ${pill(page.page_type)}
+      </div>
+      <p>${escapeHtml(page.url)}</p>
+      <p>${escapeHtml(page.error_message || `${displayNumber(page.http_status)} - ${displayNumber(page.metadata?.bytes_read)} bytes`)}</p>
+    `;
+    elements.pagesList.appendChild(item);
   }
 }
 
@@ -828,6 +995,8 @@ function renderStatusLogs(logs) {
       </div>
       <p>${escapeHtml(log.from_status || "none")} -> ${escapeHtml(log.to_status)}</p>
       <p>${escapeHtml(log.reason || "")}</p>
+      ${log.error_message ? `<p class="muted">${escapeHtml(log.error_message)}</p>` : ""}
+      ${Object.keys(log.metadata || {}).length ? renderFacts("Metadata", objectFacts(log.metadata)) : ""}
     `;
     elements.statusLogList.appendChild(item);
   }
@@ -846,25 +1015,6 @@ async function api(path, options = {}) {
   return data;
 }
 
-function fakeRunPayload(useCaseId) {
-  const useCase = state.useCases.find((item) => item.db_id === useCaseId);
-  if (useCase?.slug === "company_osint") {
-    return {
-      use_case_id: useCaseId,
-      search_name: "Local OSINT Search",
-      attributes: {
-        topics: ["Solar Services"],
-        industries: ["IT"],
-        regions: ["Essen"],
-      },
-      roles: [],
-      regions: ["Essen"],
-      tech_keywords: [],
-    };
-  }
-  return { use_case_id: useCaseId };
-}
-
 function pill(value, id) {
   const clean = value || "none";
   const idPart = id ? ` id="${id}"` : "";
@@ -881,15 +1031,81 @@ function emptyItem(text) {
 function renderFacts(label, facts) {
   if (!facts.length) return "";
   const items = facts.slice(0, 4).map((fact) => {
-    const text = fact.text || fact.value || fact.evidence || JSON.stringify(fact);
+    const text = fact.text || fact.value || fact.evidence || fact.weighted_score || JSON.stringify(fact);
     return `<li>${escapeHtml(String(text))}</li>`;
   }).join("");
   return `<div class="fact-list"><span>${escapeHtml(label)}</span><ul>${items}</ul></div>`;
 }
 
+function renderCriterionBreakdown(reasons) {
+  const criteria = reasons.filter((reason) => reason.type === "criterion_score");
+  if (!criteria.length) return "";
+  const rows = criteria.map((item) => `
+    <li>
+      ${escapeHtml(item.criterion)}:
+      ${displayNumber(item.score)} x ${displayNumber(item.weight)}%
+      = ${displayNumber(item.weighted_score)}
+    </li>
+  `).join("");
+  return `<div class="fact-list"><span>Criteria</span><ul>${rows}</ul></div>`;
+}
+
+function renderMetricChips(stats) {
+  const keys = [
+    "candidate_count",
+    "imported_count",
+    "existing_count",
+    "fetched_count",
+    "evidence_count",
+    "rated_count",
+    "drafted_count",
+    "review_target_count",
+    "error_count",
+  ];
+  const chips = keys
+    .filter((key) => stats[key] !== undefined)
+    .map((key) => `<span class="metric-chip">${escapeHtml(key.replaceAll("_", " "))}: ${escapeHtml(stats[key])}</span>`);
+  const importCounts = stats.import_status_counts
+    ? Object.entries(stats.import_status_counts).map(([key, value]) => `<span class="metric-chip">${escapeHtml(key)}: ${escapeHtml(value)}</span>`)
+    : [];
+  const sourceCounts = stats.source_type_counts
+    ? Object.entries(stats.source_type_counts).map(([key, value]) => `<span class="metric-chip">${escapeHtml(key)}: ${escapeHtml(value)}</span>`)
+    : [];
+  return `<div class="metric-grid">${chips.concat(importCounts, sourceCounts).join("")}</div>`;
+}
+
+function objectFacts(value) {
+  return Object.entries(value || {}).map(([key, item]) => ({
+    value: `${key}: ${typeof item === "object" ? JSON.stringify(item) : item}`,
+  }));
+}
+
+function sourceQualitySummary(metadata) {
+  const sourceQuality = metadata?.lead_metadata?.source_quality;
+  if (!sourceQuality) return "-";
+  const parts = [
+    sourceQuality.source_type,
+    sourceQuality.source_quality_score,
+    sourceQuality.source_quality_action,
+  ].filter((item) => item !== undefined && item !== null && item !== "");
+  return parts.length ? parts.join(" / ") : "-";
+}
+
 function renderList(items) {
   if (!items.length) return `<div class="empty inline">-</div>`;
   return `<ul class="plain-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+function downloadJson(filename, value) {
+  const blob = new Blob([jsonText(value)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function formatSearchTerms(profile) {

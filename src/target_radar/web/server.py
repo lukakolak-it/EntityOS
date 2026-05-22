@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
-from dataclasses import asdict
+import urllib.error
+import urllib.request
+from dataclasses import asdict, replace
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
+from target_radar.config import AppConfig, load_app_config
 from target_radar.domain import (
     PipelinePhase,
     Profile,
@@ -19,20 +22,36 @@ from target_radar.domain import (
     TargetStatus,
 )
 from target_radar.engines.draft import DraftEngine
-from target_radar.engines.lead import FakeLeadEngine
-from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine
+from target_radar.engines.lead import FakeLeadEngine, LeadEngineConfig, create_lead_engine
+from target_radar.engines.rating import (
+    FakeAIRatingProvider,
+    RatingEngine,
+    create_rating_engine,
+)
 from target_radar.pipeline import (
+    FetchConfig as PipelineFetchConfig,
     GeneratedFakeFetcher,
     HtmlExtractor,
+    HttpFetcher,
+    PipelineExecutionError,
     PipelineOrchestrator,
     PipelineRunRequest,
 )
+from target_radar.pipeline.importer import TargetImporter
 from target_radar.storage import NotFoundError, SQLiteStore
 from target_radar.use_cases import UseCaseConfig, validate_use_case_config
 
 
 STATIC_DIR = Path(__file__).with_name("static")
 LOGGER = logging.getLogger(__name__)
+FULL_PIPELINE_PHASES = (
+    PipelinePhase.LEAD,
+    PipelinePhase.IMPORT,
+    PipelinePhase.FETCH,
+    PipelinePhase.EXTRACT,
+    PipelinePhase.RATING,
+    PipelinePhase.DRAFT,
+)
 
 
 class UseCaseImportConflict(ValueError):
@@ -64,12 +83,15 @@ def create_server(
     database_url: str,
     host: str = "127.0.0.1",
     port: int = 8765,
+    app_config: AppConfig | None = None,
 ) -> ThreadingHTTPServer:
-    handler = _make_handler(database_url)
+    handler = _make_handler(database_url, app_config=app_config)
     return ThreadingHTTPServer((host, port), handler)
 
 
-def _make_handler(database_url: str):
+def _make_handler(database_url: str, *, app_config: AppConfig | None = None):
+    base_config = app_config or load_app_config()
+
     class TargetRadarHandler(BaseHTTPRequestHandler):
         server_version = "TargetRadarLocal/0.1"
 
@@ -82,6 +104,8 @@ def _make_handler(database_url: str):
                     self._send_static(parsed.path.removeprefix("/static/"))
                 elif parsed.path == "/api/health":
                     self._send_json({"status": "ok", "host": "127.0.0.1"})
+                elif parsed.path == "/api/provider-status":
+                    self._handle_provider_status()
                 elif parsed.path == "/api/use-cases":
                     self._handle_use_cases()
                 elif parsed.path.startswith("/api/use-cases/"):
@@ -106,6 +130,8 @@ def _make_handler(database_url: str):
             try:
                 if parsed.path == "/api/pipeline-runs/fake":
                     self._handle_fake_run()
+                elif parsed.path == "/api/pipeline-runs":
+                    self._handle_pipeline_run_start()
                 elif parsed.path == "/api/use-cases/import":
                     self._handle_use_case_import()
                 elif parsed.path.startswith("/api/use-cases/"):
@@ -140,6 +166,16 @@ def _make_handler(database_url: str):
 
         def _store(self) -> SQLiteStore:
             return SQLiteStore.open(database_url)
+
+        def _config(self) -> AppConfig:
+            try:
+                return load_app_config()
+            except Exception:
+                LOGGER.warning("failed to reload app config; using server startup config")
+                return base_config
+
+        def _handle_provider_status(self) -> None:
+            self._send_json(_provider_status_payload(self._config(), database_url))
 
         def _handle_review_queue(self, query: str) -> None:
             params = parse_qs(query)
@@ -309,64 +345,55 @@ def _make_handler(database_url: str):
 
         def _handle_fake_run(self) -> None:
             payload = self._read_json(default={})
+            payload["provider_mode"] = "fake"
+            self._run_pipeline_from_payload(payload)
+
+        def _handle_pipeline_run_start(self) -> None:
+            self._run_pipeline_from_payload(self._read_json(default={}))
+
+        def _run_pipeline_from_payload(self, payload: dict[str, Any]) -> None:
+            provider_mode = _provider_mode(payload.get("provider_mode"))
+            llm_mode = _llm_mode(payload.get("llm_mode"))
+            request_budget = _positive_int(payload.get("request_budget"), default=10, maximum=100)
+            results_per_query = _positive_int(payload.get("results_per_query"), default=5, maximum=20)
             store = self._store()
             try:
-                profile = store.create_profile(
-                    Profile(name=str(payload.get("profile_name") or "Local Profile"))
-                )
-                search_profile = store.create_search_profile(
-                    SearchProfile(
-                        profile_id=profile.id,
-                        name=str(payload.get("search_name") or "Local Search"),
-                        roles=tuple(payload.get("roles") or ["Werkstudent IT"]),
-                        regions=tuple(payload.get("regions") or ["Essen"]),
-                        tech_keywords=tuple(payload.get("tech_keywords") or ["Python"]),
-                        industry_keywords=tuple(payload.get("industry_keywords") or ()),
-                        exclude_keywords=tuple(payload.get("exclude_keywords") or ()),
-                        use_case_id=(
-                            int(payload["use_case_id"])
-                            if payload.get("use_case_id") is not None
-                            else None
-                        ),
-                        attributes=dict(payload.get("attributes") or {}),
-                    )
-                )
-                result = PipelineOrchestrator(
-                    store,
-                    FakeLeadEngine(),
-                    fetcher=GeneratedFakeFetcher(terms=_search_terms(search_profile)),
-                    extractor=HtmlExtractor(),
-                    rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
-                    draft_engine=DraftEngine(),
+                profile, search_profile = _run_context(store, payload)
+                orchestrator, search_provider = _orchestrator_for_run(
+                    store=store,
                     profile=profile,
-                    max_pages_per_target=2,
-                ).run(
+                    search_profile=search_profile,
+                    config=self._config(),
+                    provider_mode=provider_mode,
+                    llm_mode=llm_mode,
+                    request_budget=request_budget,
+                    results_per_query=results_per_query,
+                )
+                result = orchestrator.run(
                     PipelineRunRequest(
                         search_profile=search_profile,
-                        phases=(
-                            PipelinePhase.LEAD,
-                            PipelinePhase.IMPORT,
-                            PipelinePhase.FETCH,
-                            PipelinePhase.EXTRACT,
-                            PipelinePhase.RATING,
-                            PipelinePhase.DRAFT,
-                        ),
-                        request_budget=int(payload.get("request_budget") or 10),
-                        results_per_query=int(payload.get("results_per_query") or 5),
+                        mode=f"ui:{provider_mode}:{llm_mode}",
+                        phases=FULL_PIPELINE_PHASES,
+                        request_budget=request_budget,
+                        results_per_query=results_per_query,
                     )
                 )
                 self._send_json(
+                    _run_result_payload(
+                        result,
+                        provider_mode=provider_mode,
+                        llm_mode=llm_mode,
+                        search_provider=search_provider,
+                    ),
+                    status=HTTPStatus.CREATED,
+                )
+            except PipelineExecutionError as exc:
+                self._send_json(
                     {
-                        "run": _pipeline_run_payload(result.run),
-                        "review_target_count": result.review_target_count,
-                        "fetched_count": result.fetched_count,
-                        "evidence_count": result.evidence_count,
-                        "rated_count": result.rated_count,
-                        "drafted_count": result.drafted_count,
-                        "error_count": result.error_count,
-                        "import_statuses": [
-                            item.status.value for item in result.import_results
-                        ],
+                        "run": _pipeline_run_payload(exc.run),
+                        "provider_mode": provider_mode,
+                        "llm_mode": llm_mode,
+                        "error": str(exc),
                     },
                     status=HTTPStatus.CREATED,
                 )
@@ -514,6 +541,269 @@ def _parse_id_path(path: str, prefix: str) -> int:
     if "/" in raw or not raw:
         raise ValueError("invalid id path")
     return int(raw)
+
+
+def _run_context(
+    store: SQLiteStore,
+    payload: dict[str, Any],
+) -> tuple[Profile, SearchProfile]:
+    search_profile_id = _optional_positive_int(payload.get("search_profile_id"))
+    use_case_id = _optional_positive_int(payload.get("use_case_id"))
+    if search_profile_id is not None:
+        search_profile = store.get_search_profile(search_profile_id)
+        if use_case_id is not None and use_case_id != search_profile.use_case_id:
+            search_profile = store.update_search_profile_use_case(
+                search_profile_id,
+                use_case_id,
+            )
+        profile = store.get_profile(search_profile.profile_id)
+        return profile, search_profile
+
+    profile = store.create_profile(
+        Profile(name=str(payload.get("profile_name") or "Local Profile"))
+    )
+    search_profile = store.create_search_profile(
+        SearchProfile(
+            profile_id=profile.id,
+            name=str(payload.get("search_name") or "Local Search"),
+            roles=_tuple_payload(payload.get("roles"), default=("Werkstudent IT",)),
+            regions=_tuple_payload(payload.get("regions"), default=("Essen",)),
+            tech_keywords=_tuple_payload(payload.get("tech_keywords"), default=("Python",)),
+            industry_keywords=_tuple_payload(payload.get("industry_keywords")),
+            exclude_keywords=_tuple_payload(payload.get("exclude_keywords")),
+            use_case_id=use_case_id,
+            attributes=dict(payload.get("attributes") or {}),
+        )
+    )
+    return profile, search_profile
+
+
+def _orchestrator_for_run(
+    *,
+    store: SQLiteStore,
+    profile: Profile,
+    search_profile: SearchProfile,
+    config: AppConfig,
+    provider_mode: str,
+    llm_mode: str,
+    request_budget: int,
+    results_per_query: int,
+) -> tuple[PipelineOrchestrator, str]:
+    importer = TargetImporter(
+        store,
+        blacklisted_domains=store.list_domains_by_status(TargetStatus.BLACKLISTED),
+    )
+    if provider_mode == "fake":
+        rating_engine = (
+            RatingEngine()
+            if llm_mode == "off"
+            else RatingEngine(ai_provider=FakeAIRatingProvider())
+        )
+        return (
+            PipelineOrchestrator(
+                store,
+                FakeLeadEngine(),
+                importer=importer,
+                fetcher=GeneratedFakeFetcher(terms=_search_terms(search_profile)),
+                extractor=HtmlExtractor(),
+                rating_engine=rating_engine,
+                draft_engine=DraftEngine(),
+                profile=profile,
+                max_pages_per_target=2,
+            ),
+            "mock",
+        )
+
+    selected_config = _config_for_provider_mode(config, provider_mode)
+    lead_engine = create_lead_engine(selected_config, store=store)
+    lead_engine.config = LeadEngineConfig(
+        request_budget=request_budget,
+        results_per_query=results_per_query,
+        template_set=lead_engine.config.template_set,
+        source_block_threshold=lead_engine.config.source_block_threshold,
+    )
+    fetcher = (
+        GeneratedFakeFetcher(terms=_search_terms(search_profile))
+        if lead_engine.provider.name == "mock"
+        else HttpFetcher(
+            PipelineFetchConfig(
+                timeout_seconds=selected_config.fetch.timeout_seconds,
+                user_agent=selected_config.fetch.user_agent,
+            )
+        )
+    )
+    rating_engine = (
+        RatingEngine()
+        if llm_mode == "off"
+        else create_rating_engine(selected_config, task="light")
+    )
+    return (
+        PipelineOrchestrator(
+            store,
+            lead_engine,
+            importer=importer,
+            fetcher=fetcher,
+            extractor=HtmlExtractor(),
+            rating_engine=rating_engine,
+            draft_engine=DraftEngine(),
+            profile=profile,
+            max_pages_per_target=selected_config.fetch.max_pages_per_target,
+        ),
+        lead_engine.provider.name,
+    )
+
+
+def _config_for_provider_mode(config: AppConfig, provider_mode: str) -> AppConfig:
+    if provider_mode == "configured":
+        return config
+    if provider_mode == "brave":
+        return replace(
+            config,
+            search_provider=replace(config.search_provider, provider="brave"),
+        )
+    raise ValueError("provider_mode must be one of: fake, brave, configured")
+
+
+def _provider_status_payload(config: AppConfig, database_url: str) -> dict[str, Any]:
+    configured_provider = config.search_provider.provider.strip().lower()
+    light_provider = config.llm.light_provider.strip().lower()
+    heavy_provider = config.llm.heavy_provider.strip().lower()
+    return {
+        "host": {
+            "bind": config.infrastructure.host,
+            "port": config.infrastructure.port,
+            "database_url": _redacted_database_url(database_url),
+        },
+        "search": {
+            "configured_provider": configured_provider,
+            "configured_ready": _search_provider_ready(config, configured_provider),
+            "brave_ready": _search_provider_ready(config, "brave"),
+            "brave_configured": bool(
+                config.search_provider.brave_api_key
+                or config.search_provider.search_engine_token
+            ),
+            "mock_ready": True,
+        },
+        "llm": {
+            "light": {
+                "provider": light_provider,
+                "model": config.llm.light_model,
+                "configured": _llm_provider_ready(config, light_provider),
+                "reachable": _ollama_reachable(config) if light_provider in {"ollama", "local"} else None,
+            },
+            "off": {"configured": True},
+            "heavy": {
+                "provider": heavy_provider,
+                "model": config.llm.heavy_model,
+                "configured": _llm_provider_ready(config, heavy_provider),
+                "enabled_in_ui": False,
+            },
+        },
+    }
+
+
+def _run_result_payload(
+    result,
+    *,
+    provider_mode: str,
+    llm_mode: str,
+    search_provider: str,
+) -> dict[str, Any]:
+    return {
+        "run": _pipeline_run_payload(result.run),
+        "provider_mode": provider_mode,
+        "llm_mode": llm_mode,
+        "search_provider": search_provider,
+        "review_target_count": result.review_target_count,
+        "fetched_count": result.fetched_count,
+        "evidence_count": result.evidence_count,
+        "rated_count": result.rated_count,
+        "drafted_count": result.drafted_count,
+        "error_count": result.error_count,
+        "import_statuses": [item.status.value for item in result.import_results],
+    }
+
+
+def _provider_mode(value: object) -> str:
+    selected = str(value or "fake").strip().lower()
+    if selected in {"mock"}:
+        selected = "fake"
+    if selected not in {"fake", "brave", "configured"}:
+        raise ValueError("provider_mode must be one of: fake, brave, configured")
+    return selected
+
+
+def _llm_mode(value: object) -> str:
+    selected = str(value or "off").strip().lower()
+    if selected not in {"off", "light"}:
+        raise ValueError("llm_mode must be one of: off, light")
+    return selected
+
+
+def _optional_positive_int(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    parsed = int(value)
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def _positive_int(value: object, *, default: int, maximum: int) -> int:
+    if value is None or value == "":
+        return default
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError("numeric run values must be positive")
+    return min(parsed, maximum)
+
+
+def _tuple_payload(
+    value: object,
+    *,
+    default: tuple[str, ...] = (),
+) -> tuple[str, ...]:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        items = value.split(",")
+    else:
+        items = list(value)
+    cleaned = tuple(str(item).strip() for item in items if str(item).strip())
+    return cleaned or default
+
+
+def _search_provider_ready(config: AppConfig, provider: str) -> bool:
+    if provider in {"mock", "fake"}:
+        return True
+    if provider == "brave":
+        return bool(config.search_provider.brave_api_key or config.search_provider.search_engine_token)
+    return False
+
+
+def _llm_provider_ready(config: AppConfig, provider: str) -> bool:
+    if provider in {"fake", "mock", "ollama", "local"}:
+        return True
+    if provider == "openai":
+        return bool(config.llm.openai_api_key)
+    return False
+
+
+def _ollama_reachable(config: AppConfig) -> bool:
+    request = urllib.request.Request(f"{config.llm.local_base_url.rstrip('/')}/api/tags")
+    try:
+        with urllib.request.urlopen(request, timeout=1.2) as response:
+            return 200 <= response.status < 300
+    except (OSError, urllib.error.URLError):
+        return False
+
+
+def _redacted_database_url(database_url: str) -> str:
+    if database_url.startswith("sqlite:///"):
+        return database_url
+    if "@" in database_url:
+        return database_url.split("@", 1)[1]
+    return database_url
 
 
 def _parse_use_case_path(path: str) -> tuple[str, str | None]:
