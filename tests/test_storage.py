@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import unittest
 
 from target_radar.domain import (
@@ -14,7 +15,8 @@ from target_radar.domain import (
     Target,
     TargetStatus,
 )
-from target_radar.storage import SQLiteStore
+from target_radar.storage import SQLiteStore, init_db
+from target_radar.use_cases import UseCaseConfig, UseCaseStatus, get_default_use_case
 
 
 class SQLiteStorageTests(unittest.TestCase):
@@ -39,6 +41,7 @@ class SQLiteStorageTests(unittest.TestCase):
                 "search_profiles",
                 "pipeline_runs",
                 "targets",
+                "use_cases",
                 "source_queries",
                 "serp_results",
                 "target_status_log",
@@ -47,6 +50,137 @@ class SQLiteStorageTests(unittest.TestCase):
                 "evidence",
             }.issubset(table_names)
         )
+
+    def test_default_use_cases_are_seeded(self) -> None:
+        use_cases = self.store.list_use_cases(status=UseCaseStatus.TEMPLATE)
+        application_id = self.store.get_use_case_id_by_slug("application_student")
+        company_osint = self.store.get_use_case_by_slug("company_osint")
+
+        self.assertEqual(
+            [use_case.id for use_case in use_cases],
+            ["application_student", "company_osint"],
+        )
+        self.assertGreater(application_id, 0)
+        self.assertEqual(company_osint.draft_policy.draft_type, "research_summary")
+
+    def test_search_profile_defaults_to_application_use_case(self) -> None:
+        profile = self.store.create_profile(Profile(name="Default Use Case Profile"))
+
+        search_profile = self.store.create_search_profile(
+            SearchProfile(profile_id=profile.id, name="Werkstudent IT Essen")
+        )
+
+        self.assertEqual(
+            search_profile.use_case_id,
+            self.store.get_use_case_id_by_slug("application_student"),
+        )
+        self.assertEqual(
+            self.store.get_search_profile(search_profile.id).use_case_id,
+            search_profile.use_case_id,
+        )
+
+    def test_pipeline_run_stores_use_case_snapshot(self) -> None:
+        profile = self.store.create_profile(Profile(name="OSINT Profile"))
+        osint_use_case_id = self.store.get_use_case_id_by_slug("company_osint")
+        search_profile = self.store.create_search_profile(
+            SearchProfile(
+                profile_id=profile.id,
+                name="Company OSINT",
+                use_case_id=osint_use_case_id,
+            )
+        )
+
+        run = self.store.create_pipeline_run(PipelineRun(search_profile_id=search_profile.id))
+
+        self.assertEqual(run.use_case_id, osint_use_case_id)
+        self.assertEqual(run.use_case_version, 1)
+        self.assertEqual(run.use_case_snapshot["id"], "company_osint")
+        self.assertEqual(
+            run.use_case_snapshot["draft_policy"]["draft_type"],
+            "research_summary",
+        )
+
+    def test_use_case_can_be_saved_as_local_instance(self) -> None:
+        payload = get_default_use_case("company_osint").to_dict()
+        payload["id"] = "custom_osint"
+        payload["name"] = "Custom OSINT"
+        payload["status"] = "active"
+        payload["created_from_template"] = "company_osint"
+
+        row_id = self.store.save_use_case(UseCaseConfig.from_dict(payload))
+        saved = self.store.get_use_case(row_id)
+
+        self.assertEqual(saved.id, "custom_osint")
+        self.assertEqual(saved.status, UseCaseStatus.ACTIVE)
+        self.assertEqual(saved.created_from_template, "company_osint")
+
+    def test_init_db_migrates_legacy_use_case_columns(self) -> None:
+        connection = sqlite3.connect(":memory:")
+        connection.row_factory = sqlite3.Row
+        try:
+            connection.executescript(
+                """
+                CREATE TABLE profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    preset TEXT NOT NULL,
+                    draft_language TEXT NOT NULL,
+                    attributes_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE search_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    profile_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    roles_json TEXT NOT NULL DEFAULT '[]',
+                    regions_json TEXT NOT NULL DEFAULT '[]',
+                    tech_keywords_json TEXT NOT NULL DEFAULT '[]',
+                    industry_keywords_json TEXT NOT NULL DEFAULT '[]',
+                    exclude_keywords_json TEXT NOT NULL DEFAULT '[]',
+                    manual_query TEXT,
+                    draft_language TEXT,
+                    created_at TEXT NOT NULL
+                );
+                CREATE TABLE pipeline_runs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    search_profile_id INTEGER NOT NULL,
+                    mode TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    phases_json TEXT NOT NULL DEFAULT '[]',
+                    request_budget INTEGER,
+                    results_per_query INTEGER,
+                    stats_json TEXT NOT NULL DEFAULT '{}',
+                    error_message TEXT,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    created_at TEXT NOT NULL
+                );
+                INSERT INTO profiles (
+                    name, preset, draft_language, attributes_json, created_at
+                )
+                VALUES ('Legacy', 'application', 'de', '{}', '2026-01-01T00:00:00+00:00');
+                INSERT INTO search_profiles (
+                    profile_id, name, roles_json, regions_json, tech_keywords_json,
+                    industry_keywords_json, exclude_keywords_json, created_at
+                )
+                VALUES (1, 'Legacy Search', '[]', '[]', '[]', '[]', '[]',
+                    '2026-01-01T00:00:00+00:00');
+                """
+            )
+
+            init_db(connection)
+
+            search_columns = _column_names(connection, "search_profiles")
+            run_columns = _column_names(connection, "pipeline_runs")
+            migrated_search_profile = connection.execute(
+                "SELECT use_case_id FROM search_profiles WHERE id = 1"
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertIn("use_case_id", search_columns)
+        self.assertIn("use_case_snapshot_json", run_columns)
+        self.assertIsNotNone(migrated_search_profile["use_case_id"])
 
     def test_status_log_allows_null_pipeline_run_for_api_actions(self) -> None:
         target = self.store.create_target(
@@ -165,6 +299,11 @@ class SQLiteStorageTests(unittest.TestCase):
         targets = self.store.list_review_targets()
 
         self.assertEqual([target.domain for target in targets], ["review.example"])
+
+
+def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {row["name"] for row in rows}
 
 
 if __name__ == "__main__":

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import sqlite3
+from datetime import UTC, datetime
+
+from target_radar.use_cases import DEFAULT_USE_CASES
 
 
 SCHEMA_SQL = """
@@ -17,9 +21,23 @@ CREATE TABLE IF NOT EXISTS profiles (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS use_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    created_from_template TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS search_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    use_case_id INTEGER REFERENCES use_cases(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     roles_json TEXT NOT NULL DEFAULT '[]',
     regions_json TEXT NOT NULL DEFAULT '[]',
@@ -34,6 +52,9 @@ CREATE TABLE IF NOT EXISTS search_profiles (
 CREATE TABLE IF NOT EXISTS pipeline_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     search_profile_id INTEGER NOT NULL REFERENCES search_profiles(id) ON DELETE CASCADE,
+    use_case_id INTEGER REFERENCES use_cases(id) ON DELETE SET NULL,
+    use_case_version INTEGER,
+    use_case_snapshot_json TEXT,
     mode TEXT NOT NULL,
     status TEXT NOT NULL,
     phases_json TEXT NOT NULL DEFAULT '[]',
@@ -192,4 +213,121 @@ def init_db(connection: sqlite3.Connection) -> None:
     """Create all MVP tables and indexes if they do not exist."""
 
     connection.executescript(SCHEMA_SQL)
+    _migrate_schema(connection)
+    _seed_default_use_cases(connection)
+    _backfill_default_use_case(connection)
     connection.commit()
+
+
+def _migrate_schema(connection: sqlite3.Connection) -> None:
+    _add_column_if_missing(
+        connection,
+        "search_profiles",
+        "use_case_id",
+        "INTEGER REFERENCES use_cases(id) ON DELETE SET NULL",
+    )
+    _add_column_if_missing(
+        connection,
+        "pipeline_runs",
+        "use_case_id",
+        "INTEGER REFERENCES use_cases(id) ON DELETE SET NULL",
+    )
+    _add_column_if_missing(connection, "pipeline_runs", "use_case_version", "INTEGER")
+    _add_column_if_missing(connection, "pipeline_runs", "use_case_snapshot_json", "TEXT")
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_search_profiles_use_case_id
+            ON search_profiles(use_case_id)
+        """
+    )
+    connection.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pipeline_runs_use_case_id
+            ON pipeline_runs(use_case_id)
+        """
+    )
+
+
+def _add_column_if_missing(
+    connection: sqlite3.Connection,
+    table_name: str,
+    column_name: str,
+    column_spec: str,
+) -> None:
+    if column_name in _column_names(connection, table_name):
+        return
+    connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_spec}")
+
+
+def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {row[1] for row in rows}
+
+
+def _seed_default_use_cases(connection: sqlite3.Connection) -> None:
+    now = datetime.now(UTC).isoformat()
+    for use_case in DEFAULT_USE_CASES:
+        config_json = _json_dumps(use_case.to_dict())
+        existing = connection.execute(
+            "SELECT id, status FROM use_cases WHERE slug = ?",
+            (use_case.id,),
+        ).fetchone()
+        if existing is None:
+            connection.execute(
+                """
+                INSERT INTO use_cases (
+                    slug, name, description, version, status, config_json,
+                    created_from_template, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    use_case.id,
+                    use_case.name,
+                    use_case.description,
+                    use_case.version,
+                    use_case.status.value,
+                    config_json,
+                    use_case.created_from_template,
+                    now,
+                    now,
+                ),
+            )
+            continue
+
+        if existing[1] == "template":
+            connection.execute(
+                """
+                UPDATE use_cases
+                SET name = ?, description = ?, version = ?, status = ?,
+                    config_json = ?, created_from_template = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (
+                    use_case.name,
+                    use_case.description,
+                    use_case.version,
+                    use_case.status.value,
+                    config_json,
+                    use_case.created_from_template,
+                    now,
+                    existing[0],
+                ),
+            )
+
+
+def _backfill_default_use_case(connection: sqlite3.Connection) -> None:
+    row = connection.execute(
+        "SELECT id FROM use_cases WHERE slug = ?",
+        ("application_student",),
+    ).fetchone()
+    if row is None:
+        return
+    connection.execute(
+        "UPDATE search_profiles SET use_case_id = ? WHERE use_case_id IS NULL",
+        (row[0],),
+    )
+
+
+def _json_dumps(value: object) -> str:
+    return json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))

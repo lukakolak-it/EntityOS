@@ -27,6 +27,11 @@ from target_radar.domain import (
     TargetStatus,
 )
 from target_radar.storage.schema import init_db
+from target_radar.use_cases import (
+    UseCaseConfig,
+    UseCaseStatus,
+    validate_use_case_config,
+)
 
 
 class StorageError(RuntimeError):
@@ -86,6 +91,97 @@ class SQLiteStore:
     def close(self) -> None:
         self.connection.close()
 
+    def save_use_case(self, use_case: UseCaseConfig) -> int:
+        validated = validate_use_case_config(use_case)
+        existing = self.connection.execute(
+            "SELECT id, created_at FROM use_cases WHERE slug = ?",
+            (validated.id,),
+        ).fetchone()
+        now = datetime.now(UTC)
+        if existing is None:
+            cursor = self.connection.execute(
+                """
+                INSERT INTO use_cases (
+                    slug, name, description, version, status, config_json,
+                    created_from_template, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                _use_case_values(validated, created_at=now, updated_at=now),
+            )
+            self.connection.commit()
+            return int(cursor.lastrowid)
+
+        self.connection.execute(
+            """
+            UPDATE use_cases
+            SET name = ?, description = ?, version = ?, status = ?,
+                config_json = ?, created_from_template = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                validated.name,
+                validated.description,
+                validated.version,
+                validated.status.value,
+                _json_dumps(validated.to_dict()),
+                validated.created_from_template,
+                _format_dt(now),
+                int(existing["id"]),
+            ),
+        )
+        self.connection.commit()
+        return int(existing["id"])
+
+    def get_use_case(self, use_case_id: int) -> UseCaseConfig:
+        row = self.connection.execute(
+            "SELECT * FROM use_cases WHERE id = ?",
+            (use_case_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"use case not found: {use_case_id}")
+        return _use_case_from_row(row)
+
+    def get_use_case_by_slug(self, slug: str) -> UseCaseConfig:
+        row = self.connection.execute(
+            "SELECT * FROM use_cases WHERE slug = ?",
+            (slug,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"use case not found: {slug}")
+        return _use_case_from_row(row)
+
+    def get_use_case_id_by_slug(self, slug: str) -> int:
+        row = self.connection.execute(
+            "SELECT id FROM use_cases WHERE slug = ?",
+            (slug,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"use case not found: {slug}")
+        return int(row["id"])
+
+    def list_use_cases(
+        self,
+        *,
+        status: UseCaseStatus | str | None = None,
+    ) -> list[UseCaseConfig]:
+        if status is None:
+            rows = self.connection.execute(
+                "SELECT * FROM use_cases ORDER BY slug ASC",
+            ).fetchall()
+            return [_use_case_from_row(row) for row in rows]
+
+        selected_status = UseCaseStatus(status).value
+        rows = self.connection.execute(
+            """
+            SELECT * FROM use_cases
+            WHERE status = ?
+            ORDER BY slug ASC
+            """,
+            (selected_status,),
+        ).fetchall()
+        return [_use_case_from_row(row) for row in rows]
+
     def create_profile(self, profile: Profile) -> Profile:
         cursor = self.connection.execute(
             """
@@ -122,17 +218,22 @@ class SQLiteStore:
         return _profile_from_row(row)
 
     def create_search_profile(self, search_profile: SearchProfile) -> SearchProfile:
+        use_case_id = search_profile.use_case_id or self.get_use_case_id_by_slug(
+            "application_student"
+        )
         cursor = self.connection.execute(
             """
             INSERT INTO search_profiles (
-                profile_id, name, roles_json, regions_json, tech_keywords_json,
-                industry_keywords_json, exclude_keywords_json, manual_query,
-                draft_language, created_at
+                profile_id, use_case_id, name, roles_json, regions_json,
+                tech_keywords_json, industry_keywords_json,
+                exclude_keywords_json, manual_query, draft_language,
+                created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 search_profile.profile_id,
+                use_case_id,
                 search_profile.name,
                 _json_dumps(list(search_profile.roles)),
                 _json_dumps(list(search_profile.regions)),
@@ -148,6 +249,7 @@ class SQLiteStore:
         return SearchProfile(
             id=cursor.lastrowid,
             profile_id=search_profile.profile_id,
+            use_case_id=use_case_id,
             name=search_profile.name,
             roles=search_profile.roles,
             regions=search_profile.regions,
@@ -169,17 +271,21 @@ class SQLiteStore:
         return _search_profile_from_row(row)
 
     def create_pipeline_run(self, run: PipelineRun) -> PipelineRun:
+        use_case_id, use_case_version, use_case_snapshot = self._pipeline_use_case_context(run)
         cursor = self.connection.execute(
             """
             INSERT INTO pipeline_runs (
-                search_profile_id, mode, status, phases_json, request_budget,
-                results_per_query, stats_json, error_message, started_at,
-                finished_at, created_at
+                search_profile_id, use_case_id, use_case_version, use_case_snapshot_json,
+                mode, status, phases_json, request_budget, results_per_query,
+                stats_json, error_message, started_at, finished_at, created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run.search_profile_id,
+                use_case_id,
+                use_case_version,
+                _json_dumps(use_case_snapshot) if use_case_snapshot else None,
                 run.mode,
                 run.status.value,
                 _json_dumps([phase.value for phase in run.phases]),
@@ -194,6 +300,34 @@ class SQLiteStore:
         )
         self.connection.commit()
         return self.get_pipeline_run(int(cursor.lastrowid))
+
+    def _pipeline_use_case_context(
+        self,
+        run: PipelineRun,
+    ) -> tuple[int | None, int | None, dict[str, Any]]:
+        use_case_id = run.use_case_id
+        if use_case_id is None:
+            row = self.connection.execute(
+                "SELECT use_case_id FROM search_profiles WHERE id = ?",
+                (run.search_profile_id,),
+            ).fetchone()
+            if row is not None:
+                use_case_id = row["use_case_id"]
+
+        use_case_snapshot = dict(run.use_case_snapshot)
+        use_case_version = run.use_case_version
+        if use_case_id is not None and (not use_case_snapshot or use_case_version is None):
+            use_case = self.get_use_case(int(use_case_id))
+            if not use_case_snapshot:
+                use_case_snapshot = use_case.to_dict()
+            if use_case_version is None:
+                use_case_version = use_case.version
+
+        return (
+            int(use_case_id) if use_case_id is not None else None,
+            use_case_version,
+            use_case_snapshot,
+        )
 
     def get_pipeline_run(self, run_id: int) -> PipelineRun:
         row = self.connection.execute(
@@ -818,6 +952,29 @@ def _json_loads(value: str | None, default: Any) -> Any:
     return json.loads(value)
 
 
+def _use_case_values(
+    use_case: UseCaseConfig,
+    *,
+    created_at: datetime,
+    updated_at: datetime,
+) -> tuple[object, ...]:
+    return (
+        use_case.id,
+        use_case.name,
+        use_case.description,
+        use_case.version,
+        use_case.status.value,
+        _json_dumps(use_case.to_dict()),
+        use_case.created_from_template,
+        _format_dt(created_at),
+        _format_dt(updated_at),
+    )
+
+
+def _use_case_from_row(row: sqlite3.Row) -> UseCaseConfig:
+    return UseCaseConfig.from_dict(_json_loads(row["config_json"], {}))
+
+
 def _format_dt(value: datetime) -> str:
     return value.astimezone(UTC).isoformat()
 
@@ -853,6 +1010,7 @@ def _search_profile_from_row(row: sqlite3.Row) -> SearchProfile:
     return SearchProfile(
         id=int(row["id"]),
         profile_id=int(row["profile_id"]),
+        use_case_id=row["use_case_id"],
         name=row["name"],
         roles=tuple(_json_loads(row["roles_json"], [])),
         regions=tuple(_json_loads(row["regions_json"], [])),
@@ -912,6 +1070,9 @@ def _pipeline_run_from_row(row: sqlite3.Row) -> PipelineRun:
     return PipelineRun(
         id=int(row["id"]),
         search_profile_id=int(row["search_profile_id"]),
+        use_case_id=row["use_case_id"],
+        use_case_version=row["use_case_version"],
+        use_case_snapshot=_json_loads(row["use_case_snapshot_json"], {}),
         mode=row["mode"],
         status=PipelineRunStatus(row["status"]),
         phases=_tuple_enum(_json_loads(row["phases_json"], [])),

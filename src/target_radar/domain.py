@@ -181,12 +181,15 @@ class SearchProfile:
     exclude_keywords: tuple[str, ...] = ()
     manual_query: str | None = None
     draft_language: str | None = None
+    use_case_id: int | None = None
     id: int | None = None
     created_at: datetime = field(default_factory=utc_now)
 
     def __post_init__(self) -> None:
         if self.profile_id <= 0:
             raise ValueError("profile_id must be positive")
+        if self.use_case_id is not None and self.use_case_id <= 0:
+            raise ValueError("use_case_id must be positive when set")
         self.name = ensure_non_empty(self.name, "name")
         self.roles = tuple(item.strip() for item in self.roles if item.strip())
         self.regions = tuple(item.strip() for item in self.regions if item.strip())
@@ -249,6 +252,9 @@ class PipelineRun:
     )
     request_budget: int | None = None
     results_per_query: int | None = None
+    use_case_id: int | None = None
+    use_case_version: int | None = None
+    use_case_snapshot: dict[str, Any] = field(default_factory=dict)
     stats: dict[str, Any] = field(default_factory=dict)
     error_message: str | None = None
     id: int | None = None
@@ -259,6 +265,10 @@ class PipelineRun:
     def __post_init__(self) -> None:
         if self.search_profile_id <= 0:
             raise ValueError("search_profile_id must be positive")
+        if self.use_case_id is not None and self.use_case_id <= 0:
+            raise ValueError("use_case_id must be positive when set")
+        if self.use_case_version is not None and self.use_case_version <= 0:
+            raise ValueError("use_case_version must be positive when set")
         self.mode = ensure_non_empty(self.mode, "mode")
         if self.request_budget is not None and self.request_budget < 0:
             raise ValueError("request_budget must not be negative")
