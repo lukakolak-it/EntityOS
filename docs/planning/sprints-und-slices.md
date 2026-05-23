@@ -1733,6 +1733,37 @@ Akzeptanzkriterien:
 - Tests decken Schema-Roundtrip, Missing-Evidence-Risiko und LLM-Kontext-Scoping
   ab.
 
+### Slice E7: Engine-Eval-Suite
+
+Status: umgesetzt.
+
+Ziel:
+
+Die Qualitaet von Source Quality, Rating und Draft Grounding soll nicht nur
+subjektiv bewertet werden. Eine kleine, feste Eval-Suite macht Regressionen
+sichtbar und bildet die Basis fuer gezielte Engine-Verbesserungen.
+
+Umfang:
+
+- deterministische Eval-Fixture unter `docs/evaluation/engine-eval-baseline.json`
+- 12 Source-Quality-Faelle fuer Company Sites, Directories, News, Official
+  Sites, Job Boards, Social und Listing-Grenzfaelle
+- 8 Rating-Faelle fuer `application_student` und `company_osint`
+- 4 Draft-Faelle fuer Research-Summary-Grounding, Application Draft und
+  Skip-Verhalten
+- CLI-Befehl `evaluate` mit JSON-Metriken
+- Regressionstest fuer die komplette Eval-Baseline
+- Heuristik-Fix: Listing-Token wie `search` matchen nicht mehr innerhalb von
+  Woertern wie `research`
+
+Akzeptanzkriterien:
+
+- `py -m target_radar.cli evaluate` laeuft ohne Secrets.
+- Eval-Ausgabe zeigt Gesamtstatus, Accuracy und Failures pro Bereich.
+- Baseline umfasst mindestens 20 Faelle.
+- Alle Baseline-Faelle sind gruen.
+- Tests decken Eval-Runner und CLI-Befehl ab.
+
 ## Sprint 15: DraftEngine Research Summary stabilisieren
 
 Ziel: Research-Summary-Drafts sollen mit echter Evidence erzeugbar sein, ohne an
@@ -1903,7 +1934,7 @@ Akzeptanzkriterien:
 - Ein Finding mit unbekannter Referenz erzeugt `ungrounded_claim`.
 - Jede im Draft-Kontext verwendete Evidence hat ein Finding im
   `Key Findings`-Abschnitt.
-- Auto-gekürzte Research Summaries behalten gueltige Claim-Referenzen.
+- Auto-gekuerzte Research Summaries behalten gueltige Claim-Referenzen.
 - Tests decken fehlende und unbekannte Finding-Referenzen ab.
 
 ## Empfohlene Reihenfolge
@@ -1914,5 +1945,6 @@ kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
 Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
 Danach ist die sinnvolle Reihenfolge:
 
-1. Kleine Eval-Sets fuer Rating-Ergebnisse und Draft-Ausgaben aufbauen.
+1. Eval-Suite mit echten Review-Entscheidungen aus weiteren lokalen Runs
+   erweitern.
 2. Review-UI fuer Research-Summary-Drafts und Grounding-Fehler verbessern.

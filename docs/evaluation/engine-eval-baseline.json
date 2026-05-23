@@ -1,0 +1,417 @@
+{
+  "name": "engine_eval_baseline_v1",
+  "source": "Local deterministic baseline for source quality, rating and draft grounding",
+  "source_quality": [
+    {
+      "id": "sq_wattmacher_company",
+      "use_case": "company_osint",
+      "url": "https://www.wattmacher.nrw/",
+      "title": "Photovoltaik in Essen - NRW | Wattmacher GmbH",
+      "snippet": "Wattmacher GmbH bietet individuelle Solarleistungen fuer Privatpersonen, Unternehmen und Wohnungswirtschaft.",
+      "provider_rank": 1,
+      "expected_source_type": "company_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "sq_solargenossenschaft_company",
+      "use_case": "company_osint",
+      "url": "https://www.solargenossenschaft-essen.de/",
+      "title": "Solargenossenschaft Essen eG",
+      "snippet": "Internetseite der Solargenossenschaft Essen eG mit Angaben zur Kontaktaufnahme.",
+      "provider_rank": 2,
+      "expected_source_type": "company_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "sq_regiomanager_directory",
+      "use_case": "company_osint",
+      "url": "https://www.regiomanager.de/ranking/digital/it-dienstleister/essen/",
+      "title": "Die groessten IT-Dienstleister in Essen - Regio Manager",
+      "snippet": "Ranking des IT-Dienstleistungsmarkts in Essen mit mehreren Unternehmen.",
+      "provider_rank": 2,
+      "expected_source_type": "directory",
+      "expected_action": "review_source"
+    },
+    {
+      "id": "sq_official_bund",
+      "use_case": "company_osint",
+      "url": "https://service.bund.de/karriere",
+      "title": "Service Bund Karriere",
+      "snippet": "Offizielle Informationen.",
+      "expected_source_type": "official_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "sq_official_ac",
+      "use_case": "company_osint",
+      "url": "https://www.ox.ac.uk/research",
+      "title": "University of Oxford Research",
+      "snippet": "Official university research information.",
+      "expected_source_type": "official_site",
+      "expected_action": "import"
+    },
+    {
+      "id": "sq_northdata_directory",
+      "use_case": "company_osint",
+      "url": "https://www.northdata.de/Alpha+GmbH,+Essen/HRB",
+      "title": "Alpha GmbH, Essen - North Data",
+      "snippet": "Firmendaten, Registerinformationen und wirtschaftliche Kennzahlen.",
+      "expected_source_type": "directory",
+      "expected_action": "review_source"
+    },
+    {
+      "id": "sq_tagesschau_news",
+      "use_case": "company_osint",
+      "url": "https://www.tagesschau.de/wirtschaft/unternehmen/alpha-100.html",
+      "title": "Alpha investiert in Essen",
+      "snippet": "Nachricht ueber ein Unternehmen in der Region.",
+      "expected_source_type": "news",
+      "expected_action": "review_source"
+    },
+    {
+      "id": "sq_github_repository",
+      "use_case": "company_osint",
+      "url": "https://github.com/alpha/solar-monitor",
+      "title": "alpha/solar-monitor",
+      "snippet": "Repository for monitoring solar installations.",
+      "expected_source_type": "repository",
+      "expected_action": "review_source"
+    },
+    {
+      "id": "sq_linkedin_social",
+      "use_case": "company_osint",
+      "url": "https://www.linkedin.com/company/alpha-gmbh/",
+      "title": "Alpha GmbH | LinkedIn",
+      "snippet": "Social profile for Alpha GmbH.",
+      "expected_source_type": "social",
+      "expected_action": "block"
+    },
+    {
+      "id": "sq_studentjob_board",
+      "use_case": "company_osint",
+      "url": "https://www.studentjob.de/stellenangebote/werkstudent-it-essen",
+      "title": "Werkstudent IT Jobs in Essen",
+      "snippet": "Jobsuche und Stellenangebote fuer Studierende.",
+      "expected_source_type": "job_board",
+      "expected_action": "block"
+    },
+    {
+      "id": "sq_glassdoor_board",
+      "use_case": "company_osint",
+      "url": "https://www.glassdoor.de/Job/essen-python-jobs.htm",
+      "title": "Python Jobs in Essen",
+      "snippet": "Job listings, salaries and reviews.",
+      "expected_source_type": "job_board",
+      "expected_action": "review_source"
+    },
+    {
+      "id": "sq_company_search_listing",
+      "use_case": "company_osint",
+      "url": "https://solar-alpha.example/search?q=solar",
+      "title": "Search results",
+      "snippet": "Results listing for solar services, jobs and contact pages.",
+      "expected_source_type": "company_site",
+      "expected_action": "review_source"
+    }
+  ],
+  "rating": [
+    {
+      "id": "rt_application_full_match",
+      "use_case": "application_student",
+      "url": "https://alpha.example/jobs",
+      "search_profile": {
+        "roles": ["Werkstudent IT"],
+        "regions": ["Essen"],
+        "tech_keywords": ["Python"]
+      },
+      "evidence": [
+        {
+          "source_url": "https://alpha.example/jobs",
+          "context_type": "career",
+          "metadata": {"evidence_type": "target_career"},
+          "text": "Werkstudent IT in Essen mit Python Projekten und Kontakt jobs@alpha.example."
+        }
+      ],
+      "expected_action": "draft",
+      "expected_status": "use_case_rated"
+    },
+    {
+      "id": "rt_application_role_only_skip",
+      "use_case": "application_student",
+      "url": "https://beta.example/jobs",
+      "search_profile": {
+        "roles": ["Werkstudent IT"],
+        "regions": ["Essen"],
+        "tech_keywords": ["Python"]
+      },
+      "evidence": [
+        {
+          "source_url": "https://beta.example/jobs",
+          "context_type": "career",
+          "metadata": {"evidence_type": "target_career"},
+          "text": "Werkstudent IT mit Office-Aufgaben in Dortmund."
+        }
+      ],
+      "expected_action": "skip",
+      "expected_status": "use_case_rated"
+    },
+    {
+      "id": "rt_application_exclude_keyword",
+      "use_case": "application_student",
+      "url": "https://zeitarbeit.example/jobs",
+      "search_profile": {
+        "roles": ["Werkstudent IT"],
+        "regions": ["Essen"],
+        "tech_keywords": ["Python"],
+        "exclude_keywords": ["Zeitarbeit"]
+      },
+      "evidence": [
+        {
+          "source_url": "https://zeitarbeit.example/jobs",
+          "context_type": "career",
+          "metadata": {"evidence_type": "target_career"},
+          "text": "Zeitarbeit fuer Werkstudent IT Python in Essen."
+        }
+      ],
+      "expected_action": "skip",
+      "expected_status": "rule_skipped",
+      "expected_risk_types": ["exclude_keyword"]
+    },
+    {
+      "id": "rt_application_wrong_evidence_type",
+      "use_case": "application_student",
+      "url": "https://gamma.example/kontakt",
+      "search_profile": {
+        "roles": ["Werkstudent IT"],
+        "regions": ["Essen"],
+        "tech_keywords": ["Python"]
+      },
+      "evidence": [
+        {
+          "source_url": "https://gamma.example/kontakt",
+          "context_type": "contact",
+          "metadata": {"evidence_type": "target_contact"},
+          "text": "Kontakt in Essen fuer Werkstudent IT und Python."
+        }
+      ],
+      "expected_action": "review",
+      "expected_status": "rating_partial",
+      "expected_risk_types": ["missing_required_evidence"]
+    },
+    {
+      "id": "rt_osint_full_match",
+      "use_case": "company_osint",
+      "url": "https://solar-alpha.example/",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 90}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Solar"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://solar-alpha.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "Solar Alpha GmbH bietet Solar Services in Essen mit Impressum und Kontakt."
+        }
+      ],
+      "ai_response": {
+        "ai_score": 90,
+        "confidence": 0.82,
+        "recommended_action": "draft",
+        "reasons": [
+          {
+            "text": "Target passt zum Thema Solar in Essen.",
+            "source_url": "https://solar-alpha.example/",
+            "evidence": "Solar Services in Essen"
+          }
+        ],
+        "risks": []
+      },
+      "expected_action": "draft",
+      "expected_status": "use_case_rated"
+    },
+    {
+      "id": "rt_osint_review_low_score",
+      "use_case": "company_osint",
+      "url": "https://solar-beta.example/",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 50}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Solar"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://solar-beta.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "Solar Beta nennt Solar Services, aber nur wenige konkrete Belege."
+        }
+      ],
+      "ai_response": {
+        "ai_score": 50,
+        "confidence": 0.7,
+        "recommended_action": "review",
+        "reasons": [
+          {
+            "text": "Schwacher aber vorhandener Solar-Bezug.",
+            "source_url": "https://solar-beta.example/",
+            "evidence": "Solar Services"
+          }
+        ],
+        "risks": []
+      },
+      "expected_action": "review",
+      "expected_status": "use_case_rated"
+    },
+    {
+      "id": "rt_osint_missing_required_evidence",
+      "use_case": "company_osint",
+      "url": "https://solar-gamma.example/jobs",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 80}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Solar"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://solar-gamma.example/jobs",
+          "context_type": "career",
+          "metadata": {"evidence_type": "target_career"},
+          "text": "Werkstudent gesucht fuer Solar-Projekte in Essen."
+        }
+      ],
+      "ai_response": {
+        "ai_score": 85,
+        "confidence": 0.8,
+        "recommended_action": "draft",
+        "reasons": [
+          {
+            "text": "Solar-Projekte werden genannt.",
+            "source_url": "https://solar-gamma.example/jobs",
+            "evidence": "Solar-Projekte in Essen"
+          }
+        ],
+        "risks": []
+      },
+      "expected_action": "review",
+      "expected_status": "rating_partial",
+      "expected_risk_types": ["missing_ai_evidence", "missing_required_evidence"]
+    },
+    {
+      "id": "rt_osint_ungrounded_ai",
+      "use_case": "company_osint",
+      "url": "https://solar-delta.example/",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 90}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Solar"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://solar-delta.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "Solar Delta bietet Solar Services in Essen mit Kontakt."
+        }
+      ],
+      "ai_response": {
+        "ai_score": 90,
+        "confidence": 0.85,
+        "recommended_action": "draft",
+        "reasons": [
+          {
+            "text": "Fremde Quelle wird behauptet.",
+            "source_url": "https://other.example/",
+            "evidence": "Solar Services in Essen"
+          }
+        ],
+        "risks": []
+      },
+      "expected_action": "review",
+      "expected_status": "rating_partial",
+      "expected_risk_types": ["missing_ai_evidence"]
+    }
+  ],
+  "draft": [
+    {
+      "id": "dr_osint_single_source_grounded",
+      "use_case": "company_osint",
+      "url": "https://solar-alpha.example/",
+      "rating_action": "draft",
+      "evidence": [
+        {
+          "source_url": "https://solar-alpha.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "Solar Alpha GmbH bietet Solar Services in Essen mit Impressum und Kontakt."
+        }
+      ],
+      "expected_status": "generated",
+      "expected_draft_type": "research_summary",
+      "expected_claim_ref_count": 1,
+      "required_body_contains": ["Key Findings", "- E1:", "https://solar-alpha.example/"]
+    },
+    {
+      "id": "dr_osint_multi_source_grounded",
+      "use_case": "company_osint",
+      "url": "https://solar-beta.example/",
+      "rating_action": "draft",
+      "evidence": [
+        {
+          "source_url": "https://solar-beta.example/kontakt",
+          "context_type": "contact",
+          "metadata": {"evidence_type": "target_contact"},
+          "text": "Kontaktseite bestaetigt Solar Beta in Essen."
+        },
+        {
+          "source_url": "https://directory.example/solar-beta",
+          "context_type": "context_source",
+          "metadata": {"evidence_type": "context_directory"},
+          "text": "Branchenverzeichnis bestaetigt Solar Beta als Solar-Dienstleister in Essen."
+        }
+      ],
+      "expected_status": "generated",
+      "expected_draft_type": "research_summary",
+      "expected_claim_ref_count": 2,
+      "required_body_contains": ["- E1:", "- E2:", "https://directory.example/solar-beta"]
+    },
+    {
+      "id": "dr_application_email",
+      "use_case": "application_student",
+      "url": "https://alpha.example/jobs",
+      "rating_action": "draft",
+      "evidence": [
+        {
+          "source_url": "https://alpha.example/jobs",
+          "context_type": "career",
+          "metadata": {"evidence_type": "target_career"},
+          "text": "Werkstudent IT in Essen mit Python Projekten und Kontakt jobs@alpha.example."
+        }
+      ],
+      "expected_status": "generated",
+      "expected_draft_type": "application_email",
+      "expected_claim_ref_count": 0,
+      "required_body_contains": ["Relevanter Kontext", "Werkstudent IT"]
+    },
+    {
+      "id": "dr_review_rating_skips_draft",
+      "use_case": "company_osint",
+      "url": "https://solar-review.example/",
+      "rating_action": "review",
+      "evidence": [
+        {
+          "source_url": "https://solar-review.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "Solar Review nennt Solar Services in Essen."
+        }
+      ],
+      "expected_status": "skipped"
+    }
+  ]
+}

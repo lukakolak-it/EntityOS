@@ -69,6 +69,15 @@ class CliTests(unittest.TestCase):
         self.assertEqual(diagnose_payload["database"]["url"], "[REDACTED]")
         self.assertTrue(privacy_payload["ok"])
 
+    def test_evaluate_command_runs_engine_baseline(self) -> None:
+        payload = _run_cli("evaluate")
+
+        self.assertEqual(payload["status"], "passed")
+        self.assertEqual(payload["total"], 24)
+        self.assertEqual(payload["sections"]["source_quality"]["failed"], 0)
+        self.assertEqual(payload["sections"]["rating"]["failed"], 0)
+        self.assertEqual(payload["sections"]["draft"]["failed"], 0)
+
 
 def _run_cli(*args: str) -> dict[str, object]:
     buffer = io.StringIO()

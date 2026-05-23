@@ -452,6 +452,26 @@ class LeadEngineTests(unittest.TestCase):
         self.assertEqual(result.recommended_action, SourceImportAction.REVIEW_SOURCE)
         self.assertIn("listing_or_search_page", [risk["type"] for risk in result.risks])
 
+    def test_source_quality_listing_token_does_not_match_inside_words(self) -> None:
+        classifier = SourceQualityClassifier.from_source_policy(
+            get_default_use_case("company_osint").source_policy
+        )
+
+        result = classifier.classify(
+            SearchResult(
+                url="https://www.ox.ac.uk/research",
+                title="University of Oxford Research",
+                snippet="Official university research information.",
+            )
+        )
+
+        self.assertEqual(result.source_type, SourceType.OFFICIAL_SITE)
+        self.assertNotIn(
+            "listing_or_search_page",
+            [risk["type"] for risk in result.risks],
+        )
+        self.assertEqual(result.recommended_action, SourceImportAction.IMPORT)
+
     def test_lead_engine_prioritizes_direct_domains_before_portals(self) -> None:
         search_profile = SearchProfile(
             profile_id=1,

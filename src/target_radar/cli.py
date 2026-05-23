@@ -15,6 +15,7 @@ from target_radar.engines.lead import (
     create_lead_engine,
 )
 from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine, create_rating_engine
+from target_radar.evaluation import DEFAULT_EVALUATION_FIXTURE, run_evaluation
 from target_radar.ops import collect_diagnostics, configure_logging, run_privacy_check
 from target_radar.pipeline import (
     FetchConfig as PipelineFetchConfig,
@@ -75,6 +76,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         _print_json(collect_diagnostics(database_url))
         return 0
 
+    if args.command == "evaluate":
+        _print_json(run_evaluation(args.fixture))
+        return 0
+
     if args.command == "privacy-check":
         result = run_privacy_check(args.root)
         _print_json(result)
@@ -111,6 +116,9 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--port", type=int)
 
     subparsers.add_parser("diagnose", help="Print local diagnostic snapshot")
+
+    evaluate = subparsers.add_parser("evaluate", help="Run deterministic engine evals")
+    evaluate.add_argument("--fixture", default=DEFAULT_EVALUATION_FIXTURE)
 
     privacy = subparsers.add_parser("privacy-check", help="Check local privacy guardrails")
     privacy.add_argument("--root", default=".")

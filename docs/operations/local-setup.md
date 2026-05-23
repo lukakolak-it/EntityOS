@@ -120,6 +120,17 @@ py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 
 
 Die Diagnose gibt Tabellenzaehler, aktuelle Runs und Review-Queue-Anzahl aus. Sensible Konfigurationswerte werden redigiert.
 
+## Engine-Evaluation
+
+```powershell
+$env:PYTHONPATH='src'
+py -m target_radar.cli evaluate
+```
+
+Die Evaluation prueft die deterministische Baseline aus
+`docs/evaluation/engine-eval-baseline.json`. Sie misst Source-Quality,
+Rating-Entscheidungen und Draft-Grounding ohne echte Provider-Secrets.
+
 ## Datenschutz-Check
 
 ```powershell

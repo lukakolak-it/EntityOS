@@ -350,7 +350,7 @@ def _looks_like_listing_page(
     text_haystack: str,
     listing_path_tokens: tuple[str, ...],
 ) -> bool:
-    if any(token in path for token in listing_path_tokens):
+    if _path_tokens(path) & set(listing_path_tokens):
         return True
     if _LISTING_QUERY_KEYS & {key.lower() for key in query_params}:
         return True
@@ -405,6 +405,10 @@ def _domain_tokens(domain: str) -> set[str]:
 
 
 def _text_tokens(value: str) -> set[str]:
+    return {token for token in re.split(r"[^a-z0-9]+", value.lower()) if token}
+
+
+def _path_tokens(value: str) -> set[str]:
     return {token for token in re.split(r"[^a-z0-9]+", value.lower()) if token}
 
 

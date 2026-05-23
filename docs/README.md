@@ -21,3 +21,7 @@
 ## Betrieb
 
 - `operations/local-setup.md`: lokale Installation, erster Lauf, Diagnose und Datenschutz-Check
+
+## Evaluation
+
+- `evaluation/README.md`: deterministische Engine-Eval-Suite fuer Source Quality, Rating und Draft Grounding
