@@ -1996,6 +1996,37 @@ Akzeptanzkriterien:
 - Auto-gekuerzte Research Summaries behalten gueltige Claim-Referenzen.
 - Tests decken fehlende und unbekannte Finding-Referenzen ab.
 
+### Slice D7: Research-Summary Review-UI
+
+Status: umgesetzt.
+
+Ziel:
+
+Reviewer sollen Research-Summary-Drafts direkt in der Target-Detailseite gegen
+die verwendete Evidence pruefen koennen, ohne `used_context_json` oder Status-
+Log-Metadaten manuell durchsuchen zu muessen.
+
+Umfang:
+
+- Claim-Referenzen im Draft-`used_context` enthalten `evidence_id`,
+  `context_type` und `priority`
+- Target-Detailseite zeigt fuer Research Summaries ein Grounding-Panel je Draft
+- jede Claim-Referenz zeigt Evidence-Type, Source-URL und Grounding-Status
+- Evidence-Referenzen verlinken auf die passende Evidence-Karte
+- Body-Preview hebt `E1:`, `E2:` usw. visuell hervor
+- fehlende Finding-Referenzen oder fehlende Source-URLs werden im Panel
+  markiert
+
+Akzeptanzkriterien:
+
+- Ein gueltiger Research-Summary-Draft zeigt alle verwendeten Claim-Refs als
+  `grounded`.
+- Eine geloeschte Finding-Referenz oder Source-URL ist in der UI als
+  pruefbeduerftig sichtbar.
+- Evidence-Karten sind per `#evidence-{id}` direkt aus dem Grounding-Panel
+  anspringbar.
+- Tests decken die erweiterten Claim-Ref-Metadaten ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
@@ -2006,4 +2037,5 @@ Danach ist die sinnvolle Reihenfolge:
 
 1. Eval-Suite mit echten Review-Entscheidungen aus weiteren lokalen Runs
    erweitern.
-2. Review-UI fuer Research-Summary-Drafts und Grounding-Fehler verbessern.
+2. Weitere echte Review-Runs ausfuehren und die Eval-Grenzfaelle daraus
+   priorisieren.

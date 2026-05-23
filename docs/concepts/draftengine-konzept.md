@@ -170,6 +170,11 @@ wurde:
 Damit sind Drafts reproduzierbarer und lange Seiten koennen die Validierung
 nicht mehr durch unbounded Kontext sprengen.
 
+Fuer die Review-UI speichert `used_context.claim_refs` dieselben stabilen
+Referenzen mit `evidence_id`, `source_url`, `evidence_type`, `context_type` und
+`priority`. Die UI kann dadurch `E1`, `E2` usw. direkt mit Evidence-Karten
+verknuepfen und fehlende Finding-Refs oder Quellen im Draft sichtbar machen.
+
 ## 8. Belegpflicht
 
 Die DraftEngine darf nur Aussagen nutzen, die durch Kontext belegbar sind.
@@ -198,6 +203,8 @@ Claim-Level-Grounding:
 - Unbekannte Referenzen wie `E9:` oder Findings ohne Referenz werden als
   `ungrounded_claim` blockiert.
 - Die verwendeten Claim-Referenzen werden im Draft-`used_context` gespeichert.
+- Die Target-Detailseite zeigt diese Claim-Referenzen im Grounding-Panel und
+  verlinkt sie auf die dazugehoerige Evidence.
 
 Erlaubt:
 

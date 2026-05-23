@@ -1651,8 +1651,10 @@ function renderDrafts(drafts) {
       </div>
       <label>Subject</label>
       <input value="${escapeAttribute(draft.subject)}" data-draft-subject="${draft.id}">
+      ${renderDraftGrounding(draft)}
       <label>Body</label>
       <textarea data-draft-body="${draft.id}">${escapeHtml(draft.body)}</textarea>
+      ${renderDraftBodyPreview(draft)}
       <div class="actions">
         <button type="button" data-save-draft="${draft.id}">Save</button>
       </div>
@@ -1681,6 +1683,8 @@ function renderEvidence(evidence) {
   for (const entry of evidence) {
     const item = document.createElement("article");
     item.className = "item";
+    const anchorId = evidenceAnchorId(entry.id);
+    if (anchorId) item.id = anchorId;
     const metadata = entry.metadata || {};
     const evidenceType = metadata.evidence_type || entry.context_type;
     item.innerHTML = `
@@ -1698,6 +1702,99 @@ function renderEvidence(evidence) {
     `;
     elements.evidenceList.appendChild(item);
   }
+}
+
+function renderDraftGrounding(draft) {
+  const claims = draftClaimRefs(draft);
+  if (!claims.length) return "";
+  const body = draft.body || "";
+  const rows = claims.map((claim) => {
+    const ref = claim.ref || "-";
+    const sourceUrl = claim.source_url || "";
+    const evidenceType = claim.evidence_type || claim.context_type || "evidence";
+    const hasFindingRef = hasFindingClaimRef(body, ref);
+    const hasSource = !sourceUrl || body.includes(sourceUrl);
+    const ok = hasFindingRef && hasSource;
+    const anchorId = evidenceAnchorId(claim.evidence_id);
+    const refHtml = anchorId
+      ? `<a class="evidence-ref-link" href="#${escapeAttribute(anchorId)}">${escapeHtml(ref)}</a>`
+      : `<span class="evidence-ref-link">${escapeHtml(ref)}</span>`;
+    const state = ok
+      ? "ok"
+      : [hasFindingRef ? "" : "Finding-Ref fehlt", hasSource ? "" : "Quelle fehlt"].filter(Boolean).join(", ");
+    return `
+      <li class="grounding-row ${ok ? "ok" : "needs-check"}">
+        <div class="grounding-ref">${refHtml}</div>
+        <div class="grounding-source">
+          <span>${escapeHtml(evidenceType)}</span>
+          ${sourceUrl ? `<a href="${escapeAttribute(sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(sourceUrl)}</a>` : ""}
+        </div>
+        <span class="grounding-state">${escapeHtml(ok ? "grounded" : state)}</span>
+      </li>
+    `;
+  }).join("");
+  return `
+    <div class="grounding-panel">
+      <div class="grounding-title">Grounding</div>
+      <ul>${rows}</ul>
+    </div>
+  `;
+}
+
+function renderDraftBodyPreview(draft) {
+  if (draft.draft_type !== "research_summary" || !draftClaimRefs(draft).length) return "";
+  return `
+    <div class="draft-body-preview">
+      <div class="grounding-title">Preview</div>
+      <pre>${highlightEvidenceRefs(draft.body || "")}</pre>
+    </div>
+  `;
+}
+
+function draftClaimRefs(draft) {
+  const context = draft.used_context || {};
+  const evidenceByRef = new Map((context.evidence || []).map((item) => [item.ref, item]));
+  const rawClaims = (context.claim_refs?.length ? context.claim_refs : context.evidence) || [];
+  return rawClaims
+    .filter((item) => item && item.ref)
+    .map((item) => ({ ...(evidenceByRef.get(item.ref) || {}), ...item }));
+}
+
+function hasFindingClaimRef(body, ref) {
+  if (!ref) return false;
+  return new RegExp(`(^|\\n)\\s*-\\s*${escapeRegExp(ref)}:`, "m").test(
+    draftSection(body, "Key Findings", ["Evidence", "Risks Or Uncertainties", "Next Steps"]),
+  );
+}
+
+function highlightEvidenceRefs(body) {
+  return escapeHtml(body).replace(/\b(E\d+):/g, '<span class="evidence-ref">$1:</span>');
+}
+
+function draftSection(body, heading, nextHeadings) {
+  const next = new Set(nextHeadings.map((item) => item.toLowerCase()));
+  const lines = String(body || "").split(/\r?\n/);
+  const collected = [];
+  let inSection = false;
+  for (const line of lines) {
+    const clean = line.trim().toLowerCase();
+    if (!inSection && clean === heading.toLowerCase()) {
+      inSection = true;
+      continue;
+    }
+    if (inSection && next.has(clean)) {
+      break;
+    }
+    if (inSection) {
+      collected.push(line);
+    }
+  }
+  return collected.join("\n");
+}
+
+function evidenceAnchorId(evidenceId) {
+  const parsed = Number(evidenceId);
+  return Number.isInteger(parsed) && parsed > 0 ? `evidence-${parsed}` : "";
 }
 
 function renderPages(pages) {
@@ -1918,6 +2015,10 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value);
+}
+
+function escapeRegExp(value) {
+  return String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function className(value) {

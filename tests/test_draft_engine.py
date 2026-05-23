@@ -213,6 +213,8 @@ class DraftEngineTests(unittest.TestCase):
         self.assertIn("E1:", draft.body)
         self.assertIn("Risks Or Uncertainties", draft.body)
         self.assertEqual(draft.used_context["draft_policy"]["draft_type"], "research_summary")
+        self.assertEqual(draft.used_context["claim_refs"][0]["evidence_id"], 1)
+        self.assertEqual(draft.used_context["claim_refs"][0]["context_type"], "career")
 
     def test_research_summary_context_is_budgeted_and_does_not_exceed_policy(self) -> None:
         rating = self.store.save_rating(RatingResult(
@@ -360,6 +362,7 @@ class DraftEngineTests(unittest.TestCase):
         self.assertIn("https://example.com/jobs", draft.body)
         self.assertEqual(draft.used_context["evidence"][0]["ref"], "E1")
         self.assertEqual(draft.used_context["claim_refs"][0]["ref"], "E1")
+        self.assertEqual(draft.used_context["claim_refs"][0]["evidence_id"], 1)
 
     def test_draft_engine_rejects_ungrounded_research_summary_finding(self) -> None:
         rating = self.store.save_rating(RatingResult(

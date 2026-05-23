@@ -566,6 +566,99 @@ label {
   line-height: 1.4;
 }
 
+.item:target {
+  border-color: rgba(36, 89, 166, 0.6);
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.grounding-panel,
+.draft-body-preview {
+  margin: 10px 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.grounding-title {
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.grounding-panel ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.grounding-row {
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.grounding-ref {
+  font-weight: 750;
+}
+
+.evidence-ref-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 8px;
+  background: #ffffff;
+}
+
+.grounding-source {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.grounding-source a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grounding-state {
+  color: var(--green);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.grounding-row.needs-check .grounding-state {
+  color: var(--amber);
+}
+
+.draft-body-preview pre {
+  max-height: 240px;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--text);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.evidence-ref {
+  border-radius: 4px;
+  background: var(--blue-soft);
+  color: var(--blue-dark);
+  font-weight: 750;
+  padding: 0 3px;
+}
+
 .fact-list {
   margin-top: 9px;
   color: var(--muted);
@@ -781,7 +874,8 @@ label {
   .form-grid,
   .settings-grid,
   .field-row,
-  .criterion-row {
+  .criterion-row,
+  .grounding-row {
     grid-template-columns: 1fr;
   }
 

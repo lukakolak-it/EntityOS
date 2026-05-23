@@ -167,9 +167,12 @@ def _claim_refs(draft_type: str, context) -> list[dict[str, object]]:
         return []
     return [
         {
+            "evidence_id": item.evidence_id,
             "ref": item.ref,
             "source_url": item.source_url,
             "evidence_type": item.evidence_type,
+            "context_type": item.context_type,
+            "priority": item.priority,
         }
         for item in context.evidence_items
     ]
