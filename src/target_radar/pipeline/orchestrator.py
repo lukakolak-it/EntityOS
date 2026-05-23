@@ -23,6 +23,7 @@ from target_radar.domain import (
     TargetPage,
     TargetStatus,
 )
+from target_radar.engines.evidence import EvidenceEngine
 from target_radar.pipeline.extractor import ExtractedPage
 from target_radar.pipeline.fetcher import FetchedPage
 from target_radar.pipeline.importer import TargetImportResult, TargetImporter
@@ -138,6 +139,7 @@ class PipelineOrchestrator:
         draft_engine: DraftEngine | None = None,
         profile: Profile | None = None,
         max_pages_per_target: int = 1,
+        evidence_engine: EvidenceEngine | None = None,
     ) -> None:
         self.store = store
         self.lead_engine = lead_engine
@@ -148,6 +150,7 @@ class PipelineOrchestrator:
         self.draft_engine = draft_engine
         self.profile = profile
         self.max_pages_per_target = max(1, max_pages_per_target)
+        self.evidence_engine = evidence_engine or EvidenceEngine()
 
     def run(self, request: PipelineRunRequest) -> PipelineRunResult:
         if request.search_profile.id is None:
@@ -457,18 +460,13 @@ class PipelineOrchestrator:
             counts.fetched_count += 1
 
             evidence_text = _evidence_text(extracted, page.text)
-            if evidence_text:
-                evidence = self.store.add_evidence(
-                    Evidence(
-                        target_id=target.id,
-                        page_id=page.id,
-                        source_url=page.url,
-                        text=evidence_text,
-                        context_type=page.page_type,
-                        priority=_evidence_priority(page.page_type),
-                        metadata=_evidence_metadata(extracted),
-                    )
-                )
+            evidence_candidate = self.evidence_engine.from_target_page(
+                page,
+                text=evidence_text,
+                metadata=_evidence_metadata(extracted),
+            )
+            if evidence_candidate is not None:
+                evidence = self.store.add_evidence(evidence_candidate)
                 counts.evidence_count += 1 if evidence.id is not None else 0
 
             if extracted is not None:
@@ -959,16 +957,6 @@ def _clip(value: str, max_chars: int) -> str:
     if len(cleaned) <= max_chars:
         return cleaned
     return cleaned[: max_chars - 1].rstrip() + "."
-
-
-def _evidence_priority(page_type: str) -> int:
-    priorities = {
-        "career": 100,
-        "contact": 80,
-        "about": 60,
-        "homepage": 40,
-    }
-    return priorities.get(page_type, 10)
 
 
 def _rating_metadata(rating: RatingResult) -> dict[str, object]:

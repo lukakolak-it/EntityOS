@@ -1665,6 +1665,42 @@ Akzeptanzkriterien:
 - Application-Queries behalten Bewerbungs-/Karriere-Intent.
 - Tests decken Template-Reihenfolge, Ausschluesse und Use-Case-Trennung ab.
 
+### Slice E5: Evidence Engine mit typisierten Belegen
+
+Status: umgesetzt.
+
+Ziel:
+
+Evidence wird nicht mehr nur als Seitentext gespeichert, sondern bekommt eine
+stabile Typisierung und Herkunft. Kontextquellen koennen einem Target
+nachvollziehbar als Evidence zugeordnet werden.
+
+Umfang:
+
+- `EvidenceEngine` fuer Target-Page- und Context-Source-Evidence einfuehren
+- Page-Evidence mit `evidence_type`, `provenance`, `page_id`, `page_type` und
+  `source_url` taggen
+- Context-Source-Evidence aus `review_source`-SERP-Ergebnissen erzeugen
+- Context-Source-Zuordnung ueber `serp_results.target_id` speichern
+- API `POST /api/targets/{id}/attach-context-source` bereitstellen
+- Evidence-UI um Evidence Type, Context Type, Source Type und Query-Bezug
+  erweitern
+- Rating-Payload um Evidence Type, Provenance, Source Type und
+  `context_source_id` erweitern
+
+Akzeptanzkriterien:
+
+- Target-Page-Evidence enthaelt z. B. `target_career` oder `target_contact`.
+- Context-Source-Evidence enthaelt z. B. `context_directory`,
+  `provenance = context_source` und die urspruengliche `context_source_id`.
+- Context Sources bleiben keine primaeren Targets, koennen aber manuell einem
+  Target als Evidence zugeordnet werden.
+- Zuordnung ist idempotent und erzeugt fuer dieselbe Context Source keine
+  doppelte Evidence.
+- Rating bekommt die typisierten Evidence-Metadaten im `evidence_json`.
+- Tests decken EvidenceEngine, Storage-Zuordnung, API und Pipeline-Integration
+  ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
@@ -1673,6 +1709,5 @@ kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
 Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
 Danach ist die sinnvolle Reihenfolge:
 
-1. E5 Evidence Engine mit typisierten Belegen und Context-Source-Zuordnung ausbauen.
-2. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
-3. DraftEngine erst danach weiter optimieren.
+1. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
+2. DraftEngine erst danach weiter optimieren.

@@ -13,6 +13,7 @@ Profil + Suchprofil
   -> LeadEngine
   -> Target Import
   -> Fetcher / Extractor
+  -> EvidenceEngine
   -> RatingEngine
   -> DraftEngine
   -> Review Queue
@@ -93,7 +94,47 @@ Output:
 - Textkontext
 - Kontakt- und Link-Signale
 
-## 5. RatingEngine
+## 5. EvidenceEngine
+
+Aufgabe: aus Seiten und Kontextquellen nachvollziehbare Belege erzeugen.
+
+Die EvidenceEngine:
+
+- erzeugt typisierte Evidence aus Target Pages,
+- taggt jede Evidence mit `evidence_type` und `provenance`,
+- haelt Page-Evidence und Context-Source-Evidence unterscheidbar,
+- kann `review_source`-SERP-Ergebnisse einem konkreten Target zuordnen,
+- uebernimmt Source-Quality-, Query- und Run-Bezug in die Evidence-Metadaten.
+
+Aktuelle Evidence Types:
+
+- `target_homepage`
+- `target_career`
+- `target_contact`
+- `target_about`
+- `target_page`
+- `context_directory`
+- `context_news`
+- `context_registry`
+- `context_repository`
+- `context_source`
+
+Context-Source-Zuordnung:
+
+- `serp_results.target_id` verknuepft eine Kontextquelle optional mit einem Target.
+- `POST /api/targets/{id}/attach-context-source` erzeugt aus einer Kontextquelle
+  eine Evidence fuer dieses Target.
+- Die Evidence speichert `context_source_id`, `source_query_id`,
+  `pipeline_run_id`, `query_text`, `source_type` und `source_quality_score`.
+- Manuelles Zuordnen aendert nicht automatisch die Target-Entscheidung.
+
+Output:
+
+- typisierte Evidence
+- Provenance-Metadaten
+- Context-Source-Verknuepfung
+
+## 6. RatingEngine
 
 Aufgabe: fachliche Passung bewerten.
 
@@ -117,7 +158,7 @@ Output:
 - Risks
 - Recommended Action
 
-## 6. DraftEngine
+## 7. DraftEngine
 
 Aufgabe: nur fuer passende Targets einen Action Draft erzeugen.
 
@@ -132,7 +173,7 @@ Output:
 
 - Action Draft
 
-## 7. Review Queue
+## 8. Review Queue
 
 Aufgabe: menschliche Entscheidung.
 
@@ -146,7 +187,7 @@ Der Nutzer kann:
 
 Die Review Queue ist der Sicherheitsanker der Anwendung. Kein Draft wird automatisch versendet.
 
-## 8. Lauf-Konzept
+## 9. Lauf-Konzept
 
 Ein Pipeline-Lauf ist eine nachvollziehbare Ausfuehrung fuer genau ein Suchprofil und einen konkreten Parametersatz.
 
@@ -170,7 +211,7 @@ Moegliche Laufmodi:
 - `refresh`: bestehende Targets und neue Treffer aktualisieren
 - `rerun`: gezielte Wiederverarbeitung nach Review-Aktion
 
-## 9. Laufstatus
+## 10. Laufstatus
 
 Ein Lauf ist nicht nur erfolgreich oder fehlgeschlagen.
 
@@ -186,7 +227,7 @@ Moegliche Statuszustaende:
 
 Ein Fehler bei einem einzelnen Target soll den gesamten Lauf nicht stoppen, solange weitere Targets sinnvoll verarbeitet werden koennen.
 
-## 10. Target-Status im Lauf
+## 11. Target-Status im Lauf
 
 Jedes Target kann innerhalb eines Laufs einen eigenen Fortschritt haben.
 
@@ -212,7 +253,7 @@ Beispiele:
 
 Diese Status duerfen nebeneinander mit den bestehenden Tabellen wachsen. Wichtig ist zuerst die fachliche Semantik.
 
-## 11. Fehlerverhalten
+## 12. Fehlerverhalten
 
 Die Pipeline muss Teilfehler isolieren.
 
@@ -288,7 +329,7 @@ Wenn kein valider Draft erzeugt werden kann:
 - Target wird `draft_failed`,
 - der Nutzer kann Draft-Erzeugung spaeter erneut starten.
 
-## 12. Batching, Pause und Resume
+## 13. Batching, Pause und Resume
 
 Request-Budgets machen einen Lauf zu einem Batch.
 
@@ -317,7 +358,7 @@ Spaeter:
 
 Wichtig: Resume darf nicht dieselben Provider-Requests blind wiederholen. Bereits ausgefuehrte Queries muessen gespeichert und dedupliziert werden.
 
-## 13. Rueckpfeile aus der Review Queue
+## 14. Rueckpfeile aus der Review Queue
 
 Die Review Queue ist nicht nur das Ende der Pipeline. Sie erzeugt Feedback fuer gezielte Neudurchlaeufe.
 

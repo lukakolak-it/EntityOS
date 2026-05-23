@@ -455,14 +455,21 @@ def _criterion_payload(payload: dict[str, object], criterion_key: str) -> dict[s
 
 
 def _evidence_payload(evidence: list[Evidence]) -> list[dict[str, object]]:
-    return [
-        {
-            "evidence_id": item.id,
-            "source_url": item.source_url,
-            "context_type": item.context_type,
-        }
-        for item in evidence
-    ]
+    payload: list[dict[str, object]] = []
+    for item in evidence:
+        metadata = item.metadata if isinstance(item.metadata, dict) else {}
+        payload.append(
+            {
+                "evidence_id": item.id,
+                "source_url": item.source_url,
+                "context_type": item.context_type,
+                "evidence_type": metadata.get("evidence_type"),
+                "provenance": metadata.get("provenance"),
+                "source_type": metadata.get("source_type"),
+                "context_source_id": metadata.get("context_source_id"),
+            }
+        )
+    return payload
 
 
 def _input_snapshot(

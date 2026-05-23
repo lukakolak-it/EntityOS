@@ -212,6 +212,21 @@ Erlaubte AI-Ausgabe:
 
 Jede positive AI-Begruendung braucht eine Quelle.
 
+Die RatingEngine erhaelt pro Evidence mindestens:
+
+- `evidence_id`
+- `source_url`
+- `context_type`
+- `evidence_type`
+- `provenance`
+- optional `source_type`
+- optional `context_source_id`
+
+Damit kann sie Page-Evidence (`provenance = target_page`) von manuell
+zugeordneter Context-Source-Evidence (`provenance = context_source`)
+unterscheiden. E6 koppelt die einzelnen Rating-Kriterien gezielt an diese
+Evidence Types.
+
 Regeln:
 
 - Keine unbelegten Behauptungen.

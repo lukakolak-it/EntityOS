@@ -1535,6 +1535,9 @@ function renderContextSources(data) {
   for (const source of sources) {
     const item = document.createElement("article");
     item.className = "item";
+    const attachAction = state.selectedTargetId
+      ? `<div class="actions"><button type="button" data-attach-context-source="${source.id}">${source.target_id === state.selectedTargetId ? "Attached" : "Attach"}</button></div>`
+      : "";
     item.innerHTML = `
       <div class="item-header">
         <span class="item-title">${escapeHtml(source.domain)}</span>
@@ -1549,9 +1552,22 @@ function renderContextSources(data) {
         <span class="metric-chip">action: ${escapeHtml(source.recommended_import_action || source.import_status || source.status)}</span>
         <span class="metric-chip">score: ${displayNumber(source.source_quality_score)}</span>
         <span class="metric-chip">query: ${escapeHtml(source.query_text || "-")}</span>
+        <span class="metric-chip">target: ${escapeHtml(source.target_id || "-")}</span>
       </div>
       ${renderFacts("Risks", source.source_risks || [])}
+      ${attachAction}
     `;
+    const attachButton = item.querySelector("[data-attach-context-source]");
+    if (attachButton) {
+      attachButton.addEventListener("click", async () => {
+        await api(`/api/targets/${state.selectedTargetId}/attach-context-source`, {
+          method: "POST",
+          body: { context_source_id: source.id },
+        });
+        await loadTarget(state.selectedTargetId);
+        await loadContextSources();
+      });
+    }
     elements.contextSourcesList.appendChild(item);
   }
 }
@@ -1653,15 +1669,20 @@ function renderEvidence(evidence) {
   for (const entry of evidence) {
     const item = document.createElement("article");
     item.className = "item";
+    const metadata = entry.metadata || {};
+    const evidenceType = metadata.evidence_type || entry.context_type;
     item.innerHTML = `
       <div class="item-header">
-        <span class="item-title">${escapeHtml(entry.context_type)}</span>
+        <span class="item-title">${escapeHtml(evidenceType)}</span>
+        ${pill(entry.context_type)}
         ${pill(`p${entry.priority}`)}
+        ${metadata.source_type ? pill(metadata.source_type) : ""}
         <a href="${escapeAttribute(entry.source_url)}" target="_blank" rel="noreferrer">open</a>
       </div>
-      ${entry.metadata?.title ? `<p>${escapeHtml(entry.metadata.title)}</p>` : ""}
+      ${metadata.title ? `<p>${escapeHtml(metadata.title)}</p>` : ""}
+      ${metadata.query_text ? `<p class="muted">${escapeHtml(metadata.query_text)}</p>` : ""}
       <p>${escapeHtml(entry.text)}</p>
-      ${entry.metadata?.emails?.length ? renderFacts("Emails", entry.metadata.emails.map((value) => ({ value }))) : ""}
+      ${metadata.emails?.length ? renderFacts("Emails", metadata.emails.map((value) => ({ value }))) : ""}
     `;
     elements.evidenceList.appendChild(item);
   }

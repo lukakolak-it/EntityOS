@@ -361,8 +361,17 @@ class SQLiteStorageTests(unittest.TestCase):
                 }
             },
         )
+        target = self.store.create_target(
+            Target(
+                domain="alpha.example",
+                base_url="https://alpha.example",
+                status=TargetStatus.NEEDS_REVIEW,
+            )
+        )
 
         sources = self.store.list_context_sources(pipeline_run_id=run.id)
+        assigned = self.store.assign_context_source_to_target(sources[0]["id"], target.id)
+        source = self.store.get_context_source(sources[0]["id"])
 
         self.assertEqual(len(sources), 1)
         self.assertEqual(sources[0]["domain"], "regiomanager.de")
@@ -372,6 +381,8 @@ class SQLiteStorageTests(unittest.TestCase):
             sources[0]["metadata"]["source_quality"]["source_type"],
             "directory",
         )
+        self.assertEqual(assigned["target_id"], target.id)
+        self.assertEqual(source["target_id"], target.id)
 
     def test_review_queue_returns_actionable_targets(self) -> None:
         self.store.create_target(

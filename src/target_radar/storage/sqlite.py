@@ -1123,6 +1123,64 @@ class SQLiteStore:
         ).fetchall()
         return [_context_source_from_row(row) for row in rows]
 
+    def get_context_source(self, context_source_id: int) -> dict[str, Any]:
+        row = self.connection.execute(
+            """
+            SELECT
+                serp_results.id,
+                serp_results.source_query_id,
+                serp_results.target_id,
+                serp_results.url,
+                serp_results.domain,
+                serp_results.title,
+                serp_results.snippet,
+                serp_results.status,
+                serp_results.import_status,
+                serp_results.metadata_json,
+                serp_results.created_at,
+                source_queries.pipeline_run_id,
+                source_queries.provider,
+                source_queries.query_text,
+                source_queries.query_template,
+                source_queries.template_set,
+                source_queries.query_score,
+                pipeline_runs.search_profile_id,
+                pipeline_runs.use_case_id,
+                use_cases.slug AS use_case_slug,
+                use_cases.name AS use_case_name
+            FROM serp_results
+            INNER JOIN source_queries
+                ON source_queries.id = serp_results.source_query_id
+            LEFT JOIN pipeline_runs
+                ON pipeline_runs.id = source_queries.pipeline_run_id
+            LEFT JOIN use_cases
+                ON use_cases.id = pipeline_runs.use_case_id
+            WHERE serp_results.id = ?
+            """,
+            (context_source_id,),
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"context source not found: {context_source_id}")
+        return _context_source_from_row(row)
+
+    def assign_context_source_to_target(
+        self,
+        context_source_id: int,
+        target_id: int,
+    ) -> dict[str, Any]:
+        self.get_target(target_id)
+        self.get_context_source(context_source_id)
+        self.connection.execute(
+            """
+            UPDATE serp_results
+            SET target_id = ?
+            WHERE id = ?
+            """,
+            (target_id, context_source_id),
+        )
+        self.connection.commit()
+        return self.get_context_source(context_source_id)
+
     def list_review_queue_items(
         self,
         *,

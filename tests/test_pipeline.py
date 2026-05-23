@@ -188,6 +188,9 @@ class PipelineSkeletonTests(unittest.TestCase):
         self.assertEqual(target.status, TargetStatus.NEEDS_REVIEW)
         self.assertEqual(pages[0].page_type, "career")
         self.assertIn("Werkstudent IT", evidence[0].text)
+        self.assertEqual(evidence[0].metadata["evidence_type"], "target_career")
+        self.assertEqual(evidence[0].metadata["provenance"], "target_page")
+        self.assertEqual(ratings[0].evidence[0]["evidence_type"], "target_career")
         self.assertEqual(ratings[0].recommended_action, RecommendedAction.DRAFT)
         self.assertEqual(drafts[0].score_id, ratings[0].id)
 

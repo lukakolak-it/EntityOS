@@ -260,6 +260,13 @@ Status-Abgrenzung:
 
 Damit unterscheiden sich Kontextquellen (`review_source`), Source-Filter (`blocked_source`), Nutzerentscheidungen (`blacklisted`) und LeadEngine-Dedupe (`duplicate_domain`) von Import-Payload-Dubletten (`duplicate_input` im Target Import).
 
+Kontextquellen bleiben in `serp_results` gespeichert und koennen spaeter einem
+Target zugeordnet werden. Die Zuordnung nutzt `serp_results.target_id`; daraus
+erzeugte Evidence behaelt `context_source_id`, Query-Herkunft,
+Pipeline-Run-Bezug und Source-Quality-Metadaten. Dadurch kann ein Directory-,
+News- oder Registry-Treffer als Beleg dienen, ohne selbst als Zielunternehmen
+importiert zu werden.
+
 ### Source Quality Heuristik
 
 Jeder SERP-Treffer bekommt vor dem Import transparente Qualitaets-Metadaten:

@@ -8,10 +8,66 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from target_radar.domain import (
+    ImportStatus,
+    LeadResultStatus,
+    PipelineRun,
+    Profile,
+    SearchProfile,
+    Target,
+    TargetStatus,
+)
+from target_radar.storage import SQLiteStore
 from target_radar.web.server import create_server
 
 
 class WebServerTests(unittest.TestCase):
+    def test_context_source_can_be_attached_as_target_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database_url = f"sqlite:///{Path(tmpdir) / 'target-radar.sqlite3'}"
+            target_id, context_source_id = _seed_context_source(database_url)
+            env_file = Path(tmpdir) / ".env"
+            env_file.write_text("SEARCH_PROVIDER=mock\n", encoding="utf-8")
+            server = create_server(
+                database_url=database_url,
+                host="127.0.0.1",
+                port=0,
+                env_file=env_file,
+            )
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_port}"
+            try:
+                attached_payload = _http_json(
+                    f"{base_url}/api/targets/{target_id}/attach-context-source",
+                    method="POST",
+                    payload={"context_source_id": context_source_id},
+                )
+                duplicate_payload = _http_json(
+                    f"{base_url}/api/targets/{target_id}/attach-context-source",
+                    method="POST",
+                    payload={"context_source_id": context_source_id},
+                )
+                detail_payload = _http_json(f"{base_url}/api/targets/{target_id}")
+                sources_payload = _http_json(f"{base_url}/api/context-sources")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+        self.assertEqual(attached_payload["evidence"]["context_type"], "context_source")
+        self.assertEqual(
+            attached_payload["evidence"]["metadata"]["evidence_type"],
+            "context_directory",
+        )
+        self.assertEqual(
+            attached_payload["evidence"]["metadata"]["context_source_id"],
+            context_source_id,
+        )
+        self.assertEqual(duplicate_payload["evidence"]["id"], attached_payload["evidence"]["id"])
+        self.assertEqual(len(detail_payload["evidence"]), 1)
+        self.assertEqual(sources_payload["context_sources"][0]["target_id"], target_id)
+
     def test_local_web_server_serves_ui_and_api(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             database_url = f"sqlite:///{Path(tmpdir) / 'target-radar.sqlite3'}"
@@ -253,6 +309,56 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(rerate_payload["reprocess"]["rated_count"], 1)
         self.assertEqual(draft_payload["reprocess"]["drafted_count"], 1)
         self.assertEqual(action_payload["status_log"]["to_status"], "approved")
+
+
+def _seed_context_source(database_url: str) -> tuple[int, int]:
+    store = SQLiteStore.open(database_url)
+    try:
+        profile = store.create_profile(Profile(name="Context API Profile"))
+        use_case_id = store.get_use_case_id_by_slug("company_osint")
+        search_profile = store.create_search_profile(
+            SearchProfile(
+                profile_id=profile.id,
+                name="Context API Search",
+                use_case_id=use_case_id,
+            )
+        )
+        run = store.create_pipeline_run(PipelineRun(search_profile_id=search_profile.id))
+        source_query_id = store.create_source_query(
+            provider="brave",
+            query_text="Solar Services Unternehmen Essen",
+            query_hash="hash-context-api",
+            pipeline_run_id=run.id,
+            query_template="{topic} Unternehmen {region}",
+            template_set="company_osint",
+            query_score=110,
+        )
+        context_source_id = store.create_serp_result(
+            source_query_id=source_query_id,
+            url="https://www.regiomanager.de/ranking/solar/essen/",
+            domain="regiomanager.de",
+            title="Solar Dienstleister in Essen",
+            snippet="Ranking mit mehreren lokalen Unternehmen.",
+            status=LeadResultStatus.REVIEW_SOURCE,
+            import_status=ImportStatus.REVIEW_SOURCE,
+            metadata={
+                "source_quality": {
+                    "source_type": "directory",
+                    "source_quality_score": 40,
+                    "recommended_import_action": "review_source",
+                }
+            },
+        )
+        target = store.create_target(
+            Target(
+                domain="solar-alpha.example",
+                base_url="https://solar-alpha.example",
+                status=TargetStatus.NEEDS_REVIEW,
+            )
+        )
+        return target.id, context_source_id
+    finally:
+        store.close()
 
 
 def _http_json(

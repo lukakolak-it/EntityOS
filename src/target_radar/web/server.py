@@ -26,6 +26,7 @@ from target_radar.domain import (
     domain_from_url,
     normalize_domain,
 )
+from target_radar.engines.evidence import EvidenceEngine
 from target_radar.engines.draft import DraftEngine
 from target_radar.engines.lead import FakeLeadEngine, LeadEngineConfig, create_lead_engine
 from target_radar.engines.lead.query import QueryBuilder
@@ -635,6 +636,31 @@ def _make_handler(
             target_id, action = _parse_target_path(path)
             if action is None:
                 self._send_error(HTTPStatus.BAD_REQUEST, "missing action")
+                return
+
+            if action == "attach-context-source":
+                payload = self._read_json(default={})
+                context_source_id = _required_positive_int(
+                    payload.get("context_source_id"),
+                    "context_source_id",
+                )
+                store = self._store()
+                try:
+                    evidence = _attach_context_source_evidence(
+                        store,
+                        target_id=target_id,
+                        context_source_id=context_source_id,
+                    )
+                    context_source = store.get_context_source(context_source_id)
+                    self._send_json(
+                        {
+                            "evidence": _evidence_payload(evidence),
+                            "context_source": _context_source_payload(context_source),
+                        },
+                        status=HTTPStatus.CREATED,
+                    )
+                finally:
+                    store.close()
                 return
 
             action_map = {
@@ -1401,6 +1427,15 @@ def _optional_positive_int(value: object) -> int | None:
     return parsed
 
 
+def _required_positive_int(value: object, field_name: str) -> int:
+    if value is None or value == "":
+        raise ValueError(f"{field_name} is required")
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError(f"{field_name} must be positive")
+    return parsed
+
+
 def _positive_int(value: object, *, default: int, maximum: int) -> int:
     if value is None or value == "":
         return default
@@ -1868,6 +1903,63 @@ def _parse_target_path(path: str) -> tuple[int, str | None]:
     target_id = int(parts[0])
     action = parts[1] if len(parts) > 1 else None
     return target_id, action
+
+
+def _attach_context_source_evidence(
+    store: SQLiteStore,
+    *,
+    target_id: int,
+    context_source_id: int,
+):
+    store.get_target(target_id)
+    context_source = store.get_context_source(context_source_id)
+    if not _is_attachable_context_source(context_source):
+        raise ValueError("context_source_id must reference a context source")
+
+    existing = _existing_context_source_evidence(
+        store,
+        target_id=target_id,
+        context_source_id=context_source_id,
+    )
+    if existing is not None:
+        store.assign_context_source_to_target(context_source_id, target_id)
+        return existing
+
+    evidence = EvidenceEngine().from_context_source(
+        target_id=target_id,
+        context_source=context_source,
+    )
+    if evidence is None:
+        raise ValueError("context source has no usable evidence text")
+    saved = store.add_evidence(evidence)
+    store.assign_context_source_to_target(context_source_id, target_id)
+    return saved
+
+
+def _existing_context_source_evidence(
+    store: SQLiteStore,
+    *,
+    target_id: int,
+    context_source_id: int,
+):
+    for evidence in store.list_evidence(target_id):
+        if evidence.metadata.get("context_source_id") == context_source_id:
+            return evidence
+    return None
+
+
+def _is_attachable_context_source(item: dict[str, Any]) -> bool:
+    if item.get("status") == "review_source":
+        return True
+    if item.get("import_status") == "review_source":
+        return True
+    metadata = item.get("metadata")
+    if not isinstance(metadata, dict):
+        return False
+    source_quality = metadata.get("source_quality")
+    if not isinstance(source_quality, dict):
+        return False
+    return source_quality.get("recommended_import_action") == "review_source"
 
 
 def _pipeline_run_payload(run) -> dict[str, Any]:
