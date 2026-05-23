@@ -467,6 +467,8 @@ function renderQueriesTab(useCase) {
     </div>
     <label>Templates</label>
     <textarea id="uc-query-templates" class="code-input">${escapeHtml(useCase.query_policy.templates.join("\n"))}</textarea>
+    <label>Exclude Terms</label>
+    <input id="uc-query-exclude-terms" value="${escapeAttribute((useCase.query_policy.exclude_terms || []).join(", "))}">
     <label>Variable Map</label>
     <textarea id="uc-variable-map" class="code-input">${escapeHtml(jsonText(useCase.query_policy.variable_map))}</textarea>
   `;
@@ -718,6 +720,7 @@ function buildUseCaseConfigFromEditor(useCase) {
     config.query_policy.request_budget_default = numberValue(get("uc-query-budget").value);
     config.query_policy.results_per_query_default = numberValue(get("uc-query-results").value);
     config.query_policy.templates = parseLines(get("uc-query-templates").value);
+    config.query_policy.exclude_terms = parseCsv(get("uc-query-exclude-terms").value);
     config.query_policy.variable_map = parseJsonObject("uc-variable-map", "Variable Map");
   }
   if (get("uc-source-preferred")) {
@@ -817,14 +820,23 @@ function numberValue(value) {
 }
 
 function queryPreview(config) {
+  const exclusions = queryExclusions(config.query_policy.exclude_terms || []);
   return config.query_policy.templates.slice(0, 6).map((template) => {
     let rendered = template;
     for (const variable of templateVariables(template)) {
       const fieldKey = config.query_policy.variable_map[variable] || variable;
       rendered = rendered.replaceAll(`{${variable}}`, sampleValue(fieldKey));
     }
-    return rendered;
+    return [rendered, exclusions].filter(Boolean).join(" ");
   });
+}
+
+function queryExclusions(values) {
+  return values
+    .map((value) => String(value || "").trim().replace(/^-+/, ""))
+    .filter(Boolean)
+    .map((value) => (/\s/.test(value) ? `-"${value}"` : `-${value}`))
+    .join(" ");
 }
 
 function sourcePolicyPreview(config) {

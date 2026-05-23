@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import hashlib
 import itertools
+import re
 from dataclasses import dataclass
 
 from target_radar.domain import SearchProfile
 from target_radar.use_cases import UseCaseConfig, template_variables
+
+
+_NEGATIVE_TOKEN_RE = re.compile(r'-(?:"[^"]+"|\S+)')
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +47,11 @@ class QueryBuilder:
             normalized = normalize_query(text)
             if not normalized:
                 continue
+            if template != "manual_query":
+                normalized = _append_exclusions(
+                    normalized,
+                    _exclude_terms(search_profile, use_case),
+                )
             query_hash = hash_query("generic", normalized)
             if query_hash in seen:
                 continue
@@ -191,6 +200,56 @@ def _coerce_values(value: object) -> tuple[str, ...]:
     return (str(value).strip(),) if str(value).strip() else ()
 
 
+def _exclude_terms(
+    search_profile: SearchProfile,
+    use_case: UseCaseConfig | None,
+) -> tuple[str, ...]:
+    terms = list(search_profile.exclude_keywords)
+    if use_case is not None:
+        terms.extend(use_case.query_policy.exclude_terms)
+    return tuple(_dedupe_preserve_order(terms))
+
+
+def _append_exclusions(query: str, exclude_terms: tuple[str, ...]) -> str:
+    existing = {token.casefold() for token in _negative_query_tokens(query)}
+    additions: list[str] = []
+    for term in exclude_terms:
+        token = _negative_query_token(term)
+        if not token or token.casefold() in existing:
+            continue
+        additions.append(token)
+        existing.add(token.casefold())
+    return normalize_query(" ".join((query, *additions)))
+
+
+def _negative_query_token(term: str) -> str:
+    clean = normalize_query(term).lstrip("-")
+    if not clean:
+        return ""
+    if any(char.isspace() for char in clean):
+        return f'-"{clean}"'
+    return f"-{clean}"
+
+
+def _negative_query_tokens(query: str) -> tuple[str, ...]:
+    return tuple(match.group(0) for match in _NEGATIVE_TOKEN_RE.finditer(query))
+
+
+def _dedupe_preserve_order(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for value in values:
+        clean = normalize_query(str(value)).lstrip("-")
+        if not clean:
+            continue
+        key = clean.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(clean)
+    return tuple(deduped)
+
+
 def _use_case_template_score(template: str, index: int) -> int:
     variables = template_variables(template)
     score = 100 - index * 5
@@ -198,6 +257,9 @@ def _use_case_template_score(template: str, index: int) -> int:
         score += 20
     if {"topic", "region"} <= variables:
         score += 10
+    lower = template.lower()
+    if any(token in lower for token in ("kontakt", "impressum", "services")):
+        score += 4
     if "karriere" in template.lower():
         score += 5
     return score

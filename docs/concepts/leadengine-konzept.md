@@ -359,6 +359,23 @@ Verhalten je Modus:
 
 Fehlgeschlagene Queries werden nicht sofort permanent blockiert. Sie bekommen `error_type` und koennen nach Backoff erneut versucht werden.
 
+### Query-Qualitaet pro Use Case
+
+Use Cases duerfen `query_policy.exclude_terms` definieren. Der QueryBuilder
+haengt diese Terme an generierte Template-Queries als negative Suchterme an,
+z. B. `-jobs` oder `-"ranking portal"`. Profil-spezifische
+`exclude_keywords` werden zusaetzlich angehaengt.
+
+Regeln:
+
+- Manuelle Queries bleiben unveraendert.
+- Dedupe und `query_hash` nutzen den finalen Query-Text inklusive negativer
+  Terme.
+- `company_osint` nutzt direkte Unternehmens-, Kontakt-, Impressum- und
+  Services-Templates statt breiter Anbieter-Queries.
+- `application_student` behaelt Bewerbungs-/Karriere-Templates und bekommt
+  keine OSINT-Default-Ausschluesse.
+
 ## 13. Scoring-Handoff
 
 Die LeadEngine bewertet keine finale Passung.

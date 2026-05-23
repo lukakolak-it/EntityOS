@@ -157,11 +157,18 @@ query_policy:
     industry: industries
     product: products
     region: regions
+  exclude_terms:
+    - jobs
+    - stellenangebote
   templates:
     - "{industry} Anbieter {region}"
     - "{product} Hersteller {region}"
     - "{product} Dienstleister {region}"
 ```
+
+`exclude_terms` werden vom QueryBuilder als negative Suchterme angehaengt, z. B.
+`-jobs` oder `-"ranking portal"`. Profil-spezifische `exclude_keywords` werden
+zusaetzlich angehaengt. Manuelle Queries bleiben unveraendert.
 
 ### `source_policy`
 
@@ -707,9 +714,19 @@ query_policy:
     topic: topics
     industry: industries
     region: regions
+  exclude_terms:
+    - jobs
+    - stellenangebote
+    - karriere
+    - praktikum
+    - werkstudent
   templates:
     - "{topic} Unternehmen {region}"
-    - "{industry} Anbieter {region}"
+    - "{topic} Kontakt {region}"
+    - "{topic} Impressum {region}"
+    - "{topic} Services {region}"
+    - "{industry} Unternehmen {region}"
+    - "{industry} Dienstleister {region}"
     - "{topic} Referenzen {region}"
 source_policy:
   preferred_source_types:

@@ -35,6 +35,14 @@ class UseCaseSchemaTests(unittest.TestCase):
         self.assertEqual(use_case.query_policy.variable_map["industry"], "industry_keywords")
         self.assertIn("{role} {tech} {region}", use_case.query_policy.templates)
 
+    def test_company_osint_query_policy_uses_direct_templates_and_exclusions(self) -> None:
+        use_case = get_default_use_case("company_osint")
+
+        self.assertIn("{topic} Impressum {region}", use_case.query_policy.templates)
+        self.assertIn("{industry} Unternehmen {region}", use_case.query_policy.templates)
+        self.assertNotIn("{industry} Anbieter {region}", use_case.query_policy.templates)
+        self.assertIn("stellenangebote", use_case.query_policy.exclude_terms)
+
     def test_template_variables_reject_unknown_mapping(self) -> None:
         payload = get_default_use_case("application_student").to_dict()
         payload["query_policy"]["templates"] = ["{unknown} {region} Karriere"]

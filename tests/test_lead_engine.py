@@ -59,11 +59,76 @@ class LeadEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(queries[0].template_set, "company_osint")
-        self.assertEqual(queries[0].text, "Zero Trust Unternehmen Essen")
-        self.assertIn(
-            "IT Dienstleister Anbieter Essen",
-            {query.text for query in queries},
+        self.assertEqual(
+            queries[0].text,
+            "Zero Trust Unternehmen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent",
         )
+        self.assertIn(
+            "IT Dienstleister Unternehmen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent",
+            {query.text for query in QueryBuilder().build(
+                search_profile,
+                use_case=get_default_use_case("company_osint"),
+                limit=6,
+            )},
+        )
+
+    def test_query_builder_applies_profile_and_use_case_exclusions(self) -> None:
+        search_profile = SearchProfile(
+            profile_id=1,
+            name="Company OSINT",
+            regions=("Essen",),
+            exclude_keywords=("Forum", "ranking portal", "jobs"),
+            attributes={"topics": ("Solar Services",)},
+        )
+
+        queries = QueryBuilder().build(
+            search_profile,
+            use_case=get_default_use_case("company_osint"),
+            limit=1,
+        )
+
+        self.assertEqual(
+            queries[0].text,
+            (
+                'Solar Services Unternehmen Essen -Forum -"ranking portal" '
+                "-jobs -stellenangebote -karriere -praktikum -werkstudent"
+            ),
+        )
+
+    def test_query_builder_keeps_manual_query_exact(self) -> None:
+        search_profile = SearchProfile(
+            profile_id=1,
+            name="Manual OSINT",
+            manual_query="Solar Services Essen",
+            exclude_keywords=("jobs",),
+            attributes={"topics": ("Solar Services",)},
+        )
+
+        queries = QueryBuilder().build(
+            search_profile,
+            use_case=get_default_use_case("company_osint"),
+            limit=1,
+        )
+
+        self.assertEqual(queries[0].text, "Solar Services Essen")
+        self.assertEqual(queries[0].query_template, "manual_query")
+
+    def test_application_queries_do_not_add_osint_exclusions(self) -> None:
+        search_profile = SearchProfile(
+            profile_id=1,
+            name="Werkstudent IT Essen",
+            roles=("Werkstudent IT",),
+            regions=("Essen",),
+            tech_keywords=("Python",),
+        )
+
+        queries = QueryBuilder().build(
+            search_profile,
+            use_case=get_default_use_case("application_student"),
+            limit=1,
+        )
+
+        self.assertNotIn("-stellenangebote", queries[0].text)
 
     def test_lead_engine_filters_dedupes_and_stores_serp_results(self) -> None:
         store = SQLiteStore.open(":memory:")
@@ -148,7 +213,7 @@ class LeadEngineTests(unittest.TestCase):
             )
             provider = FakeSearchProvider(
                 results_by_query={
-                    "Zero Trust Unternehmen Essen": [
+                    "Zero Trust Unternehmen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent": [
                         SearchResult(
                             url="https://linkedin.com/company/example",
                             title="Example LinkedIn",
@@ -169,7 +234,10 @@ class LeadEngineTests(unittest.TestCase):
         finally:
             store.close()
 
-        self.assertEqual(source_query["query_text"], "Zero Trust Unternehmen Essen")
+        self.assertEqual(
+            source_query["query_text"],
+            "Zero Trust Unternehmen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent",
+        )
         self.assertEqual(source_query["template_set"], "company_osint")
         self.assertEqual(candidates[0].status, LeadResultStatus.BLOCKED_SOURCE)
         self.assertEqual(

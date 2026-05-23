@@ -1636,6 +1636,35 @@ Noch offen fuer den naechsten Evidence-Ausbau:
 - Kontextquellen einem konkreten Target zuordnen.
 - Aus Kontextquellen typisierte Evidence ableiten.
 
+### Slice E4: Query Quality pro Use Case verbessern
+
+Status: umgesetzt.
+
+Ziel:
+
+Use-Case-Queries erzeugen weniger breite SERP-Treffer und vermeiden bekannte
+irrelevante Query-Richtungen.
+
+Umfang:
+
+- `query_policy.exclude_terms` einfuehren
+- Profil-`exclude_keywords` und Use-Case-`exclude_terms` als negative Suchterme
+  an generierte Queries anhaengen
+- manuelle Queries unveraendert lassen
+- `company_osint` von breiten Anbieter-Queries auf direkte Unternehmens-,
+  Kontakt-, Impressum- und Services-Queries umstellen
+- `application_student` ohne OSINT-Default-Ausschluesse lassen
+- Use-Case-Editor um Exclude Terms erweitern
+
+Akzeptanzkriterien:
+
+- OSINT-Queries enthalten negative Terme wie `-jobs` und `-stellenangebote`.
+- Profil-Ausschluesse wie `ranking portal` werden als `-"ranking portal"`
+  gerendert.
+- Manuelle Queries bleiben exakt.
+- Application-Queries behalten Bewerbungs-/Karriere-Intent.
+- Tests decken Template-Reihenfolge, Ausschluesse und Use-Case-Trennung ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
@@ -1644,7 +1673,6 @@ kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
 Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
 Danach ist die sinnvolle Reihenfolge:
 
-1. E4 Query Quality pro Use Case verbessern.
-2. E5 Evidence Engine mit typisierten Belegen und Context-Source-Zuordnung ausbauen.
-3. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
-4. DraftEngine erst danach weiter optimieren.
+1. E5 Evidence Engine mit typisierten Belegen und Context-Source-Zuordnung ausbauen.
+2. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
+3. DraftEngine erst danach weiter optimieren.

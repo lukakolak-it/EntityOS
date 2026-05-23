@@ -157,6 +157,7 @@ class QueryPolicy:
     request_budget_default: int = 25
     results_per_query_default: int = 5
     variable_map: dict[str, str] = field(default_factory=dict)
+    exclude_terms: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         templates = _clean_tuple(self.templates)
@@ -178,6 +179,7 @@ class QueryPolicy:
                 _ensure_identifier(target, f"query_policy.variable_map[{key!r}]")
             )
         object.__setattr__(self, "variable_map", clean_map)
+        object.__setattr__(self, "exclude_terms", _clean_tuple(self.exclude_terms))
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> QueryPolicy:
@@ -187,6 +189,7 @@ class QueryPolicy:
             request_budget_default=int(value.get("request_budget_default", 25)),
             results_per_query_default=int(value.get("results_per_query_default", 5)),
             variable_map=dict(value.get("variable_map", {})),
+            exclude_terms=_tuple_from(value.get("exclude_terms", ())),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -195,6 +198,7 @@ class QueryPolicy:
             "request_budget_default": self.request_budget_default,
             "results_per_query_default": self.results_per_query_default,
             "variable_map": dict(self.variable_map),
+            "exclude_terms": list(self.exclude_terms),
             "templates": list(self.templates),
         }
 
@@ -745,8 +749,19 @@ COMPANY_OSINT_USE_CASE = UseCaseConfig(
         },
         templates=(
             "{topic} Unternehmen {region}",
-            "{industry} Anbieter {region}",
+            "{topic} Kontakt {region}",
+            "{topic} Impressum {region}",
+            "{topic} Services {region}",
+            "{industry} Unternehmen {region}",
+            "{industry} Dienstleister {region}",
             "{topic} Referenzen {region}",
+        ),
+        exclude_terms=(
+            "jobs",
+            "stellenangebote",
+            "karriere",
+            "praktikum",
+            "werkstudent",
         ),
     ),
     source_policy=SourcePolicy(
