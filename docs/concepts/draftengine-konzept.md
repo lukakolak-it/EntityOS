@@ -142,17 +142,32 @@ Profile
 MVP-Budget:
 
 - maximal 4 Pages
-- maximal 2.000 Zeichen pro Page
-- maximal 8.000 Zeichen Page-Kontext gesamt
+- fuer Research Summaries maximal 4 Evidence-Snippets
+- fuer Research Summaries maximal ca. 1.800 Zeichen Evidence-Kontext
+- fuer Bewerbungsentwuerfe maximal 1 Evidence-Snippet
 - Rating-Gruende und Risiken immer bevorzugen
 
 Priorisierung:
 
 ```text
-Rating Evidence > Karriere/Jobs > Kontakt > About > Homepage > sonstige Pages
+Context Registry > Context News > Context Directory > Kontakt > About > Homepage > Karriere/Jobs > sonstige Pages
 ```
 
 Wenn die RatingEngine bereits Page-Ausschnitte im `input_snapshot_json` oder `evidence_json` gespeichert hat, soll die DraftEngine diese bevorzugen.
+
+Die Implementierung speichert im Draft-`used_context`, welche Evidence verwendet
+wurde:
+
+- `evidence_id`
+- `source_url`
+- `evidence_type`
+- `context_type`
+- `priority`
+- `evidence_total_chars`
+- `evidence_truncated`
+
+Damit sind Drafts reproduzierbarer und lange Seiten koennen die Validierung
+nicht mehr durch unbounded Kontext sprengen.
 
 ## 8. Belegpflicht
 

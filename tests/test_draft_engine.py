@@ -17,6 +17,7 @@ from target_radar.engines.draft import (
     DraftValidationError,
     DraftValidator,
 )
+from target_radar.engines.draft.context import DraftContextBuilder
 from target_radar.storage import SQLiteStore
 from target_radar.use_cases import get_default_use_case
 
@@ -138,6 +139,93 @@ class DraftEngineTests(unittest.TestCase):
         self.assertIn("Key Findings", draft.body)
         self.assertIn("Risks Or Uncertainties", draft.body)
         self.assertEqual(draft.used_context["draft_policy"]["draft_type"], "research_summary")
+
+    def test_research_summary_context_is_budgeted_and_does_not_exceed_policy(self) -> None:
+        rating = self.store.save_rating(RatingResult(
+            target_id=self.target.id,
+            recommended_action=RecommendedAction.DRAFT,
+            rule_score=83,
+            ai_score=72,
+            confidence=0.68,
+            rating_status="use_case_rated",
+            rating_version="rules-v1+usecase-v1",
+        ))
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/contact",
+                text="Kontakt und Solar Services Essen. " * 220,
+                context_type="contact",
+                priority=80,
+                metadata={"evidence_type": "target_contact"},
+            ),
+            Evidence(
+                id=2,
+                target_id=self.target.id,
+                source_url="https://directory.example/company",
+                text="Branchenverzeichnis bestaetigt Solar Services in Essen. " * 160,
+                context_type="context_source",
+                priority=60,
+                metadata={
+                    "evidence_type": "context_directory",
+                    "provenance": "context_source",
+                },
+            ),
+        ]
+
+        draft = DraftEngine().create_draft(
+            profile=self.profile,
+            target=self.target,
+            rating=rating,
+            evidence=evidence,
+            draft_policy=get_default_use_case("company_osint").draft_policy,
+        )
+
+        self.assertLessEqual(len(draft.body), 2500)
+        self.assertEqual(draft.draft_type, "research_summary")
+        self.assertTrue(draft.used_context["evidence_truncated"])
+        self.assertLessEqual(draft.used_context["evidence_total_chars"], 1250)
+        self.assertIn("context_directory", draft.body)
+        self.assertIn("https://directory.example/company", draft.body)
+
+    def test_draft_context_prioritizes_typed_context_sources(self) -> None:
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/page",
+                text="Allgemeiner Seitentext.",
+                context_type="page",
+                priority=10,
+                metadata={"evidence_type": "target_page"},
+            ),
+            Evidence(
+                id=2,
+                target_id=self.target.id,
+                source_url="https://directory.example/company",
+                text="Kontextquelle mit Branchenhinweis.",
+                context_type="context_source",
+                priority=60,
+                metadata={"evidence_type": "context_directory"},
+            ),
+        ]
+
+        context = DraftContextBuilder().build(
+            profile=self.profile,
+            target=self.target,
+            rating=RatingResult(
+                target_id=self.target.id,
+                recommended_action=RecommendedAction.DRAFT,
+            ),
+            evidence=evidence,
+        )
+
+        self.assertEqual(context.evidence_items[0].evidence_type, "context_directory")
+        self.assertEqual(
+            context.evidence_items[0].source_url,
+            "https://directory.example/company",
+        )
 
 
 if __name__ == "__main__":

@@ -34,13 +34,18 @@ class TemplateDraftGenerator:
 
 
 def _research_summary(context: DraftContext) -> tuple[str, str]:
-    snippets = context.evidence_snippets[:3]
     subject = f"Research Summary: {context.target_domain}"
+    items = context.evidence_items[:4]
     findings = "\n".join(
-        f"- {snippet}" for snippet in snippets
+        f"- [{item.evidence_type}] {item.text}" for item in items
     )
     if not findings:
         findings = "- Keine belastbaren Belege gefunden."
+    evidence_lines = "\n".join(
+        f"- {item.source_url}" for item in items
+    )
+    if not evidence_lines:
+        evidence_lines = "- Keine Quellen gespeichert."
     risks = "\n".join(
         f"- {risk.get('type', 'risk')}: {risk.get('value', '')}"
         for risk in context.risks[:5]
@@ -57,7 +62,7 @@ def _research_summary(context: DraftContext) -> tuple[str, str]:
                 "den gewaehlten Use Case bewertet."
             ),
             f"Key Findings\n{findings}",
-            f"Evidence\n{findings}",
+            f"Evidence\n{evidence_lines}",
             f"Risks Or Uncertainties\n{risks}",
             "Next Steps\n- Quellen manuell pruefen und Entscheidung in der Review Queue treffen.",
         ]

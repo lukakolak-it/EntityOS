@@ -61,6 +61,8 @@ class DraftEngine:
             rating=rating,
             evidence=evidence,
             language=selected_language,
+            max_context_chars=_context_budget(selected_draft_type, max_body_chars),
+            max_snippets=_snippet_limit(selected_draft_type),
         )
         subject, body = self.generator.generate(context, draft_type=selected_draft_type)
         validation = self.validator.validate(
@@ -86,6 +88,18 @@ class DraftEngine:
             used_context={
                 "rating_version": context.rating_version,
                 "evidence_count": len(context.evidence_snippets),
+                "evidence_total_chars": context.evidence_total_chars,
+                "evidence_truncated": context.evidence_truncated,
+                "evidence": [
+                    {
+                        "evidence_id": item.evidence_id,
+                        "source_url": item.source_url,
+                        "evidence_type": item.evidence_type,
+                        "context_type": item.context_type,
+                        "priority": item.priority,
+                    }
+                    for item in context.evidence_items
+                ],
                 "draft_policy": draft_policy.to_dict() if draft_policy is not None else None,
             },
             regenerated_from_draft_id=regenerated_from_draft_id,
@@ -96,3 +110,17 @@ def _draft_version(draft_type: str) -> str:
     if draft_type == "research_summary":
         return "research-summary-v1"
     return "application-email-v1"
+
+
+def _context_budget(draft_type: str, max_body_chars: int | None) -> int:
+    if draft_type == "research_summary":
+        if max_body_chars is None:
+            return 1800
+        return max(600, min(1800, max_body_chars // 2))
+    return 500
+
+
+def _snippet_limit(draft_type: str) -> int:
+    if draft_type == "research_summary":
+        return 4
+    return 1

@@ -1733,6 +1733,41 @@ Akzeptanzkriterien:
 - Tests decken Schema-Roundtrip, Missing-Evidence-Risiko und LLM-Kontext-Scoping
   ab.
 
+## Sprint 15: DraftEngine Research Summary stabilisieren
+
+Ziel: Research-Summary-Drafts sollen mit echter Evidence erzeugbar sein, ohne an
+zu langen Kontexten oder ungeerdeten Aussagen zu scheitern.
+
+### Slice D1: Draft Context begrenzen und priorisieren
+
+Status: umgesetzt.
+
+Ziel:
+
+Die DraftEngine bekommt fuer Research Summaries nur noch budgetierten,
+priorisierten Evidence-Kontext. Der echte Fehler `body exceeds max length` aus
+Run `#22` wird dadurch verhindert.
+
+Umfang:
+
+- `DraftEvidenceSnippet` mit Source-URL, Evidence Type, Context Type und
+  Priority einfuehren
+- Evidence fuer Drafts nach Typ und Prioritaet sortieren
+- Research-Summary-Kontext auf maximal 4 Snippets und ein Zeichenbudget
+  begrenzen
+- Bewerbungsdrafts weiter knapp mit einem Snippet halten
+- Research-Summary-Template nicht mehr dieselben langen Snippets doppelt in
+  `Key Findings` und `Evidence` schreiben lassen
+- verwendete Evidence im `used_context` speichern
+
+Akzeptanzkriterien:
+
+- Lange Evidence erzeugt keinen `body exceeds max length`-Fehler mehr.
+- Draft-Body bleibt unter `draft_policy.max_length_chars`.
+- Context-Source-Evidence wird vor generischer Page-Evidence priorisiert.
+- `used_context` zeigt Evidence IDs, URLs, Types und ob Kontext gekuerzt wurde.
+- Tests decken Budgetierung, Priorisierung und Research-Summary-Erzeugung ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
@@ -1741,5 +1776,6 @@ kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
 Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
 Danach ist die sinnvolle Reihenfolge:
 
-1. DraftEngine auf typisierte Evidence und Research-Summary-Qualitaet optimieren.
-2. Kleine Eval-Sets fuer Rating-Ergebnisse und Draft-Ausgaben aufbauen.
+1. D2 Research-Summary-Struktur und OSINT-Formulierungen verbessern.
+2. D3 Strict Evidence Grounding fuer Drafts und LLM-Reasons.
+3. Kleine Eval-Sets fuer Rating-Ergebnisse und Draft-Ausgaben aufbauen.
