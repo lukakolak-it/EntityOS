@@ -22,6 +22,24 @@ from target_radar.storage import SQLiteStore
 from target_radar.use_cases import get_default_use_case
 
 
+class OversizedResearchSummaryGenerator:
+    def generate(self, context, *, draft_type: str) -> tuple[str, str]:
+        source = context.evidence_items[0].source_url
+        return (
+            f"Research Summary: {context.target_domain}",
+            "\n\n".join(
+                [
+                    f"Title\nResearch Summary: {context.target_domain}",
+                    "Summary\n" + ("Sehr langer Research-Kontext. " * 220),
+                    "Key Findings\n- E1: " + ("Langes Finding. " * 220),
+                    f"Evidence\n- E1: {source}",
+                    "Risks Or Uncertainties\n- Keine expliziten Risiken.",
+                    "Next Steps\n- Quellen pruefen.",
+                ]
+            ),
+        )
+
+
 class DraftEngineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.store = SQLiteStore.open(":memory:")
@@ -105,13 +123,50 @@ class DraftEngineTests(unittest.TestCase):
             rating_status="ai_passed",
         )
 
-        with self.assertRaises(DraftValidationError):
+        with self.assertRaises(DraftValidationError) as ctx:
             DraftEngine().create_draft(
                 profile=self.profile,
                 target=self.target,
                 rating=rating,
                 evidence=[],
             )
+        self.assertIn("missing_evidence", ctx.exception.codes)
+
+    def test_validator_exposes_structured_issue_codes(self) -> None:
+        validator = DraftValidator()
+
+        result = validator.validate(
+            subject="",
+            body="x" * 20,
+            evidence_snippets=(),
+            max_body_chars=10,
+            required_source_urls=("https://missing.example",),
+            required_evidence_refs=("E1",),
+        )
+
+        codes = {issue.code for issue in result.issues}
+        self.assertFalse(result.valid)
+        self.assertIn("missing_subject", codes)
+        self.assertIn("too_long", codes)
+        self.assertIn("missing_evidence", codes)
+        self.assertIn("ungrounded_claim", codes)
+        self.assertEqual(tuple(issue.message for issue in result.issues), result.errors)
+
+    def test_validator_applies_draft_type_banned_phrases(self) -> None:
+        validator = DraftValidator()
+
+        result = validator.validate(
+            subject="Research Summary",
+            body="Summary\nGuten Tag,\n\nKey Findings\n- E1: Beleg",
+            evidence_snippets=("Beleg",),
+            draft_type="research_summary",
+        )
+
+        self.assertFalse(result.valid)
+        self.assertIn(
+            "draft_type_banned_phrase",
+            {issue.code for issue in result.issues},
+        )
 
     def test_draft_policy_creates_research_summary(self) -> None:
         rating = self.store.save_rating(RatingResult(
@@ -205,6 +260,33 @@ class DraftEngineTests(unittest.TestCase):
         self.assertFalse(result.valid)
         self.assertIn("missing evidence source: https://missing.example", result.errors)
         self.assertIn("missing evidence reference: E2", result.errors)
+        self.assertIn("ungrounded_claim", {issue.code for issue in result.issues})
+
+    def test_draft_engine_auto_fits_oversized_research_summary(self) -> None:
+        rating = self.store.save_rating(RatingResult(
+            target_id=self.target.id,
+            recommended_action=RecommendedAction.DRAFT,
+            rule_score=84,
+            ai_score=88,
+            confidence=0.81,
+            rating_status="use_case_rated",
+            rating_version="rules-v1+usecase-v1",
+        ))
+        policy = get_default_use_case("company_osint").draft_policy
+
+        draft = DraftEngine(generator=OversizedResearchSummaryGenerator()).create_draft(
+            profile=self.profile,
+            target=self.target,
+            rating=rating,
+            evidence=self.evidence,
+            draft_policy=policy,
+        )
+
+        self.assertLessEqual(len(draft.body), policy.max_length_chars)
+        self.assertIn("Key Findings", draft.body)
+        self.assertIn("E1:", draft.body)
+        self.assertIn("https://example.com/jobs", draft.body)
+        self.assertEqual(draft.used_context["evidence"][0]["ref"], "E1")
 
     def test_draft_context_prioritizes_typed_context_sources(self) -> None:
         evidence = [

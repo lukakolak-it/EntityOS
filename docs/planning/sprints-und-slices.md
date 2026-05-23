@@ -1819,6 +1819,35 @@ Akzeptanzkriterien:
 - Draft-Validierung meldet fehlende Evidence-Quellen oder Referenzen.
 - Tests decken Rating-Grounding und Draft-Grounding ab.
 
+### Slice D4: Draft Validation robuster machen
+
+Status: umgesetzt.
+
+Ziel:
+
+Draft-Fehler sollen fuer UI und Logs eindeutig auswertbar sein. Research
+Summaries sollen vor dem Speichern auf die konfigurierte Laenge gebracht werden,
+ohne Evidence-Referenzen oder Quellen zu verlieren.
+
+Umfang:
+
+- Validierungsfehler als strukturierte Issues mit Codes ausgeben
+- zentrale Fehlercodes fuer `missing_evidence`, `too_long` und
+  `ungrounded_claim` einfuehren
+- Draft-Type-spezifische Sperrphrasen fuer `research_summary` pruefen
+- Research-Summary-Bodies vor der Validierung kompakt nachrendern, wenn der
+  Generator die maximale Laenge ueberschreitet
+- Validierungs-Issues im `DraftValidationError` erhalten
+
+Akzeptanzkriterien:
+
+- Ueberlange Research Summaries werden automatisch gekuerzt, solange die
+  Quellenliste dadurch belegbar bleibt.
+- Fehlende Evidence, Ueberlaenge und fehlende Quellen/Refs sind maschinenlesbar
+  unterscheidbar.
+- Research Summaries mit Bewerbungs- oder Kontaktfloskeln werden blockiert.
+- Tests decken strukturierte Fehlercodes, Draft-Type-Verbote und Auto-Fit ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die

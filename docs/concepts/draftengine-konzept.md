@@ -257,6 +257,12 @@ Validierungsregeln:
 - keine harte Behauptung ohne Quellenkontext.
 - Subject nutzt die aktuelle Rolle oder den aktuellen Draft-Typ.
 
+Vor der Validierung darf die DraftEngine den Body defensiv kuerzen oder kompakt
+neu rendern, wenn der Generator die konfigurierte Maximallaenge ueberschreitet.
+Bei `research_summary` muss diese Kuerzung Evidence-Referenzen und
+Source-URLs erhalten. Wenn das wegen zu enger Laengenlimits nicht moeglich ist,
+bleibt der Draft invalid und meldet `too_long` oder `ungrounded_claim`.
+
 ### Deterministische Checks
 
 Deterministische Checks laufen immer.
@@ -276,6 +282,19 @@ Technik:
 - einfache Normalisierung mit Lowercase und Whitespace-Kollaps,
 - kleine Regex-Regeln fuer klar erkennbare Muster,
 - keine komplexe semantische Entscheidung per Regex.
+
+Validierungsfehler werden nicht nur als Text, sondern als strukturierte Issues
+gespeichert. Wichtige Codes:
+
+- `missing_subject`: Subject fehlt.
+- `missing_body`: Body fehlt.
+- `too_long`: Body ueberschreitet die konfigurierte Maximallaenge.
+- `missing_evidence`: fuer den Draft ist keine Evidence vorhanden.
+- `banned_phrase`: global verbotene Phrase gefunden.
+- `draft_type_banned_phrase`: Phrase ist fuer diesen Draft-Typ verboten.
+- `forbidden_claim`: Use-Case-Policy verbietet diese Aussage.
+- `missing_section`: Pflichtabschnitt fehlt.
+- `ungrounded_claim`: erforderliche Evidence-Referenz oder Source-URL fehlt.
 
 Beispiele fuer verbotene Muster:
 
