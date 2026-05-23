@@ -13,7 +13,11 @@ from target_radar.domain import (
     TargetCandidate,
     TargetStatus,
 )
-from target_radar.engines.draft import DraftEngine
+from target_radar.engines.draft import (
+    DraftEngine,
+    DraftValidationError,
+    DraftValidationIssue,
+)
 from target_radar.engines.lead import FakeLeadEngine
 from target_radar.engines.lead import FakeSearchProvider, LeadEngine, LeadEngineConfig, SearchResult
 from target_radar.engines.rating import AIRatingResponse, FakeAIRatingProvider, RatingEngine
@@ -26,6 +30,21 @@ from target_radar.pipeline import (
     TargetImporter,
 )
 from target_radar.storage import SQLiteStore
+
+
+class ValidationFailingDraftEngine:
+    def create_draft(self, **kwargs):
+        raise DraftValidationError(
+            ("body exceeds max length",),
+            (
+                DraftValidationIssue(
+                    code="too_long",
+                    message="body exceeds max length",
+                    field="body",
+                    value="9000",
+                ),
+            ),
+        )
 
 
 class PipelineSkeletonTests(unittest.TestCase):
@@ -270,6 +289,64 @@ class PipelineSkeletonTests(unittest.TestCase):
         self.assertIn("usecase-v1", ratings[0].rating_version)
         self.assertEqual(drafts[0].draft_type, "research_summary")
         self.assertEqual(drafts[0].draft_version, "research-summary-v1")
+
+    def test_pipeline_records_draft_validation_issues_in_status_log(self) -> None:
+        url = "https://invalid-draft.example/jobs"
+        lead_engine = FakeLeadEngine(
+            candidates=[TargetCandidate(url=url, source="fake")]
+        )
+        fetcher = FakeFetcher(
+            {
+                url: FetchedPage(
+                    url=url,
+                    status_code=200,
+                    body=(
+                        "<html><body>"
+                        "<p>Werkstudent IT Python Essen Kontakt "
+                        "jobs@invalid-draft.example</p>"
+                        "</body></html>"
+                    ),
+                )
+            }
+        )
+        orchestrator = PipelineOrchestrator(
+            self.store,
+            lead_engine,
+            fetcher=fetcher,
+            extractor=HtmlExtractor(),
+            rating_engine=RatingEngine(ai_provider=FakeAIRatingProvider()),
+            draft_engine=ValidationFailingDraftEngine(),
+            profile=self.profile,
+        )
+
+        result = orchestrator.run(
+            PipelineRunRequest(
+                search_profile=self.search_profile,
+                phases=(
+                    PipelinePhase.LEAD,
+                    PipelinePhase.IMPORT,
+                    PipelinePhase.FETCH,
+                    PipelinePhase.EXTRACT,
+                    PipelinePhase.RATING,
+                    PipelinePhase.DRAFT,
+                ),
+            )
+        )
+        target = self.store.get_target_by_domain("invalid-draft.example")
+        logs = self.store.list_status_logs(target.id)
+        last_log = logs[-1]
+
+        self.assertEqual(result.drafted_count, 0)
+        self.assertEqual(result.error_count, 1)
+        self.assertEqual(target.status, TargetStatus.DRAFT_FAILED)
+        self.assertEqual(last_log.reason, "draft validation failed")
+        self.assertEqual(last_log.error_message, "body exceeds max length")
+        self.assertEqual(last_log.metadata["draft_error_type"], "validation_failed")
+        self.assertEqual(last_log.metadata["draft_validation_codes"], ["too_long"])
+        self.assertEqual(
+            last_log.metadata["draft_validation_issues"][0]["field"],
+            "body",
+        )
 
     def test_pipeline_fetches_relevant_same_domain_pages(self) -> None:
         base_url = "https://multi.example/"

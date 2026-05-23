@@ -23,6 +23,7 @@ from target_radar.domain import (
     TargetPage,
     TargetStatus,
 )
+from target_radar.engines.draft import DraftValidationError
 from target_radar.engines.evidence import EvidenceEngine
 from target_radar.pipeline.extractor import ExtractedPage
 from target_radar.pipeline.fetcher import FetchedPage
@@ -701,9 +702,9 @@ class PipelineOrchestrator:
                 TargetStatus.DRAFT_FAILED,
                 PipelinePhase.DRAFT,
                 pipeline_run_id=pipeline_run_id,
-                reason="draft generation failed",
+                reason=_draft_failure_reason(exc),
                 error_message=str(exc),
-                metadata=_rating_metadata(rating),
+                metadata=_draft_failure_metadata(rating, exc, draft_policy),
             )
             counts.error_count += 1
             counts.review_target_count += 1
@@ -968,3 +969,61 @@ def _rating_metadata(rating: RatingResult) -> dict[str, object]:
         "ai_score": rating.ai_score,
         "confidence": rating.confidence,
     }
+
+
+def _draft_failure_reason(error: Exception) -> str:
+    if isinstance(error, DraftValidationError):
+        return "draft validation failed"
+    return "draft generation failed"
+
+
+def _draft_failure_metadata(
+    rating: RatingResult,
+    error: Exception,
+    draft_policy: DraftPolicy | None,
+) -> dict[str, object]:
+    metadata = {
+        **_rating_metadata(rating),
+        "draft_error_type": (
+            "validation_failed"
+            if isinstance(error, DraftValidationError)
+            else "generation_failed"
+        ),
+        "draft_error_class": error.__class__.__name__,
+        "draft_type": (
+            draft_policy.draft_type
+            if draft_policy is not None
+            else "application_email"
+        ),
+    }
+    if draft_policy is not None:
+        metadata["draft_policy"] = {
+            "draft_type": draft_policy.draft_type,
+            "language": draft_policy.language,
+            "max_length_chars": draft_policy.max_length_chars,
+            "required_sections": list(draft_policy.required_sections),
+            "forbidden_claims": list(draft_policy.forbidden_claims),
+        }
+    if isinstance(error, DraftValidationError):
+        metadata.update(
+            {
+                "draft_validation_codes": list(error.codes),
+                "draft_validation_errors": list(error.errors),
+                "draft_validation_issues": [
+                    _draft_validation_issue_payload(issue) for issue in error.issues
+                ],
+            }
+        )
+    return metadata
+
+
+def _draft_validation_issue_payload(issue) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "code": issue.code,
+        "message": issue.message,
+    }
+    if issue.field is not None:
+        payload["field"] = issue.field
+    if issue.value is not None:
+        payload["value"] = issue.value
+    return payload

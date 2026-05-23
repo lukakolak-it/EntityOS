@@ -327,7 +327,10 @@ Wenn AI Scoring fehlschlaegt:
 Wenn kein valider Draft erzeugt werden kann:
 
 - Score bleibt erhalten,
-- Draft-Fehler wird gespeichert,
+- Draft-Fehler wird im `target_status_log` gespeichert,
+- bei Validation-Fehlern enthaelt `metadata` die maschinenlesbaren
+  `draft_validation_codes`, `draft_validation_errors` und
+  `draft_validation_issues`,
 - Target wird `draft_failed`,
 - der Nutzer kann Draft-Erzeugung spaeter erneut starten.
 

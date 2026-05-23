@@ -1848,6 +1848,36 @@ Akzeptanzkriterien:
 - Research Summaries mit Bewerbungs- oder Kontaktfloskeln werden blockiert.
 - Tests decken strukturierte Fehlercodes, Draft-Type-Verbote und Auto-Fit ab.
 
+### Slice D5: Draft-Fehler sichtbar machen
+
+Status: umgesetzt.
+
+Ziel:
+
+Wenn die DraftEngine einen Draft ablehnt, sollen Review Queue, API und Logs
+erkennen koennen, warum. Die strukturierten Validation-Issues aus D4 duerfen
+nicht in einem reinen Fehlertext verloren gehen.
+
+Umfang:
+
+- Pipeline-Orchestrator unterscheidet Draft-Validation-Fehler von allgemeinen
+  Generation-Fehlern
+- `target_status_log.metadata` speichert Draft-Fehlertyp, Draft-Typ,
+  Validation-Codes, Validation-Errors und einzelne Issues
+- Status-Log in der lokalen UI zeigt Draft-Validation-Issues als eigenen Block
+- `draft_failed` bleibt der Zielstatus, `error_count` und Review-Handoff bleiben
+  erhalten
+
+Akzeptanzkriterien:
+
+- Ein `DraftValidationError` erzeugt einen Status-Log mit
+  `draft_error_type = validation_failed`.
+- Codes wie `too_long`, `missing_evidence` oder `ungrounded_claim` sind in der
+  API maschinenlesbar.
+- Die Target-Detailseite zeigt Draft-Validation-Details ohne manuelle
+  JSON-Suche.
+- Tests decken Status-Log-Metadaten fuer Draft-Validation-Fehler ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die

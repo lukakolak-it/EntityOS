@@ -338,7 +338,8 @@ MVP:
 Bei Validierungsfehler:
 
 - Draft nicht als `needs_review` speichern,
-- Fehler speichern,
+- Fehler im `target_status_log` speichern,
+- strukturierte Codes und Issues in `metadata` erhalten,
 - Target auf `draft_failed` oder `rating_partial` lassen,
 - Nutzer kann `Regenerate Draft` starten.
 
@@ -398,7 +399,10 @@ MVP-Entscheidung:
 
 - DraftEngine liefert ein Ergebnisobjekt.
 - Pipeline-Orchestrator oder API-Service schreibt Statuswechsel und Log.
-- DraftEngine speichert nur Draft-Daten und Validierungsdetails.
+- DraftEngine liefert Validierungsdetails mit.
+- Pipeline-Orchestrator speichert Draft-Fehler mit `draft_error_type`,
+  `draft_validation_codes`, `draft_validation_errors` und
+  `draft_validation_issues` im `target_status_log`.
 
 Regel:
 

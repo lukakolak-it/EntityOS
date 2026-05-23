@@ -1738,7 +1738,8 @@ function renderStatusLogs(logs) {
       <p>${escapeHtml(log.from_status || "none")} -> ${escapeHtml(log.to_status)}</p>
       <p>${escapeHtml(log.reason || "")}</p>
       ${log.error_message ? `<p class="muted">${escapeHtml(log.error_message)}</p>` : ""}
-      ${Object.keys(log.metadata || {}).length ? renderFacts("Metadata", objectFacts(log.metadata)) : ""}
+      ${renderDraftValidation(log.metadata)}
+      ${renderStatusLogMetadata(log.metadata)}
     `;
     elements.statusLogList.appendChild(item);
   }
@@ -1779,6 +1780,27 @@ function renderFacts(label, facts) {
   return `<div class="fact-list"><span>${escapeHtml(label)}</span><ul>${items}</ul></div>`;
 }
 
+function renderDraftValidation(metadata) {
+  const issues = metadata?.draft_validation_issues || [];
+  const codes = metadata?.draft_validation_codes || [];
+  if (!issues.length && !codes.length) return "";
+  const facts = issues.length
+    ? issues.map((issue) => ({
+      value: `${issue.code}: ${issue.message}`,
+    }))
+    : codes.map((code) => ({ value: code }));
+  return renderFacts("Draft Validation", facts);
+}
+
+function renderStatusLogMetadata(metadata) {
+  const facts = objectFacts(metadata, new Set([
+    "draft_validation_codes",
+    "draft_validation_errors",
+    "draft_validation_issues",
+  ]));
+  return facts.length ? renderFacts("Metadata", facts) : "";
+}
+
 function renderCriterionBreakdown(reasons) {
   const criteria = reasons.filter((reason) => reason.type === "criterion_score");
   if (!criteria.length) return "";
@@ -1817,8 +1839,8 @@ function renderMetricChips(stats) {
   return `<div class="metric-grid">${chips.concat(importCounts, sourceCounts).join("")}</div>`;
 }
 
-function objectFacts(value) {
-  return Object.entries(value || {}).map(([key, item]) => ({
+function objectFacts(value, excludeKeys = new Set()) {
+  return Object.entries(value || {}).filter(([key]) => !excludeKeys.has(key)).map(([key, item]) => ({
     value: `${key}: ${typeof item === "object" ? JSON.stringify(item) : item}`,
   }));
 }
