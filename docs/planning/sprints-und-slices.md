@@ -1794,6 +1794,35 @@ Akzeptanzkriterien:
 - Aktuelle lokale DB liefert eine erste Review-Feedback-Fixture.
 - Tests decken leeren Export und positiven Review-Fall ab.
 
+### Slice E9: Review-Feedback-Triage
+
+Status: umgesetzt.
+
+Ziel:
+
+Lokale Review-Konflikte sollen nicht nur als fehlgeschlagene Eval-Faelle
+erscheinen, sondern als priorisierte Arbeitsliste fuer Engine-Verbesserungen.
+
+Umfang:
+
+- `review_feedback`-Failures automatisch triagieren
+- Konflikttypen einfuehren: `blacklist_miss`, `false_positive_draft`,
+  `false_positive_review`, `false_negative`
+- Severity und vorgeschlagene naechste Aktion pro Konflikt ausgeben
+- `conflict_summary` mit Counts nach Typ und Severity ausgeben
+- `action_items` im Eval-Ergebnis bereitstellen
+- Dokumentation fuer die Review-Feedback-Schleife erweitern
+
+Akzeptanzkriterien:
+
+- `blacklisted` + Engine-Aktion `draft` wird als `blacklist_miss` mit hoher
+  Severity markiert.
+- Review-Konflikte enthalten Domain, Review-Status, Engine-Aktion, erwartete
+  Aktion und kompakte Rating-Rationale.
+- Lokale Review-Eval-Ausgabe zeigt direkt, welche Engine-Fixes als naechstes
+  geprueft werden sollten.
+- Tests decken die Triage eines Review-Konflikts ab.
+
 ## Sprint 15: DraftEngine Research Summary stabilisieren
 
 Ziel: Research-Summary-Drafts sollen mit echter Evidence erzeugbar sein, ohne an

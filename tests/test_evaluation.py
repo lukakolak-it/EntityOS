@@ -89,6 +89,45 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result["status"], "passed")
         self.assertEqual(result["sections"]["review_feedback"]["total"], 1)
 
+    def test_review_feedback_conflicts_are_triaged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fixture_path = Path(tmpdir) / "review-conflict.json"
+            fixture_path.write_text(
+                """
+                {
+                  "name": "review_conflict",
+                  "review_feedback": [
+                    {
+                      "id": "local_review_blacklist",
+                      "domain": "blocked.example",
+                      "review_status": "blacklisted",
+                      "actual_action": "draft",
+                      "expected_action": "skip",
+                      "rating_status": "use_case_rated",
+                      "rule_score": 100,
+                      "ai_score": null,
+                      "confidence": 0.6,
+                      "risk_types": [],
+                      "evidence_count": 2,
+                      "draft_count": 1,
+                      "source": "fake",
+                      "use_case": "application_student"
+                    }
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            result = run_evaluation(fixture_path)
+
+        review = result["sections"]["review_feedback"]
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(review["failed"], 1)
+        self.assertEqual(review["conflict_summary"]["by_type"]["blacklist_miss"], 1)
+        self.assertEqual(review["action_items"][0]["severity"], "high")
+        self.assertIn("source policy", review["action_items"][0]["suggested_action"])
+
 
 def _pipeline_run(search_profile_id: int, use_case_id: int):
     from target_radar.domain import PipelineRun, PipelineRunStatus

@@ -74,3 +74,14 @@ Mapping:
 Ein Fehler bedeutet nicht automatisch, dass die Engine falsch ist. Er zeigt
 eine Review-Entscheidung, die fachlich geprueft und entweder als neuer
 Engine-Fix oder als bewusst abweichender Review-Fall behandelt werden sollte.
+
+Der Eval-Runner triagiert Review-Konflikte automatisch:
+
+- `blacklist_miss`: Review sagt `blacklisted`, Engine sagt nicht `skip`.
+- `false_positive_draft`: Review sagt `rejected`, Engine sagt `draft`.
+- `false_positive_review`: Review sagt `rejected`, Engine sagt `review`.
+- `false_negative`: Review sagt `approved`, Engine sagt nicht `draft`.
+
+Die Ausgabe enthaelt `conflict_summary` und `action_items` mit Severity,
+Konflikttyp, Domain und vorgeschlagener naechster Aktion. Diese Einordnung ist
+eine Arbeitsliste fuer Heuristik- oder Eval-Fixes, kein automatisches Training.

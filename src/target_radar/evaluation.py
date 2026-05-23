@@ -210,8 +210,110 @@ def _run_review_feedback_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         expected = {
             "recommended_action": case["expected_action"],
         }
-        results.append(_case_result(str(case["id"]), actual, expected))
-    return _section_result(results)
+        result = _case_result(str(case["id"]), actual, expected)
+        if not result["passed"]:
+            result["triage"] = _review_feedback_triage(case, actual, expected)
+        results.append(result)
+    section = _section_result(results)
+    triage_items = [
+        result["triage"]
+        for result in results
+        if not result["passed"] and "triage" in result
+    ]
+    section["conflict_summary"] = _review_conflict_summary(triage_items)
+    section["action_items"] = triage_items
+    return section
+
+
+def _review_feedback_triage(
+    case: dict[str, Any],
+    actual: dict[str, Any],
+    expected: dict[str, Any],
+) -> dict[str, Any]:
+    review_status = str(case.get("review_status") or "")
+    actual_action = str(actual.get("recommended_action") or "")
+    expected_action = str(expected.get("recommended_action") or "")
+    conflict_type, severity, suggested_action = _review_conflict_policy(
+        review_status,
+        actual_action,
+        expected_action,
+    )
+    return {
+        "case_id": case.get("id"),
+        "domain": case.get("domain"),
+        "review_status": review_status,
+        "actual_action": actual_action,
+        "expected_action": expected_action,
+        "conflict_type": conflict_type,
+        "severity": severity,
+        "suggested_action": suggested_action,
+        "rationale": _review_conflict_rationale(case),
+    }
+
+
+def _review_conflict_policy(
+    review_status: str,
+    actual_action: str,
+    expected_action: str,
+) -> tuple[str, str, str]:
+    if review_status == "blacklisted" and actual_action != "skip":
+        return (
+            "blacklist_miss",
+            "high",
+            "add domain/source block or tighten source policy before rating",
+        )
+    if review_status == "rejected" and actual_action == "draft":
+        return (
+            "false_positive_draft",
+            "high",
+            "add a rating eval case or tighten draft threshold/criteria",
+        )
+    if review_status == "rejected" and actual_action == "review":
+        return (
+            "false_positive_review",
+            "medium",
+            "inspect rating risks and decide whether skip threshold should change",
+        )
+    if review_status == "approved" and actual_action != "draft":
+        return (
+            "false_negative",
+            "medium",
+            "add a positive rating eval case or relax criteria/thresholds",
+        )
+    return (
+        "review_mismatch",
+        "low",
+        f"inspect review feedback expected {expected_action} but got {actual_action}",
+    )
+
+
+def _review_conflict_rationale(case: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "rating_status": case.get("rating_status"),
+        "rule_score": case.get("rule_score"),
+        "ai_score": case.get("ai_score"),
+        "confidence": case.get("confidence"),
+        "risk_types": list(case.get("risk_types") or []),
+        "evidence_count": case.get("evidence_count"),
+        "draft_count": case.get("draft_count"),
+        "source": case.get("source"),
+        "use_case": case.get("use_case"),
+    }
+
+
+def _review_conflict_summary(items: list[dict[str, Any]]) -> dict[str, Any]:
+    by_type: dict[str, int] = {}
+    by_severity: dict[str, int] = {}
+    for item in items:
+        conflict_type = str(item.get("conflict_type") or "unknown")
+        severity = str(item.get("severity") or "unknown")
+        by_type[conflict_type] = by_type.get(conflict_type, 0) + 1
+        by_severity[severity] = by_severity.get(severity, 0) + 1
+    return {
+        "total": len(items),
+        "by_type": by_type,
+        "by_severity": by_severity,
+    }
 
 
 def _case_result(
