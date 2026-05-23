@@ -556,6 +556,14 @@ function renderCriterionRow(criterion = {}) {
         <input data-criterion-rule-set value="${escapeAttribute(criterion.rule_set || "")}">
       </div>
       <div>
+        <label>Evidence Types</label>
+        <input data-criterion-evidence-types value="${escapeAttribute((criterion.evidence_types || []).join(", "))}">
+      </div>
+      <div>
+        <label>Min Evidence</label>
+        <input data-criterion-min-evidence type="number" min="0" value="${escapeAttribute(criterion.min_evidence_count || 0)}">
+      </div>
+      <div>
         <label>LLM Instruction</label>
         <input data-criterion-llm value="${escapeAttribute(criterion.llm_instruction || "")}">
       </div>
@@ -748,8 +756,12 @@ function buildUseCaseConfigFromEditor(useCase) {
         evaluation: row.querySelector("[data-criterion-evaluation]").value,
       };
       const ruleSet = row.querySelector("[data-criterion-rule-set]").value.trim();
+      const evidenceTypes = parseCsv(row.querySelector("[data-criterion-evidence-types]").value);
+      const minEvidenceCount = numberValue(row.querySelector("[data-criterion-min-evidence]").value);
       const llmInstruction = row.querySelector("[data-criterion-llm]").value.trim();
       if (ruleSet) criterion.rule_set = ruleSet;
+      if (evidenceTypes.length) criterion.evidence_types = evidenceTypes;
+      if (minEvidenceCount) criterion.min_evidence_count = minEvidenceCount;
       if (llmInstruction) criterion.llm_instruction = llmInstruction;
       return criterion;
     }).filter((criterion) => criterion.key || criterion.label);

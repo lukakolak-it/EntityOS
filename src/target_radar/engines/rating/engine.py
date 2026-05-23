@@ -221,7 +221,6 @@ class RatingEngine:
                 input_snapshot=_input_snapshot(search_profile, evidence, use_case=use_case),
             )
 
-        context_text = " ".join(item.text for item in evidence)
         ai_provider = self._ai_provider_for_mode(use_case.rating_policy.llm_mode)
         criterion_results = [
             self._score_criterion(
@@ -229,7 +228,6 @@ class RatingEngine:
                 target,
                 search_profile,
                 evidence,
-                context_text=context_text,
                 ai_provider=ai_provider,
             )
             for criterion in use_case.rating_policy.criteria
@@ -258,6 +256,8 @@ class RatingEngine:
                 "score": item["score"],
                 "weight": item["weight"],
                 "weighted_score": round(item["score"] * item["weight"] / 100, 2),
+                "evidence_count": item["evidence_count"],
+                "evidence_types": item["evidence_types"],
             }
             for item in criterion_results
         ] + [reason for item in criterion_results for reason in item["reasons"]]
@@ -268,7 +268,10 @@ class RatingEngine:
             risk.get("type") == "missing_ai_evidence"
             for risk in risks
         )
-        if missing_llm or partial_ai_evidence:
+        missing_required_evidence = any(
+            item["missing_required_evidence"] for item in criterion_results
+        )
+        if missing_llm or partial_ai_evidence or missing_required_evidence:
             action = RecommendedAction.REVIEW
             rating_status = "rating_partial"
         else:
@@ -311,31 +314,54 @@ class RatingEngine:
         search_profile: SearchProfile,
         evidence: list[Evidence],
         *,
-        context_text: str,
         ai_provider: AIRatingProvider | None,
     ) -> dict[str, object]:
+        scoped_evidence = _criterion_evidence(evidence, criterion)
+        context_text = " ".join(item.text for item in scoped_evidence)
+        evidence_types = tuple(
+            sorted({_evidence_type(item) for item in scoped_evidence})
+        )
         rule_score: int | None = None
         reasons: list[dict[str, object]] = []
         risks: list[dict[str, object]] = []
+        missing_required_evidence = (
+            criterion.min_evidence_count > 0
+            and len(scoped_evidence) < criterion.min_evidence_count
+        )
+        if missing_required_evidence:
+            risks.append(
+                {
+                    "type": "missing_required_evidence",
+                    "criterion": criterion.key,
+                    "required_evidence_types": list(criterion.evidence_types),
+                    "required_count": criterion.min_evidence_count,
+                    "actual_count": len(scoped_evidence),
+                }
+            )
         if criterion.evaluation in {RatingEvaluation.RULES, RatingEvaluation.HYBRID}:
-            rule_result = self.rule_rater.score_rule_set(
-                criterion.rule_set or "",
-                target,
-                search_profile,
-                evidence,
-            )
-            rule_score = rule_result.score
-            reasons.extend(
-                _criterion_payload(reason, criterion.key)
-                for reason in rule_result.reasons
-            )
-            risks.extend(rule_result.risks)
+            if missing_required_evidence:
+                rule_score = 0
+            else:
+                rule_result = self.rule_rater.score_rule_set(
+                    criterion.rule_set or "",
+                    target,
+                    search_profile,
+                    scoped_evidence,
+                )
+                rule_score = rule_result.score
+                reasons.extend(
+                    _criterion_payload(reason, criterion.key)
+                    for reason in rule_result.reasons
+                )
+                risks.extend(rule_result.risks)
 
         ai_score: int | None = None
         confidence: float | None = None
         missing_llm = False
         if criterion.evaluation in {RatingEvaluation.LLM, RatingEvaluation.HYBRID}:
-            if ai_provider is None:
+            if missing_required_evidence:
+                ai_score = 0
+            elif ai_provider is None:
                 missing_llm = criterion.evaluation == RatingEvaluation.LLM
                 risks.append(
                     {
@@ -399,6 +425,9 @@ class RatingEngine:
             "ai_score": ai_score,
             "confidence": confidence,
             "missing_llm": missing_llm,
+            "missing_required_evidence": missing_required_evidence,
+            "evidence_count": len(scoped_evidence),
+            "evidence_types": list(evidence_types),
             "reasons": reasons,
             "risks": risks,
         }
@@ -454,6 +483,35 @@ def _criterion_payload(payload: dict[str, object], criterion_key: str) -> dict[s
     return enriched
 
 
+def _criterion_evidence(
+    evidence: list[Evidence],
+    criterion: RatingCriterion,
+) -> list[Evidence]:
+    if not criterion.evidence_types:
+        return evidence
+    accepted = set(criterion.evidence_types)
+    return [
+        item
+        for item in evidence
+        if _evidence_type(item) in accepted
+    ]
+
+
+def _evidence_type(evidence: Evidence) -> str:
+    metadata = evidence.metadata if isinstance(evidence.metadata, dict) else {}
+    explicit_type = metadata.get("evidence_type")
+    if explicit_type:
+        return str(explicit_type)
+    return {
+        "homepage": "target_homepage",
+        "career": "target_career",
+        "contact": "target_contact",
+        "about": "target_about",
+        "page": "target_page",
+        "context_source": "context_source",
+    }.get(evidence.context_type, "target_page")
+
+
 def _evidence_payload(evidence: list[Evidence]) -> list[dict[str, object]]:
     payload: list[dict[str, object]] = []
     for item in evidence:
@@ -463,7 +521,7 @@ def _evidence_payload(evidence: list[Evidence]) -> list[dict[str, object]]:
                 "evidence_id": item.id,
                 "source_url": item.source_url,
                 "context_type": item.context_type,
-                "evidence_type": metadata.get("evidence_type"),
+                "evidence_type": _evidence_type(item),
                 "provenance": metadata.get("provenance"),
                 "source_type": metadata.get("source_type"),
                 "context_source_id": metadata.get("context_source_id"),

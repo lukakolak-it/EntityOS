@@ -54,6 +54,20 @@ KNOWN_RULE_SETS = frozenset(
         "evidence_quality",
     }
 )
+KNOWN_EVIDENCE_TYPES = frozenset(
+    {
+        "target_homepage",
+        "target_career",
+        "target_contact",
+        "target_about",
+        "target_page",
+        "context_directory",
+        "context_news",
+        "context_registry",
+        "context_repository",
+        "context_source",
+    }
+)
 KNOWN_DRAFT_TYPES = frozenset({"application_email", "research_summary", "none"})
 DRAFT_OUTPUT_SCHEMAS: dict[str, tuple[str, ...]] = {
     "application_email": ("subject", "body"),
@@ -274,6 +288,8 @@ class RatingCriterion:
     evaluation: RatingEvaluation | str
     rule_set: str | None = None
     llm_instruction: str | None = None
+    evidence_types: tuple[str, ...] = ()
+    min_evidence_count: int = 0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "key", _ensure_identifier(self.key, "criterion.key"))
@@ -283,6 +299,9 @@ class RatingCriterion:
         object.__setattr__(self, "evaluation", RatingEvaluation(self.evaluation))
         object.__setattr__(self, "rule_set", _optional_identifier(self.rule_set))
         object.__setattr__(self, "llm_instruction", _optional_non_empty(self.llm_instruction))
+        object.__setattr__(self, "evidence_types", _clean_tuple(self.evidence_types))
+        if self.min_evidence_count < 0:
+            raise ValueError(f"criterion {self.key!r} min_evidence_count must not be negative")
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> RatingCriterion:
@@ -293,6 +312,8 @@ class RatingCriterion:
             evaluation=value.get("evaluation", ""),
             rule_set=_optional_str(value.get("rule_set")),
             llm_instruction=_optional_str(value.get("llm_instruction")),
+            evidence_types=_tuple_from(value.get("evidence_types", ())),
+            min_evidence_count=int(value.get("min_evidence_count", 0)),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -306,6 +327,10 @@ class RatingCriterion:
             data["rule_set"] = self.rule_set
         if self.llm_instruction is not None:
             data["llm_instruction"] = self.llm_instruction
+        if self.evidence_types:
+            data["evidence_types"] = list(self.evidence_types)
+        if self.min_evidence_count:
+            data["min_evidence_count"] = self.min_evidence_count
         return data
 
 
@@ -576,6 +601,11 @@ def _validate_rating_policy(rating_policy: RatingPolicy) -> None:
         if criterion.evaluation in {RatingEvaluation.LLM, RatingEvaluation.HYBRID}:
             if criterion.llm_instruction is None:
                 raise ValueError(f"criterion {criterion.key!r} needs llm_instruction")
+        for evidence_type in criterion.evidence_types:
+            if evidence_type not in KNOWN_EVIDENCE_TYPES:
+                raise ValueError(
+                    f"criterion {criterion.key!r} uses unknown evidence_type: {evidence_type}"
+                )
 
 
 def _validate_draft_policy(draft_policy: DraftPolicy) -> None:
@@ -696,6 +726,8 @@ APPLICATION_STUDENT_USE_CASE = UseCaseConfig(
                 weight=40,
                 evaluation=RatingEvaluation.RULES,
                 rule_set="role_keyword_match",
+                evidence_types=("target_career", "target_page"),
+                min_evidence_count=1,
             ),
             RatingCriterion(
                 key="tech_fit",
@@ -703,6 +735,8 @@ APPLICATION_STUDENT_USE_CASE = UseCaseConfig(
                 weight=30,
                 evaluation=RatingEvaluation.RULES,
                 rule_set="tech_keyword_match",
+                evidence_types=("target_career", "target_about", "target_page"),
+                min_evidence_count=1,
             ),
             RatingCriterion(
                 key="region_fit",
@@ -710,6 +744,14 @@ APPLICATION_STUDENT_USE_CASE = UseCaseConfig(
                 weight=30,
                 evaluation=RatingEvaluation.RULES,
                 rule_set="region_keyword_match",
+                evidence_types=(
+                    "target_career",
+                    "target_contact",
+                    "target_about",
+                    "target_homepage",
+                    "target_page",
+                ),
+                min_evidence_count=1,
             ),
         ),
     ),
@@ -780,6 +822,17 @@ COMPANY_OSINT_USE_CASE = UseCaseConfig(
                 label="Relevanz",
                 weight=40,
                 evaluation=RatingEvaluation.LLM,
+                evidence_types=(
+                    "target_homepage",
+                    "target_about",
+                    "target_contact",
+                    "target_page",
+                    "context_directory",
+                    "context_news",
+                    "context_registry",
+                    "context_source",
+                ),
+                min_evidence_count=1,
                 llm_instruction="Bewerte, ob das Target fachlich zum OSINT-Thema passt.",
             ),
             RatingCriterion(
@@ -788,6 +841,15 @@ COMPANY_OSINT_USE_CASE = UseCaseConfig(
                 weight=30,
                 evaluation=RatingEvaluation.HYBRID,
                 rule_set="source_quality",
+                evidence_types=(
+                    "target_homepage",
+                    "target_about",
+                    "target_contact",
+                    "context_directory",
+                    "context_news",
+                    "context_registry",
+                    "context_source",
+                ),
                 llm_instruction="Bewerte, ob Quelle und Target serioes genug sind.",
             ),
             RatingCriterion(
@@ -796,6 +858,17 @@ COMPANY_OSINT_USE_CASE = UseCaseConfig(
                 weight=30,
                 evaluation=RatingEvaluation.HYBRID,
                 rule_set="evidence_quality",
+                evidence_types=(
+                    "target_homepage",
+                    "target_about",
+                    "target_contact",
+                    "target_page",
+                    "context_directory",
+                    "context_news",
+                    "context_registry",
+                    "context_source",
+                ),
+                min_evidence_count=1,
                 llm_instruction="Bewerte, ob die gefundenen Belege konkret und belastbar sind.",
             ),
         ),

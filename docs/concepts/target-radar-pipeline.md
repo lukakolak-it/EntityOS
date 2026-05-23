@@ -142,6 +142,8 @@ Die RatingEngine:
 
 - bewertet Regeln und Keywords,
 - nutzt optional AI Scoring,
+- filtert Evidence pro Use-Case-Kriterium nach `evidence_types`,
+- verhindert Drafts, wenn required Evidence fuer ein Kriterium fehlt,
 - erzeugt Gruende und Risiken mit Quellen,
 - empfiehlt eine Aktion.
 

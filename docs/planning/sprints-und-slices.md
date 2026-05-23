@@ -1701,6 +1701,38 @@ Akzeptanzkriterien:
 - Tests decken EvidenceEngine, Storage-Zuordnung, API und Pipeline-Integration
   ab.
 
+### Slice E6: Rating-Kriterien an Evidence Types koppeln
+
+Status: umgesetzt.
+
+Ziel:
+
+Use-Case-Kriterien bewerten nicht mehr blind den gesamten Evidence-Text,
+sondern nur die fachlich passenden Evidence Types.
+
+Umfang:
+
+- `RatingCriterion.evidence_types` einfuehren
+- `RatingCriterion.min_evidence_count` einfuehren
+- Use-Case-Validierung fuer bekannte Evidence Types erweitern
+- RatingEngine pro Kriterium auf passende Evidence filtern
+- Legacy-Evidence ohne `evidence_type` aus `context_type` ableiten
+- fehlende Pflicht-Evidence als `missing_required_evidence` markieren
+- Draft verhindern, wenn required Evidence fuer ein Kriterium fehlt
+- Use-Case-Editor um Evidence Types und Min Evidence erweitern
+- Default-Use-Cases mit Evidence Scopes ausstatten
+
+Akzeptanzkriterien:
+
+- Bewerbungs-`role_fit` nutzt Karriere-/Page-Evidence, nicht nur Kontaktseiten.
+- OSINT-Kriterien koennen `context_directory`, `context_news` und
+  `context_registry` einbeziehen.
+- LLM-Kontext wird pro Kriterium auf den Evidence Scope begrenzt.
+- Fehlende required Evidence fuehrt zu `rating_partial` und `review`.
+- Rating-Reasons zeigen Evidence Count und genutzte Evidence Types je Kriterium.
+- Tests decken Schema-Roundtrip, Missing-Evidence-Risiko und LLM-Kontext-Scoping
+  ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
@@ -1709,5 +1741,5 @@ kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
 Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
 Danach ist die sinnvolle Reihenfolge:
 
-1. E6 RatingEngine-Kriterien an Evidence-Typen koppeln.
-2. DraftEngine erst danach weiter optimieren.
+1. DraftEngine auf typisierte Evidence und Research-Summary-Qualitaet optimieren.
+2. Kleine Eval-Sets fuer Rating-Ergebnisse und Draft-Ausgaben aufbauen.

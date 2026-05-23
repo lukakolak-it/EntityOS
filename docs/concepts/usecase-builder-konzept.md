@@ -236,6 +236,28 @@ Jedes Kriterium muss definieren, wie es ausgewertet wird:
 - `evaluation: llm`: wird ueber LLM anhand von Evidence und Instruktion bewertet.
 - `evaluation: hybrid`: nutzt Rule-Set als Basisscore und LLM fuer Kontextbewertung.
 
+Kriterien koennen zusaetzlich auf bestimmte Evidence Types begrenzt werden:
+
+- `evidence_types`: Liste der zulassigen Evidence Types fuer dieses Kriterium.
+- `min_evidence_count`: Mindestanzahl passender Evidence-Objekte.
+
+Wenn `evidence_types` gesetzt ist, bekommt Rule-Set oder LLM nur diese
+Evidence als Kontext. Fehlt die Mindestanzahl, wird das Kriterium mit
+`missing_required_evidence` markiert, scored `0` und verhindert einen Draft.
+
+Bekannte Evidence Types:
+
+- `target_homepage`
+- `target_career`
+- `target_contact`
+- `target_about`
+- `target_page`
+- `context_directory`
+- `context_news`
+- `context_registry`
+- `context_repository`
+- `context_source`
+
 Bekannte Rule-Sets fuer den MVP:
 
 - `role_keyword_match`
@@ -267,18 +289,23 @@ rating_policy:
       label: Fachliche Relevanz
       weight: 40
       evaluation: llm
+      evidence_types: [target_homepage, target_about, target_contact, context_directory, context_news]
+      min_evidence_count: 1
       llm_instruction: "Bewerte, ob das Target fachlich zum Suchprofil passt."
     - key: credibility
       label: Seriositaet
       weight: 30
       evaluation: hybrid
       rule_set: source_quality
+      evidence_types: [target_homepage, target_about, target_contact, context_directory, context_registry]
       llm_instruction: "Bewerte, ob die Quelle serioes und direkt genug ist."
     - key: contactability
       label: Kontaktierbarkeit
       weight: 30
       evaluation: rules
       rule_set: contactability
+      evidence_types: [target_contact, target_homepage]
+      min_evidence_count: 1
 ```
 
 ### `draft_policy`
@@ -578,6 +605,8 @@ Ein Use Case ist nur gueltig, wenn:
 - Rating-Kriterien eine gueltige `evaluation` haben,
 - Rule-Kriterien ein bekanntes `rule_set` referenzieren,
 - LLM-Kriterien eine `llm_instruction` haben,
+- `evidence_types` nur bekannte Evidence Types enthalten,
+- `min_evidence_count` nicht negativ ist,
 - Rating-Gewichte exakt zu `100` summieren,
 - Draft-Typ bekannt ist,
 - Draft-Typ ein bekanntes Output-Schema hat,
@@ -666,16 +695,32 @@ rating_policy:
       weight: 40
       evaluation: rules
       rule_set: role_keyword_match
+      evidence_types:
+        - target_career
+        - target_page
+      min_evidence_count: 1
     - key: tech_fit
       label: Tech-Fit
       weight: 30
       evaluation: rules
       rule_set: tech_keyword_match
+      evidence_types:
+        - target_career
+        - target_about
+        - target_page
+      min_evidence_count: 1
     - key: region_fit
       label: Regionaler Fit
       weight: 30
       evaluation: rules
       rule_set: region_keyword_match
+      evidence_types:
+        - target_career
+        - target_contact
+        - target_about
+        - target_homepage
+        - target_page
+      min_evidence_count: 1
 draft_policy:
   draft_type: application_email
   language: de
@@ -747,18 +792,46 @@ rating_policy:
       label: Relevanz
       weight: 40
       evaluation: llm
+      evidence_types:
+        - target_homepage
+        - target_about
+        - target_contact
+        - target_page
+        - context_directory
+        - context_news
+        - context_registry
+        - context_source
+      min_evidence_count: 1
       llm_instruction: "Bewerte, ob das Target fachlich zum OSINT-Thema passt."
     - key: credibility
       label: Seriositaet
       weight: 30
       evaluation: hybrid
       rule_set: source_quality
+      evidence_types:
+        - target_homepage
+        - target_about
+        - target_contact
+        - context_directory
+        - context_news
+        - context_registry
+        - context_source
       llm_instruction: "Bewerte, ob Quelle und Target serioes genug sind."
     - key: evidence_quality
       label: Belegqualitaet
       weight: 30
       evaluation: hybrid
       rule_set: evidence_quality
+      evidence_types:
+        - target_homepage
+        - target_about
+        - target_contact
+        - target_page
+        - context_directory
+        - context_news
+        - context_registry
+        - context_source
+      min_evidence_count: 1
       llm_instruction: "Bewerte, ob die gefundenen Belege konkret und belastbar sind."
 draft_policy:
   draft_type: research_summary
@@ -790,7 +863,8 @@ Umfang:
 - Python-Domainmodell fuer Use Cases
 - Validierung
 - `query_policy.variable_map`
-- Rating-Kriterien mit `evaluation`, `rule_set` und `llm_instruction`
+- Rating-Kriterien mit `evaluation`, `rule_set`, `llm_instruction`,
+  `evidence_types` und `min_evidence_count`
 - bekannte Draft Types `application_email`, `research_summary` und `none`
 - Default-Templates als versionierte Dateien oder Python-Konfiguration
 - Tests fuer gueltige und ungueltige Use Cases

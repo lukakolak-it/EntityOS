@@ -227,6 +227,36 @@ zugeordneter Context-Source-Evidence (`provenance = context_source`)
 unterscheiden. E6 koppelt die einzelnen Rating-Kriterien gezielt an diese
 Evidence Types.
 
+### Evidence Scope pro Kriterium
+
+Use-Case-Kriterien koennen einen Evidence Scope definieren:
+
+```yaml
+rating_policy:
+  criteria:
+    - key: relevance
+      evaluation: llm
+      evidence_types:
+        - target_about
+        - context_directory
+      min_evidence_count: 1
+```
+
+Auswertung:
+
+- Wenn `evidence_types` gesetzt ist, wird fuer dieses Kriterium nur passende
+  Evidence an Rule-Set oder LLM uebergeben.
+- Alte Evidence ohne explizites `evidence_type` wird aus `context_type`
+  abgeleitet, z. B. `career -> target_career`.
+- Wenn weniger als `min_evidence_count` passende Evidence existiert, scored das
+  Kriterium `0`.
+- Fehlende Pflicht-Evidence erzeugt ein Risiko `missing_required_evidence`.
+- Ein Draft wird dann verhindert und das Rating bleibt `rating_partial`.
+
+Damit bewertet z. B. `role_fit` nicht versehentlich nur anhand einer
+Kontaktseite, und OSINT-Kriterien koennen Context Sources wie Verzeichnisse,
+News oder Register bewusst einbeziehen.
+
 Regeln:
 
 - Keine unbelegten Behauptungen.

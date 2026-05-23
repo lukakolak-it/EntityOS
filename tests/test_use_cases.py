@@ -101,6 +101,27 @@ class UseCaseSchemaTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "needs llm_instruction"):
             validate_use_case_config(payload)
 
+    def test_rating_criteria_can_scope_required_evidence_types(self) -> None:
+        use_case = get_default_use_case("application_student")
+        role_fit = next(
+            criterion
+            for criterion in use_case.rating_policy.criteria
+            if criterion.key == "role_fit"
+        )
+        exported = use_case.to_dict()
+        roundtrip = UseCaseConfig.from_dict(exported)
+
+        self.assertIn("target_career", role_fit.evidence_types)
+        self.assertEqual(role_fit.min_evidence_count, 1)
+        self.assertEqual(
+            roundtrip.rating_policy.criteria[0].evidence_types,
+            role_fit.evidence_types,
+        )
+
+        exported["rating_policy"]["criteria"][0]["evidence_types"] = ["unknown_type"]
+        with self.assertRaisesRegex(ValueError, "unknown evidence_type"):
+            validate_use_case_config(exported)
+
     def test_research_summary_has_output_schema_and_required_sections(self) -> None:
         use_case = get_default_use_case("company_osint")
 

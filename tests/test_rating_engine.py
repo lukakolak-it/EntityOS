@@ -183,6 +183,35 @@ class RatingEngineTests(unittest.TestCase):
             any(reason.get("criterion") == "role_fit" for reason in rating.reasons)
         )
 
+    def test_use_case_rating_requires_configured_evidence_types(self) -> None:
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/kontakt",
+                text="Werkstudent IT in Essen mit Python und Kontakt jobs@example.com",
+                context_type="contact",
+            )
+        ]
+
+        rating = RatingEngine().rate(
+            self.target,
+            self.search_profile,
+            evidence,
+            use_case=get_default_use_case("application_student"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.REVIEW)
+        self.assertEqual(rating.rating_status, "rating_partial")
+        self.assertTrue(
+            any(risk.get("type") == "missing_required_evidence" for risk in rating.risks)
+        )
+        role_score = next(
+            reason for reason in rating.reasons if reason.get("criterion") == "role_fit"
+        )
+        self.assertEqual(role_score["score"], 0)
+        self.assertEqual(role_score["evidence_count"], 0)
+
     def test_use_case_llm_rating_uses_ai_criteria_and_source_quality(self) -> None:
         osint_profile = SearchProfile(
             profile_id=self.profile.id,
@@ -236,6 +265,56 @@ class RatingEngineTests(unittest.TestCase):
             any(reason.get("criterion") == "credibility" for reason in rating.reasons)
         )
 
+    def test_use_case_llm_context_is_scoped_to_evidence_types(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "regions": ["Essen"]},
+        )
+        self.target.metadata["lead_metadata"] = {
+            "source_quality": {
+                "source_type": "company_site",
+                "source_quality_score": 82,
+            }
+        }
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/jobs",
+                text="Werkstudent IT in Essen mit Python.",
+                context_type="career",
+            ),
+            Evidence(
+                id=2,
+                target_id=self.target.id,
+                source_url="https://directory.example/solar",
+                text="Solar Services in Essen laut Branchenverzeichnis.",
+                context_type="context_source",
+                metadata={
+                    "evidence_type": "context_directory",
+                    "provenance": "context_source",
+                    "source_type": "directory",
+                    "context_source_id": 22,
+                },
+            ),
+        ]
+        provider = _RecordingAIRatingProvider()
+
+        rating = RatingEngine(ai_provider=provider).rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.rating_status, "use_case_rated")
+        self.assertGreaterEqual(len(provider.requests), 1)
+        for request in provider.requests:
+            self.assertIn("Solar Services", request.context_text)
+            self.assertNotIn("Werkstudent IT", request.context_text)
+        self.assertEqual(rating.evidence[1]["evidence_type"], "context_directory")
+
     def test_use_case_missing_required_llm_becomes_partial_review(self) -> None:
         osint_profile = SearchProfile(
             profile_id=self.profile.id,
@@ -285,6 +364,26 @@ class RatingEngineTests(unittest.TestCase):
 class _BrokenAIRatingProvider:
     def rate(self, request):
         raise ValueError("invalid ai json")
+
+
+class _RecordingAIRatingProvider:
+    def __init__(self) -> None:
+        self.requests = []
+
+    def rate(self, request):
+        self.requests.append(request)
+        return AIRatingResponse(
+            ai_score=88,
+            confidence=0.84,
+            recommended_action=RecommendedAction.DRAFT,
+            reasons=[
+                {
+                    "text": "Scoped OSINT context passt.",
+                    "source_url": "https://directory.example/solar",
+                    "evidence": "Solar Services in Essen",
+                }
+            ],
+        )
 
 
 if __name__ == "__main__":
