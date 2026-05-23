@@ -39,3 +39,38 @@ Wenn ein Fall fehlschlaegt:
 - Erwartung pruefen, wenn die Engine absichtlich besser geworden ist.
 - Engine fixen, wenn die Erwartung weiterhin fachlich richtig ist.
 - Einen neuen Fall ergaenzen, wenn ein echter Run eine neue Fehlerklasse zeigt.
+
+## Lokales Review-Feedback
+
+Lokale UI-Entscheidungen koennen als nicht-versionierte Eval-Fixture exportiert
+werden:
+
+```powershell
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 export-review-eval
+```
+
+Standardausgabe:
+
+```text
+exports/local-review-eval.json
+```
+
+Diese Datei bleibt lokal und ist durch `.gitignore` ausgeschlossen. Sie enthaelt
+keine Evidence-Texte, sondern nur kompakte Review-/Rating-Metadaten wie Domain,
+Review-Status, empfohlene Engine-Aktion, Scores und Evidence-/Draft-Zaehler.
+
+Die lokale Review-Fixture kann direkt gegen den Eval-Runner laufen:
+
+```powershell
+py -m target_radar.cli evaluate --fixture exports/local-review-eval.json
+```
+
+Mapping:
+
+- `approved` erwartet `draft`
+- `rejected` erwartet `skip`
+- `blacklisted` erwartet `skip`
+
+Ein Fehler bedeutet nicht automatisch, dass die Engine falsch ist. Er zeigt
+eine Review-Entscheidung, die fachlich geprueft und entweder als neuer
+Engine-Fix oder als bewusst abweichender Review-Fall behandelt werden sollte.

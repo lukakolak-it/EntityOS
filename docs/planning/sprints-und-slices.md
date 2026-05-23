@@ -1764,6 +1764,36 @@ Akzeptanzkriterien:
 - Alle Baseline-Faelle sind gruen.
 - Tests decken Eval-Runner und CLI-Befehl ab.
 
+### Slice E8: Lokales Review-Feedback als Eval
+
+Status: umgesetzt.
+
+Ziel:
+
+Echte lokale Review-Entscheidungen sollen messbar werden, ohne lokale
+Datenbanken oder Page-Texte zu versionieren.
+
+Umfang:
+
+- Eval-Runner um Bereich `review_feedback` erweitern
+- CLI-Befehl `export-review-eval` einfuehren
+- neueste lokale Review-Entscheidung pro Target exportieren
+- Mapping von Review-Status auf erwartete Engine-Aktion definieren:
+  `approved -> draft`, `rejected -> skip`, `blacklisted -> skip`
+- Export nur mit kompakten Metadaten: Domain, Review-Status, Rating-Aktion,
+  Scores, Risk Types, Evidence Count und Draft Count
+- Standardexport nach `exports/local-review-eval.json`, also nicht versioniert
+- Tests fuer Exporter, Eval-Runner und CLI ergaenzen
+
+Akzeptanzkriterien:
+
+- Lokaler Review-Export laeuft ohne Provider-Secrets.
+- Export enthaelt keine Evidence-Texte.
+- `evaluate --fixture exports/local-review-eval.json` zeigt Pass/Fail fuer
+  echte Review-Entscheidungen.
+- Aktuelle lokale DB liefert eine erste Review-Feedback-Fixture.
+- Tests decken leeren Export und positiven Review-Fall ab.
+
 ## Sprint 15: DraftEngine Research Summary stabilisieren
 
 Ziel: Research-Summary-Drafts sollen mit echter Evidence erzeugbar sein, ohne an

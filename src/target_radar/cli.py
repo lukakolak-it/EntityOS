@@ -15,7 +15,12 @@ from target_radar.engines.lead import (
     create_lead_engine,
 )
 from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine, create_rating_engine
-from target_radar.evaluation import DEFAULT_EVALUATION_FIXTURE, run_evaluation
+from target_radar.evaluation import (
+    DEFAULT_EVALUATION_FIXTURE,
+    DEFAULT_REVIEW_EVALUATION_OUTPUT,
+    export_review_feedback_fixture,
+    run_evaluation,
+)
 from target_radar.ops import collect_diagnostics, configure_logging, run_privacy_check
 from target_radar.pipeline import (
     FetchConfig as PipelineFetchConfig,
@@ -80,6 +85,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         _print_json(run_evaluation(args.fixture))
         return 0
 
+    if args.command == "export-review-eval":
+        _print_json(
+            export_review_feedback_fixture(
+                database_url,
+                output_path=args.output,
+                limit=args.limit,
+            )
+        )
+        return 0
+
     if args.command == "privacy-check":
         result = run_privacy_check(args.root)
         _print_json(result)
@@ -119,6 +134,13 @@ def _build_parser() -> argparse.ArgumentParser:
 
     evaluate = subparsers.add_parser("evaluate", help="Run deterministic engine evals")
     evaluate.add_argument("--fixture", default=DEFAULT_EVALUATION_FIXTURE)
+
+    export_review_eval = subparsers.add_parser(
+        "export-review-eval",
+        help="Export local review decisions as an eval fixture",
+    )
+    export_review_eval.add_argument("--output", default=DEFAULT_REVIEW_EVALUATION_OUTPUT)
+    export_review_eval.add_argument("--limit", type=int, default=50)
 
     privacy = subparsers.add_parser("privacy-check", help="Check local privacy guardrails")
     privacy.add_argument("--root", default=".")

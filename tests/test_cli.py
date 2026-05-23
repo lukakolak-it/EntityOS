@@ -78,6 +78,24 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["sections"]["rating"]["failed"], 0)
         self.assertEqual(payload["sections"]["draft"]["failed"], 0)
 
+    def test_export_review_eval_command_writes_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database_url = f"sqlite:///{Path(tmpdir) / 'target-radar.sqlite3'}"
+            output_path = Path(tmpdir) / "review-eval.json"
+            _run_cli("--database-url", database_url, "init-db")
+            payload = _run_cli(
+                "--database-url",
+                database_url,
+                "export-review-eval",
+                "--output",
+                str(output_path),
+            )
+            output_exists = output_path.exists()
+
+        self.assertEqual(payload["summary"]["total"], 0)
+        self.assertEqual(payload["output_path"], str(output_path))
+        self.assertTrue(output_exists)
+
 
 def _run_cli(*args: str) -> dict[str, object]:
     buffer = io.StringIO()

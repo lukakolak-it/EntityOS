@@ -21,10 +21,17 @@ from target_radar.engines.draft import DraftEngine, DraftSkippedError
 from target_radar.engines.lead import SearchResult
 from target_radar.engines.lead.source_quality import SourceQualityClassifier
 from target_radar.engines.rating import AIRatingResponse, FakeAIRatingProvider, RatingEngine
+from target_radar.storage import SQLiteStore
 from target_radar.use_cases import get_default_use_case
 
 
 DEFAULT_EVALUATION_FIXTURE = "docs/evaluation/engine-eval-baseline.json"
+DEFAULT_REVIEW_EVALUATION_OUTPUT = "exports/local-review-eval.json"
+_REVIEW_EXPECTED_ACTION = {
+    "approved": "draft",
+    "rejected": "skip",
+    "blacklisted": "skip",
+}
 
 
 def run_evaluation(fixture_path: str | Path = DEFAULT_EVALUATION_FIXTURE) -> dict[str, Any]:
@@ -33,6 +40,9 @@ def run_evaluation(fixture_path: str | Path = DEFAULT_EVALUATION_FIXTURE) -> dic
         "source_quality": _run_source_quality_cases(payload.get("source_quality", [])),
         "rating": _run_rating_cases(payload.get("rating", [])),
         "draft": _run_draft_cases(payload.get("draft", [])),
+        "review_feedback": _run_review_feedback_cases(
+            payload.get("review_feedback", [])
+        ),
     }
     total = sum(section["total"] for section in sections.values())
     passed = sum(section["passed"] for section in sections.values())
@@ -46,6 +56,42 @@ def run_evaluation(fixture_path: str | Path = DEFAULT_EVALUATION_FIXTURE) -> dic
         "accuracy": _ratio(passed, total),
         "sections": sections,
     }
+
+
+def export_review_feedback_fixture(
+    database_url: str,
+    *,
+    output_path: str | Path | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    store = SQLiteStore.open(database_url)
+    try:
+        cases = _review_feedback_cases(store, limit=limit)
+    finally:
+        store.close()
+
+    payload = {
+        "name": "local_review_feedback",
+        "source": "local SQLite review decisions",
+        "review_feedback": cases,
+        "summary": {
+            "total": len(cases),
+            "approved": sum(1 for case in cases if case["review_status"] == "approved"),
+            "rejected": sum(1 for case in cases if case["review_status"] == "rejected"),
+            "blacklisted": sum(
+                1 for case in cases if case["review_status"] == "blacklisted"
+            ),
+        },
+    }
+    if output_path is not None:
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        payload["output_path"] = str(path)
+    return payload
 
 
 def _run_source_quality_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
@@ -153,6 +199,21 @@ def _run_draft_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
     return _section_result(results)
 
 
+def _run_review_feedback_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    results = []
+    for case in cases:
+        actual = {
+            "recommended_action": case.get("actual_action"),
+            "review_status": case.get("review_status"),
+            "rating_status": case.get("rating_status"),
+        }
+        expected = {
+            "recommended_action": case["expected_action"],
+        }
+        results.append(_case_result(str(case["id"]), actual, expected))
+    return _section_result(results)
+
+
 def _case_result(
     case_id: str,
     actual: dict[str, Any],
@@ -191,6 +252,116 @@ def _load_fixture(path: str | Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("evaluation fixture must contain a JSON object")
     return payload
+
+
+def _review_feedback_cases(store: SQLiteStore, *, limit: int) -> list[dict[str, Any]]:
+    rows = store.connection.execute(
+        """
+        WITH latest_review AS (
+            SELECT target_id, MAX(id) AS log_id
+            FROM target_status_log
+            WHERE phase = 'review'
+              AND to_status IN ('approved', 'rejected', 'blacklisted')
+            GROUP BY target_id
+        )
+        SELECT
+            log.id AS review_log_id,
+            log.to_status AS review_status,
+            log.reason AS review_reason,
+            log.created_at AS review_created_at,
+            targets.id AS target_id,
+            targets.domain,
+            targets.base_url,
+            targets.source,
+            scores.id AS score_id,
+            scores.recommended_action,
+            scores.rating_status,
+            scores.rule_score,
+            scores.ai_score,
+            scores.confidence,
+            scores.risks_json,
+            use_cases.slug AS use_case_slug,
+            use_cases.name AS use_case_name,
+            (
+                SELECT COUNT(*)
+                FROM evidence
+                WHERE evidence.target_id = targets.id
+            ) AS evidence_count,
+            (
+                SELECT COUNT(*)
+                FROM action_drafts
+                WHERE action_drafts.target_id = targets.id
+            ) AS draft_count
+        FROM latest_review
+        INNER JOIN target_status_log AS log
+            ON log.id = latest_review.log_id
+        INNER JOIN targets
+            ON targets.id = latest_review.target_id
+        LEFT JOIN target_scores AS scores
+            ON scores.id = (
+                SELECT id
+                FROM target_scores
+                WHERE target_scores.target_id = targets.id
+                ORDER BY id DESC
+                LIMIT 1
+            )
+        LEFT JOIN pipeline_runs
+            ON pipeline_runs.id = COALESCE(scores.pipeline_run_id, log.pipeline_run_id)
+        LEFT JOIN search_profiles
+            ON search_profiles.id = pipeline_runs.search_profile_id
+        LEFT JOIN use_cases
+            ON use_cases.id = search_profiles.use_case_id
+        ORDER BY log.id DESC
+        LIMIT ?
+        """,
+        (max(1, limit),),
+    ).fetchall()
+    cases = []
+    for row in rows:
+        review_status = str(row["review_status"])
+        actual_action = str(row["recommended_action"] or "review")
+        cases.append(
+            {
+                "id": f"local_review_{row['target_id']}_{row['review_log_id']}",
+                "target_id": row["target_id"],
+                "domain": row["domain"],
+                "base_url": row["base_url"],
+                "source": row["source"],
+                "use_case": row["use_case_slug"] or "unknown",
+                "use_case_name": row["use_case_name"],
+                "review_status": review_status,
+                "review_reason": row["review_reason"],
+                "review_created_at": row["review_created_at"],
+                "actual_action": actual_action,
+                "expected_action": _REVIEW_EXPECTED_ACTION[review_status],
+                "rating_status": row["rating_status"],
+                "rule_score": row["rule_score"],
+                "ai_score": row["ai_score"],
+                "confidence": row["confidence"],
+                "risk_types": _risk_types(row["risks_json"]),
+                "evidence_count": row["evidence_count"],
+                "draft_count": row["draft_count"],
+            }
+        )
+    return cases
+
+
+def _risk_types(raw_value: str | None) -> list[str]:
+    if not raw_value:
+        return []
+    try:
+        risks = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(risks, list):
+        return []
+    return sorted(
+        {
+            str(risk.get("type"))
+            for risk in risks
+            if isinstance(risk, dict) and risk.get("type")
+        }
+    )
 
 
 def _search_result(case: dict[str, Any]) -> SearchResult:

@@ -131,6 +131,18 @@ Die Evaluation prueft die deterministische Baseline aus
 `docs/evaluation/engine-eval-baseline.json`. Sie misst Source-Quality,
 Rating-Entscheidungen und Draft-Grounding ohne echte Provider-Secrets.
 
+Lokale Review-Entscheidungen koennen zusaetzlich als ignorierte Fixture
+exportiert werden:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 export-review-eval
+py -m target_radar.cli evaluate --fixture exports/local-review-eval.json
+```
+
+Der Export landet standardmaessig unter `exports/local-review-eval.json` und
+wird nicht versioniert.
+
 ## Datenschutz-Check
 
 ```powershell
