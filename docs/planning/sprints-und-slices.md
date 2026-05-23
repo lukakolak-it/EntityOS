@@ -1878,6 +1878,34 @@ Akzeptanzkriterien:
   JSON-Suche.
 - Tests decken Status-Log-Metadaten fuer Draft-Validation-Fehler ab.
 
+### Slice D6: Claim-Level Grounding fuer Research Summaries
+
+Status: umgesetzt.
+
+Ziel:
+
+Research Summaries sollen positive Aussagen nicht nur irgendwo mit einer
+Quellenliste begleiten. Jede Aussage im Abschnitt `Key Findings` muss selbst
+eine konkrete Evidence-Referenz tragen.
+
+Umfang:
+
+- `Key Findings` deterministisch als Claim-Abschnitt validieren
+- jede Finding-Zeile muss mit einer bekannten Referenz wie `E1:` beginnen
+- unbekannte Referenzen wie `E9:` werden als `ungrounded_claim` blockiert
+- Evidence-Referenzen, die nur in der Quellenliste auftauchen, reichen nicht
+  mehr aus
+- verwendete Claim-Referenzen im Draft-`used_context` speichern
+
+Akzeptanzkriterien:
+
+- Ein Finding ohne `E`-Referenz erzeugt `ungrounded_claim`.
+- Ein Finding mit unbekannter Referenz erzeugt `ungrounded_claim`.
+- Jede im Draft-Kontext verwendete Evidence hat ein Finding im
+  `Key Findings`-Abschnitt.
+- Auto-gekürzte Research Summaries behalten gueltige Claim-Referenzen.
+- Tests decken fehlende und unbekannte Finding-Referenzen ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die

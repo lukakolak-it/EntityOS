@@ -189,6 +189,16 @@ muss in der Quellenliste auftauchen. Die Validierung prueft bei Research
 Summaries, dass alle verwendeten Evidence-Refs und Source-URLs im Body
 enthalten sind.
 
+Claim-Level-Grounding:
+
+- Positive Aussagen gehoeren in `Key Findings`.
+- Jede Finding-Zeile muss mit einer bekannten Evidence-Referenz beginnen,
+  z. B. `- E1: ...`.
+- Eine Referenz nur in der `Evidence`-Quellenliste reicht nicht als Claim-Beleg.
+- Unbekannte Referenzen wie `E9:` oder Findings ohne Referenz werden als
+  `ungrounded_claim` blockiert.
+- Die verwendeten Claim-Referenzen werden im Draft-`used_context` gespeichert.
+
 Erlaubt:
 
 - Profilangaben aus dem Nutzerprofil
@@ -295,6 +305,8 @@ gespeichert. Wichtige Codes:
 - `forbidden_claim`: Use-Case-Policy verbietet diese Aussage.
 - `missing_section`: Pflichtabschnitt fehlt.
 - `ungrounded_claim`: erforderliche Evidence-Referenz oder Source-URL fehlt.
+  Bei Research Summaries gilt das auch fuer Findings ohne bekannte
+  Evidence-Referenz.
 
 Beispiele fuer verbotene Muster:
 

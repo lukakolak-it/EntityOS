@@ -40,6 +40,24 @@ class OversizedResearchSummaryGenerator:
         )
 
 
+class UngroundedResearchSummaryGenerator:
+    def generate(self, context, *, draft_type: str) -> tuple[str, str]:
+        source = context.evidence_items[0].source_url
+        return (
+            f"Research Summary: {context.target_domain}",
+            "\n\n".join(
+                [
+                    f"Title\nResearch Summary: {context.target_domain}",
+                    "Summary\nArbeitsnotiz.",
+                    "Key Findings\n- Solar Services in Essen bestaetigt.",
+                    f"Evidence\n- E1: {source}",
+                    "Risks Or Uncertainties\n- Keine",
+                    "Next Steps\n- Quellen pruefen.",
+                ]
+            ),
+        )
+
+
 class DraftEngineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.store = SQLiteStore.open(":memory:")
@@ -262,6 +280,60 @@ class DraftEngineTests(unittest.TestCase):
         self.assertIn("missing evidence reference: E2", result.errors)
         self.assertIn("ungrounded_claim", {issue.code for issue in result.issues})
 
+    def test_validator_requires_key_findings_claim_refs(self) -> None:
+        validator = DraftValidator()
+
+        result = validator.validate(
+            subject="Research Summary",
+            body="\n\n".join(
+                [
+                    "Title\nResearch Summary",
+                    "Summary\nArbeitsnotiz.",
+                    "Key Findings\n- Solar Services in Essen bestaetigt.",
+                    "Evidence\n- E1: https://example.com",
+                    "Risks Or Uncertainties\n- Keine",
+                    "Next Steps\n- Pruefen",
+                ]
+            ),
+            evidence_snippets=("Solar Services in Essen",),
+            required_source_urls=("https://example.com",),
+            required_evidence_refs=("E1",),
+            required_claim_refs=("E1",),
+        )
+
+        self.assertFalse(result.valid)
+        self.assertIn("ungrounded_claim", {issue.code for issue in result.issues})
+        self.assertIn(
+            "finding lacks evidence reference: - Solar Services in Essen bestaetigt.",
+            result.errors,
+        )
+        self.assertIn("missing finding for evidence reference: E1", result.errors)
+
+    def test_validator_rejects_unknown_key_finding_ref(self) -> None:
+        validator = DraftValidator()
+
+        result = validator.validate(
+            subject="Research Summary",
+            body="\n\n".join(
+                [
+                    "Title\nResearch Summary",
+                    "Summary\nArbeitsnotiz.",
+                    "Key Findings\n- E9: Solar Services in Essen bestaetigt.",
+                    "Evidence\n- E1: https://example.com",
+                    "Risks Or Uncertainties\n- Keine",
+                    "Next Steps\n- Pruefen",
+                ]
+            ),
+            evidence_snippets=("Solar Services in Essen",),
+            required_source_urls=("https://example.com",),
+            required_evidence_refs=("E1",),
+            required_claim_refs=("E1",),
+        )
+
+        self.assertFalse(result.valid)
+        self.assertIn("finding references unknown evidence: E9", result.errors)
+        self.assertIn("missing finding for evidence reference: E1", result.errors)
+
     def test_draft_engine_auto_fits_oversized_research_summary(self) -> None:
         rating = self.store.save_rating(RatingResult(
             target_id=self.target.id,
@@ -287,6 +359,33 @@ class DraftEngineTests(unittest.TestCase):
         self.assertIn("E1:", draft.body)
         self.assertIn("https://example.com/jobs", draft.body)
         self.assertEqual(draft.used_context["evidence"][0]["ref"], "E1")
+        self.assertEqual(draft.used_context["claim_refs"][0]["ref"], "E1")
+
+    def test_draft_engine_rejects_ungrounded_research_summary_finding(self) -> None:
+        rating = self.store.save_rating(RatingResult(
+            target_id=self.target.id,
+            recommended_action=RecommendedAction.DRAFT,
+            rule_score=84,
+            ai_score=88,
+            confidence=0.81,
+            rating_status="use_case_rated",
+            rating_version="rules-v1+usecase-v1",
+        ))
+
+        with self.assertRaises(DraftValidationError) as ctx:
+            DraftEngine(generator=UngroundedResearchSummaryGenerator()).create_draft(
+                profile=self.profile,
+                target=self.target,
+                rating=rating,
+                evidence=self.evidence,
+                draft_policy=get_default_use_case("company_osint").draft_policy,
+            )
+
+        self.assertIn("ungrounded_claim", ctx.exception.codes)
+        self.assertIn(
+            "finding lacks evidence reference: - Solar Services in Essen bestaetigt.",
+            ctx.exception.errors,
+        )
 
     def test_draft_context_prioritizes_typed_context_sources(self) -> None:
         evidence = [

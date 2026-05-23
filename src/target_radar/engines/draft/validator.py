@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 
@@ -50,6 +51,7 @@ class DraftValidator:
         forbidden_claims: tuple[str, ...] = (),
         required_source_urls: tuple[str, ...] = (),
         required_evidence_refs: tuple[str, ...] = (),
+        required_claim_refs: tuple[str, ...] = (),
         draft_type: str | None = None,
     ) -> DraftValidationResult:
         selected_max_body_chars = max_body_chars or self.max_body_chars
@@ -130,6 +132,12 @@ class DraftValidator:
                     field="body",
                     value=ref,
                 )
+        if required_claim_refs:
+            _validate_claim_refs(
+                issues,
+                body=body,
+                required_refs=required_claim_refs,
+            )
 
         errors = tuple(issue.message for issue in issues)
         return DraftValidationResult(
@@ -153,6 +161,89 @@ class DraftValidationError(ValueError):
 
 def _section_label(section: str) -> str:
     return section.replace("_", " ").title()
+
+
+_CLAIM_REF_RE = re.compile(r"^\s*-\s*(E\d+)\s*:")
+_RESEARCH_SUMMARY_SECTIONS = {
+    "title",
+    "summary",
+    "key findings",
+    "evidence",
+    "risks or uncertainties",
+    "next steps",
+}
+
+
+def _validate_claim_refs(
+    issues: list[DraftValidationIssue],
+    *,
+    body: str,
+    required_refs: tuple[str, ...],
+) -> None:
+    allowed_refs = {ref for ref in required_refs if ref}
+    finding_refs: set[str] = set()
+    for line in _section_lines(body, "key findings"):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        match = _CLAIM_REF_RE.match(stripped)
+        if match is None:
+            _add_issue(
+                issues,
+                "ungrounded_claim",
+                f"finding lacks evidence reference: {_clip_issue_value(stripped)}",
+                field="body",
+                value=stripped,
+            )
+            continue
+        ref = match.group(1)
+        if ref not in allowed_refs:
+            _add_issue(
+                issues,
+                "ungrounded_claim",
+                f"finding references unknown evidence: {ref}",
+                field="body",
+                value=ref,
+            )
+            continue
+        finding_refs.add(ref)
+
+    for ref in sorted(allowed_refs - finding_refs):
+        _add_issue(
+            issues,
+            "ungrounded_claim",
+            f"missing finding for evidence reference: {ref}",
+            field="body",
+            value=ref,
+        )
+
+
+def _section_lines(body: str, section_name: str) -> tuple[str, ...]:
+    selected: list[str] = []
+    collecting = False
+    wanted = _normalize_section_name(section_name)
+    for line in body.splitlines():
+        normalized = _normalize_section_name(line)
+        if normalized in _RESEARCH_SUMMARY_SECTIONS:
+            if normalized == wanted:
+                collecting = True
+                continue
+            if collecting:
+                break
+        elif collecting:
+            selected.append(line)
+    return tuple(selected)
+
+
+def _normalize_section_name(value: str) -> str:
+    return _normalize_for_matching(value).strip()
+
+
+def _clip_issue_value(value: str, max_chars: int = 120) -> str:
+    cleaned = " ".join(value.split()).strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    return cleaned[: max_chars - 1].rstrip() + "."
 
 
 def _normalize_for_matching(value: str) -> str:

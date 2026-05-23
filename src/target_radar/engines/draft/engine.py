@@ -86,6 +86,7 @@ class DraftEngine:
             forbidden_claims=forbidden_claims,
             required_source_urls=_required_source_urls(selected_draft_type, context),
             required_evidence_refs=_required_evidence_refs(selected_draft_type, context),
+            required_claim_refs=_required_claim_refs(selected_draft_type, context),
             draft_type=selected_draft_type,
         )
         if not validation.valid:
@@ -116,6 +117,7 @@ class DraftEngine:
                     }
                     for item in context.evidence_items
                 ],
+                "claim_refs": _claim_refs(selected_draft_type, context),
                 "draft_policy": draft_policy.to_dict() if draft_policy is not None else None,
             },
             regenerated_from_draft_id=regenerated_from_draft_id,
@@ -152,6 +154,25 @@ def _required_evidence_refs(draft_type: str, context) -> tuple[str, ...]:
     if draft_type != "research_summary":
         return ()
     return tuple(item.ref for item in context.evidence_items)
+
+
+def _required_claim_refs(draft_type: str, context) -> tuple[str, ...]:
+    if draft_type != "research_summary":
+        return ()
+    return tuple(item.ref for item in context.evidence_items)
+
+
+def _claim_refs(draft_type: str, context) -> list[dict[str, object]]:
+    if draft_type != "research_summary":
+        return []
+    return [
+        {
+            "ref": item.ref,
+            "source_url": item.source_url,
+            "evidence_type": item.evidence_type,
+        }
+        for item in context.evidence_items
+    ]
 
 
 def _fit_body_to_limit(
