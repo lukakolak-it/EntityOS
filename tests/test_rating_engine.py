@@ -121,6 +121,41 @@ class RatingEngineTests(unittest.TestCase):
         self.assertEqual(rating.rating_status, "rating_partial")
         self.assertLessEqual(rating.confidence, 0.4)
 
+    def test_ungrounded_ai_evidence_downgrades_to_review(self) -> None:
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/jobs",
+                text="Werkstudent IT in Essen mit Python",
+                context_type="career",
+            )
+        ]
+        engine = RatingEngine(
+            ai_provider=FakeAIRatingProvider(
+                AIRatingResponse(
+                    ai_score=90,
+                    confidence=0.9,
+                    recommended_action=RecommendedAction.DRAFT,
+                    reasons=[
+                        {
+                            "text": "Quote is not grounded.",
+                            "source_url": "https://example.com/jobs",
+                            "evidence": "Dieser Satz steht nicht in der Evidence",
+                        }
+                    ],
+                )
+            )
+        )
+
+        rating = engine.rate(self.target, self.search_profile, evidence)
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.REVIEW)
+        self.assertEqual(rating.rating_status, "rating_partial")
+        self.assertTrue(
+            any(risk.get("type") == "missing_ai_evidence" for risk in rating.risks)
+        )
+
     def test_hard_stopper_forces_skip(self) -> None:
         evidence = [
             Evidence(
@@ -314,6 +349,57 @@ class RatingEngineTests(unittest.TestCase):
             self.assertIn("Solar Services", request.context_text)
             self.assertNotIn("Werkstudent IT", request.context_text)
         self.assertEqual(rating.evidence[1]["evidence_type"], "context_directory")
+
+    def test_use_case_ungrounded_llm_reason_becomes_partial_review(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "regions": ["Essen"]},
+        )
+        self.target.metadata["lead_metadata"] = {
+            "source_quality": {
+                "source_type": "company_site",
+                "source_quality_score": 82,
+            }
+        }
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/about",
+                text="Example GmbH bietet Solar Services in Essen mit Impressum.",
+                context_type="about",
+            )
+        ]
+        engine = RatingEngine(
+            ai_provider=FakeAIRatingProvider(
+                AIRatingResponse(
+                    ai_score=92,
+                    confidence=0.9,
+                    recommended_action=RecommendedAction.DRAFT,
+                    reasons=[
+                        {
+                            "text": "Ungrounded reason.",
+                            "source_url": "https://example.com/about",
+                            "evidence": "nicht gespeicherter Satz",
+                        }
+                    ],
+                )
+            )
+        )
+
+        rating = engine.rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.REVIEW)
+        self.assertEqual(rating.rating_status, "rating_partial")
+        self.assertTrue(
+            any(risk.get("type") == "missing_ai_evidence" for risk in rating.risks)
+        )
 
     def test_use_case_missing_required_llm_becomes_partial_review(self) -> None:
         osint_profile = SearchProfile(

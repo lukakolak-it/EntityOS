@@ -137,6 +137,7 @@ class DraftEngineTests(unittest.TestCase):
         self.assertEqual(draft.draft_version, "research-summary-v1")
         self.assertIn("Research Summary: example.com", draft.subject)
         self.assertIn("Key Findings", draft.body)
+        self.assertIn("E1:", draft.body)
         self.assertIn("Risks Or Uncertainties", draft.body)
         self.assertEqual(draft.used_context["draft_policy"]["draft_type"], "research_summary")
 
@@ -186,8 +187,24 @@ class DraftEngineTests(unittest.TestCase):
         self.assertEqual(draft.draft_type, "research_summary")
         self.assertTrue(draft.used_context["evidence_truncated"])
         self.assertLessEqual(draft.used_context["evidence_total_chars"], 1250)
+        self.assertEqual(draft.used_context["evidence"][0]["ref"], "E1")
         self.assertIn("context_directory", draft.body)
         self.assertIn("https://directory.example/company", draft.body)
+
+    def test_validator_requires_research_summary_sources_and_refs(self) -> None:
+        validator = DraftValidator()
+
+        result = validator.validate(
+            subject="Research Summary",
+            body="Title\nResearch Summary\n\nEvidence\n- E1: https://example.com",
+            evidence_snippets=("Beleg",),
+            required_source_urls=("https://example.com", "https://missing.example"),
+            required_evidence_refs=("E1", "E2"),
+        )
+
+        self.assertFalse(result.valid)
+        self.assertIn("missing evidence source: https://missing.example", result.errors)
+        self.assertIn("missing evidence reference: E2", result.errors)
 
     def test_draft_context_prioritizes_typed_context_sources(self) -> None:
         evidence = [

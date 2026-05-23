@@ -72,6 +72,8 @@ class DraftEngine:
             max_body_chars=max_body_chars,
             required_sections=required_sections,
             forbidden_claims=forbidden_claims,
+            required_source_urls=_required_source_urls(selected_draft_type, context),
+            required_evidence_refs=_required_evidence_refs(selected_draft_type, context),
         )
         if not validation.valid:
             raise DraftValidationError(validation.errors)
@@ -93,6 +95,7 @@ class DraftEngine:
                 "evidence": [
                     {
                         "evidence_id": item.evidence_id,
+                        "ref": item.ref,
                         "source_url": item.source_url,
                         "evidence_type": item.evidence_type,
                         "context_type": item.context_type,
@@ -124,3 +127,15 @@ def _snippet_limit(draft_type: str) -> int:
     if draft_type == "research_summary":
         return 4
     return 1
+
+
+def _required_source_urls(draft_type: str, context) -> tuple[str, ...]:
+    if draft_type != "research_summary":
+        return ()
+    return tuple(item.source_url for item in context.evidence_items if item.source_url)
+
+
+def _required_evidence_refs(draft_type: str, context) -> tuple[str, ...]:
+    if draft_type != "research_summary":
+        return ()
+    return tuple(item.ref for item in context.evidence_items)

@@ -43,6 +43,7 @@ class FakeAIRatingProvider:
     def rate(self, request: AIRatingRequest) -> AIRatingResponse:
         if self.response is not None:
             return self.response
+        source_url, evidence = _first_grounded_context(request.context_text)
         action = (
             RecommendedAction.DRAFT
             if request.rule_score >= 70
@@ -55,8 +56,8 @@ class FakeAIRatingProvider:
             reasons=[
                 {
                     "text": "Rule score indicates a relevant target.",
-                    "source_url": "local://rule-rating",
-                    "evidence": request.context_text[:120],
+                    "source_url": source_url,
+                    "evidence": evidence,
                 }
             ],
         )
@@ -94,7 +95,8 @@ def _rating_instructions() -> str:
         "\"confidence\": number 0-1, \"recommended_action\": \"skip\"|\"review\"|"
         "\"draft\", \"reasons\": array of objects, \"risks\": array of objects}. "
         "Never return an empty object. Every positive reason must include "
-        "source_url and evidence. Example: {\"ai_score\": 72, \"confidence\": 0.68, "
+        "source_url and evidence copied from the supplied context. Use only Source "
+        "URLs that appear in context_text. Example: {\"ai_score\": 72, \"confidence\": 0.68, "
         "\"recommended_action\": \"review\", \"reasons\": [{\"text\": \"Relevant "
         "role\", \"source_url\": \"https://example.com\", \"evidence\": \"Werkstudent "
         "IT\"}], \"risks\": []}."
@@ -123,6 +125,22 @@ def _rating_prompt(request: AIRatingRequest) -> str:
         ensure_ascii=True,
         sort_keys=True,
     )
+
+
+def _first_grounded_context(context_text: str) -> tuple[str, str]:
+    source_url = "local://rule-rating"
+    evidence = context_text[:120]
+    lines = [line.strip() for line in context_text.splitlines() if line.strip()]
+    for index, line in enumerate(lines):
+        if not line.startswith("Source: "):
+            continue
+        source_url = line.removeprefix("Source: ").strip() or source_url
+        for next_line in lines[index + 1 :]:
+            if next_line.startswith("Evidence: "):
+                evidence = next_line.removeprefix("Evidence: ").strip()[:120]
+                return source_url, evidence
+        return source_url, evidence
+    return source_url, evidence
 
 
 def _load_json_object(text: str) -> dict[str, object]:

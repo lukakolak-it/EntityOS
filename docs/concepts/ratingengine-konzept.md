@@ -262,14 +262,27 @@ Regeln:
 - Keine unbelegten Behauptungen.
 - Keine erfundenen Ansprechpartner.
 - Keine Interpretation ohne Textanker.
-- Reasons brauchen `source_url` oder konkreten Page-Kontext.
+- Reasons brauchen `source_url` und ein Evidence-Zitat.
+- Die `source_url` muss zu gespeicherter Evidence passen.
+- Das Evidence-Zitat muss im gespeicherten Evidence-Text vorkommen.
 - Risks duerfen auch ohne starke Quelle genannt werden, wenn sie aus fehlendem Kontext entstehen.
 
 Wenn AI-Ausgabe keine verwertbaren Quellen enthaelt:
 
 - AI Score wird verworfen oder abgewertet,
+- Confidence wird auf maximal `0.4` begrenzt,
 - Target wird `rating_partial`,
 - `recommended_action = review`.
+
+Der LLM-Kontext wird mit Source-URL und Evidence-Text uebergeben:
+
+```text
+Source: https://example.com/about
+Evidence: gespeicherter Evidence-Text
+```
+
+Das Modell darf fuer positive Gruende nur diese Source-URLs und Textanker
+verwenden. Ungroundete Gruende werden als `missing_ai_evidence` behandelt.
 
 ## 10. Decision Merge
 

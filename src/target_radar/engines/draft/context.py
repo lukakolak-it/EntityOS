@@ -9,6 +9,7 @@ from target_radar.domain import Evidence, Profile, RatingResult, RecommendedActi
 
 @dataclass(frozen=True, slots=True)
 class DraftEvidenceSnippet:
+    ref: str
     text: str
     source_url: str
     evidence_id: int | None
@@ -67,6 +68,7 @@ class DraftContextBuilder:
                 continue
             items.append(
                 DraftEvidenceSnippet(
+                    ref=f"E{len(items) + 1}",
                     text=text,
                     source_url=item.source_url,
                     evidence_id=item.id,

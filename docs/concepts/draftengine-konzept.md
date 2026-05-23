@@ -159,6 +159,7 @@ Die Implementierung speichert im Draft-`used_context`, welche Evidence verwendet
 wurde:
 
 - `evidence_id`
+- `ref`, z. B. `E1`
 - `source_url`
 - `evidence_type`
 - `context_type`
@@ -172,6 +173,21 @@ nicht mehr durch unbounded Kontext sprengen.
 ## 8. Belegpflicht
 
 Die DraftEngine darf nur Aussagen nutzen, die durch Kontext belegbar sind.
+
+Research Summaries nutzen deshalb stabile Evidence-Referenzen:
+
+```text
+Key Findings
+- E1: [context_directory] ...
+
+Evidence
+- E1: https://example.com/source
+```
+
+Jeder Finding-Eintrag verweist auf eine Evidence-Referenz. Dieselbe Referenz
+muss in der Quellenliste auftauchen. Die Validierung prueft bei Research
+Summaries, dass alle verwendeten Evidence-Refs und Source-URLs im Body
+enthalten sind.
 
 Erlaubt:
 

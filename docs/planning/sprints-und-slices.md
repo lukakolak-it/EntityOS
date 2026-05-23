@@ -1768,6 +1768,57 @@ Akzeptanzkriterien:
 - `used_context` zeigt Evidence IDs, URLs, Types und ob Kontext gekuerzt wurde.
 - Tests decken Budgetierung, Priorisierung und Research-Summary-Erzeugung ab.
 
+### Slice D2: Research-Summary-Struktur verbessern
+
+Status: umgesetzt.
+
+Ziel:
+
+Research Summaries sollen als OSINT-Arbeitsnotiz lesbar sein und keine
+Bewerbungs- oder Marketingformulierungen enthalten.
+
+Umfang:
+
+- Research Summary mit stabilen Evidence-Referenzen `E1`, `E2`, ... erzeugen
+- `Key Findings` als referenzierte Evidence-Auswertung formulieren
+- `Evidence` als Quellenliste mit denselben Referenzen ausgeben
+- Summary vorsichtig als Arbeitsnotiz fuer manuelle Pruefung formulieren
+- verwendete Evidence-Referenzen im `used_context` speichern
+
+Akzeptanzkriterien:
+
+- Jeder Finding-Eintrag referenziert eine gespeicherte Evidence.
+- Jede Evidence-Referenz hat eine Source-URL.
+- Draft bleibt im Research-Summary-Schema mit `Summary`, `Key Findings`,
+  `Evidence`, `Risks Or Uncertainties` und `Next Steps`.
+- Tests pruefen Evidence-Referenzen und Source-Ausgabe.
+
+### Slice D3: Strict Evidence Grounding
+
+Status: umgesetzt.
+
+Ziel:
+
+LLM- und Draft-Ausgaben duerfen positive Aussagen nur behalten, wenn sie auf
+gespeicherte Evidence zurueckfuehrbar sind.
+
+Umfang:
+
+- LLM-Kontext mit Source-URL und Evidence-Text strukturieren
+- AI-Reasons nur akzeptieren, wenn `source_url` zu gespeicherter Evidence passt
+  und der zitierte Evidence-Text im gespeicherten Evidence-Text vorkommt
+- ungrounded AI-Reasons als `missing_ai_evidence` behandeln
+- Confidence auf maximal `0.4` abwerten und `rating_partial` erzwingen
+- Research-Summary-Drafts validieren, dass alle verwendeten Evidence-Refs und
+  Source-URLs im Body vorkommen
+
+Akzeptanzkriterien:
+
+- LLM-Reason mit erfundener URL oder nicht vorhandenem Zitat wird abgewertet.
+- Use-Case-Rating mit ungrounded LLM-Reason wird `rating_partial` und `review`.
+- Draft-Validierung meldet fehlende Evidence-Quellen oder Referenzen.
+- Tests decken Rating-Grounding und Draft-Grounding ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die
@@ -1776,6 +1827,5 @@ kontrolliert bedienbar werden. Sprint 13 macht die UI fuer eigene lokale
 Arbeitsweisen konfigurierbar. Sprint 14 startet die messbare Engine-Optimierung.
 Danach ist die sinnvolle Reihenfolge:
 
-1. D2 Research-Summary-Struktur und OSINT-Formulierungen verbessern.
-2. D3 Strict Evidence Grounding fuer Drafts und LLM-Reasons.
-3. Kleine Eval-Sets fuer Rating-Ergebnisse und Draft-Ausgaben aufbauen.
+1. Kleine Eval-Sets fuer Rating-Ergebnisse und Draft-Ausgaben aufbauen.
+2. Review-UI fuer Research-Summary-Drafts und Grounding-Fehler verbessern.

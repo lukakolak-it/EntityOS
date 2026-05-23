@@ -37,12 +37,12 @@ def _research_summary(context: DraftContext) -> tuple[str, str]:
     subject = f"Research Summary: {context.target_domain}"
     items = context.evidence_items[:4]
     findings = "\n".join(
-        f"- [{item.evidence_type}] {item.text}" for item in items
+        f"- {item.ref}: [{item.evidence_type}] {item.text}" for item in items
     )
     if not findings:
         findings = "- Keine belastbaren Belege gefunden."
     evidence_lines = "\n".join(
-        f"- {item.source_url}" for item in items
+        f"- {item.ref}: {item.source_url}" for item in items
     )
     if not evidence_lines:
         evidence_lines = "- Keine Quellen gespeichert."
@@ -58,8 +58,9 @@ def _research_summary(context: DraftContext) -> tuple[str, str]:
             f"Title\n{subject}",
             (
                 "Summary\n"
-                f"{context.target_domain} wurde anhand der lokalen Evidence fuer "
-                "den gewaehlten Use Case bewertet."
+                f"{context.target_domain} wurde anhand von {len(items)} lokal "
+                "gespeicherten Evidence-Objekten bewertet. Die folgenden Punkte "
+                "sind Arbeitsnotizen fuer die manuelle Pruefung."
             ),
             f"Key Findings\n{findings}",
             f"Evidence\n{evidence_lines}",

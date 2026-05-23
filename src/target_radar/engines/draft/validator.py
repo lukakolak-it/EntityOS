@@ -31,6 +31,8 @@ class DraftValidator:
         max_body_chars: int | None = None,
         required_sections: tuple[str, ...] = (),
         forbidden_claims: tuple[str, ...] = (),
+        required_source_urls: tuple[str, ...] = (),
+        required_evidence_refs: tuple[str, ...] = (),
     ) -> DraftValidationResult:
         selected_max_body_chars = max_body_chars or self.max_body_chars
         errors: list[str] = []
@@ -54,6 +56,12 @@ class DraftValidator:
             label = _section_label(section).lower()
             if label not in lower_body:
                 errors.append(f"missing required section: {section}")
+        for source_url in required_source_urls:
+            if source_url and source_url not in body:
+                errors.append(f"missing evidence source: {source_url}")
+        for ref in required_evidence_refs:
+            if ref and f"{ref}:" not in body:
+                errors.append(f"missing evidence reference: {ref}")
 
         return DraftValidationResult(valid=not errors, errors=tuple(errors))
 

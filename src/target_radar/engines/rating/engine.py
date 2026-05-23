@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from urllib.parse import urlparse
 
 from target_radar.config import RatingConfig
 from target_radar.domain import (
@@ -49,7 +50,7 @@ class RatingEngine:
 
         rule_result = self.rule_rater.rate(target, search_profile, evidence)
         evidence_payload = _evidence_payload(evidence)
-        context_text = " ".join(item.text for item in evidence)
+        context_text = _llm_context(evidence)
 
         if rule_result.hard_stop:
             return RatingResult(
@@ -153,7 +154,7 @@ class RatingEngine:
         pipeline_run_id: int | None,
     ) -> RatingResult:
         evidence_payload = _evidence_payload(evidence)
-        evidence_ok = _ai_reasons_have_evidence(ai_response)
+        evidence_ok = _ai_reasons_are_grounded(ai_response, evidence)
         confidence = ai_response.confidence if evidence_ok else min(ai_response.confidence, 0.4)
 
         if not evidence_ok:
@@ -317,7 +318,7 @@ class RatingEngine:
         ai_provider: AIRatingProvider | None,
     ) -> dict[str, object]:
         scoped_evidence = _criterion_evidence(evidence, criterion)
-        context_text = " ".join(item.text for item in scoped_evidence)
+        context_text = _llm_context(scoped_evidence)
         evidence_types = tuple(
             sorted({_evidence_type(item) for item in scoped_evidence})
         )
@@ -392,7 +393,7 @@ class RatingEngine:
                         _criterion_payload(risk, criterion.key)
                         for risk in response.risks
                     )
-                    if not _ai_reasons_have_evidence(response):
+                    if not _ai_reasons_are_grounded(response, scoped_evidence):
                         confidence = min(confidence, 0.4)
                         risks.append(
                             {
@@ -471,10 +472,48 @@ def _policy_decision_merge(
     return RecommendedAction.SKIP
 
 
-def _ai_reasons_have_evidence(response: AIRatingResponse) -> bool:
+def _ai_reasons_are_grounded(
+    response: AIRatingResponse,
+    evidence: list[Evidence],
+) -> bool:
     if not response.reasons:
         return False
-    return all(reason.get("source_url") and reason.get("evidence") for reason in response.reasons)
+    return all(_reason_is_grounded(reason, evidence) for reason in response.reasons)
+
+
+def _reason_is_grounded(
+    reason: dict[str, object],
+    evidence: list[Evidence],
+) -> bool:
+    source_url = str(reason.get("source_url") or "").strip()
+    quote = str(reason.get("evidence") or "").strip()
+    if not source_url or not quote:
+        return False
+    source_key = _url_key(source_url)
+    quote_text = _normalize_text(quote)
+    if not source_key or not quote_text:
+        return False
+    for item in evidence:
+        if _url_key(item.source_url) != source_key:
+            continue
+        if quote_text in _normalize_text(item.text):
+            return True
+    return False
+
+
+def _url_key(value: str) -> tuple[str, str] | None:
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+    if not host:
+        return None
+    path = parsed.path.strip("/")
+    return host, path
+
+
+def _normalize_text(value: str) -> str:
+    return " ".join(value.casefold().split())
 
 
 def _criterion_payload(payload: dict[str, object], criterion_key: str) -> dict[str, object]:
@@ -495,6 +534,14 @@ def _criterion_evidence(
         for item in evidence
         if _evidence_type(item) in accepted
     ]
+
+
+def _llm_context(evidence: list[Evidence]) -> str:
+    return "\n\n".join(
+        f"Source: {item.source_url}\nEvidence: {item.text}"
+        for item in evidence
+        if item.text.strip()
+    )
 
 
 def _evidence_type(evidence: Evidence) -> str:
