@@ -380,6 +380,10 @@ Regeln:
   Terme.
 - `company_osint` nutzt direkte Unternehmens-, Kontakt-, Impressum- und
   Services-Templates statt breiter Anbieter-Queries.
+- Topic-Templates werden vor reinen Industrie-Templates priorisiert. Bei
+  kleinen Budgets sollen breite Queries wie `{industry} Unternehmen {region}`
+  nur als Fallback laufen, nicht vor spezifischen Topic-Queries wie
+  `{topic} Referenzen {region}`.
 - `application_student` behaelt Bewerbungs-/Karriere-Templates und bekommt
   keine OSINT-Default-Ausschluesse.
 

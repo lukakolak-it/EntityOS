@@ -40,6 +40,10 @@ class UseCaseSchemaTests(unittest.TestCase):
 
         self.assertIn("{topic} Impressum {region}", use_case.query_policy.templates)
         self.assertIn("{industry} Unternehmen {region}", use_case.query_policy.templates)
+        self.assertLess(
+            use_case.query_policy.templates.index("{topic} Referenzen {region}"),
+            use_case.query_policy.templates.index("{industry} Unternehmen {region}"),
+        )
         self.assertNotIn("{industry} Anbieter {region}", use_case.query_policy.templates)
         self.assertIn("stellenangebote", use_case.query_policy.exclude_terms)
 

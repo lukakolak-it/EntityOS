@@ -145,6 +145,9 @@ MVP-Regel:
 - Ohne exakten Feld-Key oder Mapping ist der Use Case ungueltig.
 - Listenfelder werden einzeln expandiert. Ein Template mit mehreren Listenfeldern erzeugt ein kontrolliertes kartesisches Produkt.
 - Die QueryBuilder-Priorisierung begrenzt die Anzahl gerenderter Kombinationen ueber Budget und Template-Score.
+- Spezifische Topic-Templates sollen vor breiten Industrie-Templates stehen.
+  Industrie-only Queries sind fuer kleine OSINT-Budgets ein Fallback, weil sie
+  sonst fachfremde Firmen trotz korrekter Region in den Lauf ziehen koennen.
 
 Beispiel:
 

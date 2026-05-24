@@ -794,9 +794,9 @@ COMPANY_OSINT_USE_CASE = UseCaseConfig(
             "{topic} Kontakt {region}",
             "{topic} Impressum {region}",
             "{topic} Services {region}",
+            "{topic} Referenzen {region}",
             "{industry} Unternehmen {region}",
             "{industry} Dienstleister {region}",
-            "{topic} Referenzen {region}",
         ),
         exclude_terms=(
             "jobs",

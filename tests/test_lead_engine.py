@@ -64,11 +64,27 @@ class LeadEngineTests(unittest.TestCase):
             "Zero Trust Unternehmen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent",
         )
         self.assertIn(
+            "Zero Trust Referenzen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent",
+            {query.text for query in QueryBuilder().build(
+                search_profile,
+                use_case=get_default_use_case("company_osint"),
+                limit=5,
+            )},
+        )
+        self.assertNotIn(
             "IT Dienstleister Unternehmen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent",
             {query.text for query in QueryBuilder().build(
                 search_profile,
                 use_case=get_default_use_case("company_osint"),
-                limit=6,
+                limit=5,
+            )},
+        )
+        self.assertIn(
+            "IT Dienstleister Unternehmen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent",
+            {query.text for query in QueryBuilder().build(
+                search_profile,
+                use_case=get_default_use_case("company_osint"),
+                limit=7,
             )},
         )
 
