@@ -14,7 +14,7 @@ docs/evaluation/engine-eval-baseline.json
 Umfang:
 
 - 12 Source-Quality-Faelle
-- 12 Rating-Faelle
+- 14 Rating-Faelle
 - 5 Draft-Grounding-Faelle
 
 Ausfuehrung:

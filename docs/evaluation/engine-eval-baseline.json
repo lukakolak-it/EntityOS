@@ -473,6 +473,80 @@
       "expected_action": "skip",
       "expected_status": "rule_skipped",
       "expected_risk_types": ["unusable_evidence"]
+    },
+    {
+      "id": "rt_osint_same_domain_grounding",
+      "use_case": "company_osint",
+      "url": "https://solar-grounding.example/",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 82}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Solar"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://solar-grounding.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "Solar Grounding GmbH bietet Photovoltaik in Essen mit Kontakt."
+        },
+        {
+          "source_url": "https://solar-grounding.example/ueber-uns",
+          "context_type": "about",
+          "metadata": {"evidence_type": "target_about"},
+          "text": "Unsere Partnerschaft mit renommierten Herstellern garantiert hohe Qualitaet und Sicherheit."
+        }
+      ],
+      "ai_response": {
+        "ai_score": 88,
+        "confidence": 0.82,
+        "recommended_action": "draft",
+        "reasons": [
+          {
+            "text": "Herstellerpartnerschaft ist belegt.",
+            "source_url": "https://solar-grounding.example/",
+            "evidence": "Unsere Partnerschaft mit renommierten Herstellern garantiert hohe Qualitaet und Sicherheit."
+          }
+        ],
+        "risks": []
+      },
+      "expected_action": "draft",
+      "expected_status": "use_case_rated"
+    },
+    {
+      "id": "rt_osint_ellipsis_grounding",
+      "use_case": "company_osint",
+      "url": "https://solar-ellipsis.example/kontakt",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 82}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Photovoltaik"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://solar-ellipsis.example/kontakt",
+          "context_type": "contact",
+          "metadata": {"evidence_type": "target_contact"},
+          "text": "Kontaktiere uns fuer Fragen und Beratung rund um Photovoltaikanlagen. Unser Expertenteam hilft dir gerne weiter! Ueber 130 x in Deutschland: lokale Experten bieten Servicequalitaet."
+        }
+      ],
+      "ai_response": {
+        "ai_score": 86,
+        "confidence": 0.8,
+        "recommended_action": "draft",
+        "reasons": [
+          {
+            "text": "Kontakt und Netzwerk sind belegt.",
+            "source_url": "https://solar-ellipsis.example/kontakt",
+            "evidence": "Unser Expertenteam hilft dir gerne weiter! ... Ueber 130 x in Deutschland"
+          }
+        ],
+        "risks": []
+      },
+      "expected_action": "draft",
+      "expected_status": "use_case_rated"
     }
   ],
   "draft": [

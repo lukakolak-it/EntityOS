@@ -459,6 +459,131 @@ class RatingEngineTests(unittest.TestCase):
             any(risk.get("type") == "missing_ai_evidence" for risk in rating.risks)
         )
 
+    def test_use_case_grounding_accepts_same_domain_quote_path_mismatch(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "regions": ["Essen"]},
+        )
+        self.target.metadata["lead_metadata"] = {
+            "source_quality": {
+                "source_type": "company_site",
+                "source_quality_score": 82,
+            }
+        }
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/",
+                text="Example Solar GmbH bietet Photovoltaik in Essen mit Kontakt.",
+                context_type="homepage",
+                metadata={"evidence_type": "target_homepage"},
+            ),
+            Evidence(
+                id=2,
+                target_id=self.target.id,
+                source_url="https://example.com/ueber-uns",
+                text=(
+                    "Unsere Partnerschaft mit renommierten Herstellern garantiert "
+                    "hohe Qualitaet und Sicherheit."
+                ),
+                context_type="about",
+                metadata={"evidence_type": "target_about"},
+            ),
+        ]
+        engine = RatingEngine(
+            ai_provider=FakeAIRatingProvider(
+                AIRatingResponse(
+                    ai_score=88,
+                    confidence=0.82,
+                    recommended_action=RecommendedAction.DRAFT,
+                    reasons=[
+                        {
+                            "text": "Herstellerpartnerschaft ist belegt.",
+                            "source_url": "https://example.com/",
+                            "evidence": (
+                                "Unsere Partnerschaft mit renommierten Herstellern "
+                                "garantiert hohe Qualitaet und Sicherheit."
+                            ),
+                        }
+                    ],
+                )
+            )
+        )
+
+        rating = engine.rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.DRAFT)
+        self.assertEqual(rating.rating_status, "use_case_rated")
+        self.assertFalse(
+            any(risk.get("type") == "missing_ai_evidence" for risk in rating.risks)
+        )
+
+    def test_use_case_grounding_accepts_ellipsis_in_evidence_quote(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Photovoltaik"], "regions": ["Essen"]},
+        )
+        self.target.metadata["lead_metadata"] = {
+            "source_quality": {
+                "source_type": "company_site",
+                "source_quality_score": 82,
+            }
+        }
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/kontakt",
+                text=(
+                    "Kontaktiere uns fuer Fragen und Beratung rund um "
+                    "Photovoltaikanlagen. Unser Expertenteam hilft dir gerne weiter! "
+                    "Ueber 130 x in Deutschland: lokale Experten bieten Servicequalitaet."
+                ),
+                context_type="contact",
+                metadata={"evidence_type": "target_contact"},
+            )
+        ]
+        engine = RatingEngine(
+            ai_provider=FakeAIRatingProvider(
+                AIRatingResponse(
+                    ai_score=86,
+                    confidence=0.8,
+                    recommended_action=RecommendedAction.DRAFT,
+                    reasons=[
+                        {
+                            "text": "Kontakt und Netzwerk sind belegt.",
+                            "source_url": "https://example.com/kontakt",
+                            "evidence": (
+                                "Unser Expertenteam hilft dir gerne weiter! ... "
+                                "Ueber 130 x in Deutschland"
+                            ),
+                        }
+                    ],
+                )
+            )
+        )
+
+        rating = engine.rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.DRAFT)
+        self.assertEqual(rating.rating_status, "use_case_rated")
+        self.assertFalse(
+            any(risk.get("type") == "missing_ai_evidence" for risk in rating.risks)
+        )
+
     def test_use_case_missing_required_llm_becomes_partial_review(self) -> None:
         osint_profile = SearchProfile(
             profile_id=self.profile.id,

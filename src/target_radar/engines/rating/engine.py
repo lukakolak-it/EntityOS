@@ -533,10 +533,18 @@ def _reason_is_grounded(
     quote_text = _normalize_text(quote)
     if not source_key or not quote_text:
         return False
+    source_host, _source_path = source_key
     for item in evidence:
-        if _url_key(item.source_url) != source_key:
+        if _url_key(item.source_url) == source_key and _quote_matches_evidence(
+            quote,
+            item.text,
+        ):
+            return True
+    for item in evidence:
+        item_key = _url_key(item.source_url)
+        if item_key is None or item_key[0] != source_host:
             continue
-        if quote_text in _normalize_text(item.text):
+        if _quote_matches_evidence(quote, item.text):
             return True
     return False
 
@@ -554,6 +562,70 @@ def _url_key(value: str) -> tuple[str, str] | None:
 
 def _normalize_text(value: str) -> str:
     return " ".join(value.casefold().split())
+
+
+def _quote_matches_evidence(quote: str, evidence_text: str) -> bool:
+    normalized_quote = _normalize_text(quote)
+    normalized_evidence = _normalize_text(evidence_text)
+    if not normalized_quote or not normalized_evidence:
+        return False
+    if normalized_quote in normalized_evidence:
+        return True
+
+    segments = [
+        _normalize_text(segment)
+        for segment in re.split(r"\.\.\.|…", quote)
+        if _normalize_text(segment)
+    ]
+    meaningful_segments = [segment for segment in segments if len(segment) >= 20]
+    if meaningful_segments and all(
+        segment in normalized_evidence for segment in meaningful_segments
+    ):
+        return True
+
+    quote_tokens = _meaningful_grounding_tokens(normalized_quote)
+    if len(quote_tokens) < 3:
+        return False
+    evidence_tokens = set(_meaningful_grounding_tokens(normalized_evidence))
+    return all(token in evidence_tokens for token in quote_tokens)
+
+
+_GROUNDING_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "auf",
+        "aus",
+        "bei",
+        "das",
+        "der",
+        "die",
+        "ein",
+        "eine",
+        "for",
+        "from",
+        "fuer",
+        "für",
+        "in",
+        "ist",
+        "mit",
+        "of",
+        "the",
+        "to",
+        "und",
+        "von",
+        "wir",
+    }
+)
+
+
+def _meaningful_grounding_tokens(value: str) -> tuple[str, ...]:
+    return tuple(
+        token
+        for token in re.findall(r"[0-9a-zA-ZäöüÄÖÜß]+", value.casefold())
+        if len(token) >= 3 and token not in _GROUNDING_STOPWORDS
+    )
 
 
 def _criterion_payload(payload: dict[str, object], criterion_key: str) -> dict[str, object]:

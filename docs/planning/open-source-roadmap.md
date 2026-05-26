@@ -123,6 +123,10 @@ Umgesetzte Fixes:
   als Career-Seiten klassifiziert.
 - Platzhalterseiten wie `Diese Domain ist unkonfiguriert` werden als
   unbrauchbare Evidence erkannt und auf `skip` gesetzt.
+- Rating-Grounding akzeptiert belegte Zitate auch dann, wenn das LLM auf
+  derselben Domain einen leicht abweichenden Pfad nennt oder ein Zitat mit
+  Ellipsen kuerzt. Der Quote-Text muss weiterhin in gespeicherter Evidence
+  belegbar sein.
 - Eval-Baseline enthaelt Regressionen fuer die Run-26-Faelle
   `borowski.de`, `wattmacher.nrw` und `brenner-energie.de`.
 
