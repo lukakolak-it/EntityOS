@@ -5,9 +5,12 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import UTC, datetime
+from pathlib import Path
 
 from target_radar.use_cases import DEFAULT_USE_CASES
 
+
+SCHEMA_VERSION = 2
 
 SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -183,6 +186,14 @@ CREATE TABLE IF NOT EXISTS action_drafts (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS local_operations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    operation TEXT NOT NULL,
+    status TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_search_profiles_profile_id
     ON search_profiles(profile_id);
 CREATE INDEX IF NOT EXISTS idx_pipeline_runs_search_profile_id
@@ -207,17 +218,47 @@ CREATE INDEX IF NOT EXISTS idx_target_scores_target_id
     ON target_scores(target_id);
 CREATE INDEX IF NOT EXISTS idx_action_drafts_target_id
     ON action_drafts(target_id);
+CREATE INDEX IF NOT EXISTS idx_local_operations_created_at
+    ON local_operations(created_at);
 """
 
 
 def init_db(connection: sqlite3.Connection) -> None:
     """Create all MVP tables and indexes if they do not exist."""
 
+    current_version = schema_version(connection)
+    _backup_database_before_migration(connection, current_version=current_version)
     connection.executescript(SCHEMA_SQL)
     _migrate_schema(connection)
     _seed_default_use_cases(connection)
     _backfill_default_use_case(connection)
+    connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     connection.commit()
+
+
+def schema_version(connection: sqlite3.Connection) -> int:
+    row = connection.execute("PRAGMA user_version").fetchone()
+    return int(row[0]) if row is not None else 0
+
+
+def schema_status(connection: sqlite3.Connection) -> dict[str, object]:
+    current_version = schema_version(connection)
+    database_path = _database_path(connection)
+    backup_dir = (
+        str((Path(database_path).expanduser().resolve().parent / "backups"))
+        if database_path
+        else None
+    )
+    return {
+        "current_version": current_version,
+        "expected_version": SCHEMA_VERSION,
+        "migration_status": (
+            "current" if current_version == SCHEMA_VERSION else "needs_migration"
+        ),
+        "database_path": database_path,
+        "backup_dir": backup_dir,
+        "last_backup": _last_backup_path(database_path) if database_path else None,
+    }
 
 
 def _migrate_schema(connection: sqlite3.Connection) -> None:
@@ -253,6 +294,70 @@ def _migrate_schema(connection: sqlite3.Connection) -> None:
             ON pipeline_runs(use_case_id)
         """
     )
+
+
+def _backup_database_before_migration(
+    connection: sqlite3.Connection,
+    *,
+    current_version: int,
+) -> str | None:
+    if current_version >= SCHEMA_VERSION or not _has_existing_schema(connection):
+        return None
+    database_path = _database_path(connection)
+    if not database_path:
+        return None
+    source_path = Path(database_path).expanduser().resolve()
+    if not source_path.exists() or source_path.stat().st_size == 0:
+        return None
+
+    backup_dir = source_path.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    backup_path = (
+        backup_dir
+        / f"{source_path.stem}.schema-v{current_version}.{timestamp}{source_path.suffix}"
+    )
+    backup_connection = sqlite3.connect(backup_path)
+    try:
+        connection.backup(backup_connection)
+    finally:
+        backup_connection.close()
+    return str(backup_path)
+
+
+def _has_existing_schema(connection: sqlite3.Connection) -> bool:
+    row = connection.execute(
+        """
+        SELECT name FROM sqlite_master
+        WHERE type = 'table'
+          AND name NOT LIKE 'sqlite_%'
+        LIMIT 1
+        """
+    ).fetchone()
+    return row is not None
+
+
+def _database_path(connection: sqlite3.Connection) -> str | None:
+    rows = connection.execute("PRAGMA database_list").fetchall()
+    for row in rows:
+        name = row[1] if not isinstance(row, sqlite3.Row) else row["name"]
+        path = row[2] if not isinstance(row, sqlite3.Row) else row["file"]
+        if name == "main" and path:
+            return str(path)
+    return None
+
+
+def _last_backup_path(database_path: str) -> str | None:
+    source_path = Path(database_path).expanduser().resolve()
+    backup_dir = source_path.parent / "backups"
+    if not backup_dir.exists():
+        return None
+    backups = sorted(
+        backup_dir.glob(f"{source_path.stem}.schema-v*{source_path.suffix}"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    return str(backups[0]) if backups else None
 
 
 def _add_column_if_missing(

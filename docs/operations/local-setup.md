@@ -8,17 +8,26 @@ Target Radar ist fuer lokale Nutzung und Open Source vorbereitet. Standardmaessi
 
 ## Voraussetzungen
 
-- Windows mit Python Launcher `py`
 - Python 3.11 oder neuer
 - Git
+- Windows mit Python Launcher `py` oder Unix/macOS mit `python`
 
 Aktuelle lokale Verifikation wurde mit Python 3.14 ausgefuehrt.
 
 ## Installation
 
+Windows:
+
 ```powershell
 cd C:\Users\Luka\Desktop\target-radar
 $env:PYTHONPATH='src'
+```
+
+Unix/macOS:
+
+```bash
+cd ~/target-radar
+export PYTHONPATH=src
 ```
 
 Optional fuer eine isolierte Umgebung:
@@ -27,6 +36,14 @@ Optional fuer eine isolierte Umgebung:
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 py -m pip install -e .
+```
+
+Unix/macOS:
+
+```bash
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -e .
 ```
 
 ## Konfiguration
@@ -118,7 +135,55 @@ $env:PYTHONPATH='src'
 py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 diagnose
 ```
 
-Die Diagnose gibt Tabellenzaehler, aktuelle Runs und Review-Queue-Anzahl aus. Sensible Konfigurationswerte werden redigiert.
+Die Diagnose prueft:
+
+- Python-Version
+- lokale Schreibrechte fuer Datenbank, Logs und Exporte
+- SQLite-Schema-Version und Migrationsstatus
+- Brave-Key nur dann als blockierend, wenn echte Brave-Suche konfiguriert ist
+- Ollama-Erreichbarkeit und ob das Light-Modell installiert ist
+- Tabellenzaehler, aktuelle Runs, Review-Queue-Anzahl und lokale Operationen
+
+Sensible Konfigurationswerte werden redigiert. In der UI steht dieselbe
+Diagnose unter:
+
+```text
+http://127.0.0.1:8765/#secrets
+```
+
+Der JSON-Block kann dort fuer Bugreports kopiert werden.
+
+## Migration und Backup
+
+Die lokale SQLite-Datenbank nutzt eine Schema-Version via `PRAGMA user_version`.
+Beim Start oder `init-db` werden fehlende Tabellen und Spalten automatisch
+angelegt.
+
+Wenn eine bestehende Datei migriert wird, legt Target Radar vor der Migration
+ein Backup im Datenbankordner unter `backups/` an, z. B.:
+
+```text
+data/backups/target-radar.local.schema-v1.20260526-160000.sqlite3
+```
+
+Die Preflight-Diagnose zeigt:
+
+- aktuelle Schema-Version
+- erwartete Schema-Version
+- Migrationsstatus
+- Backup-Verzeichnis
+- letztes Backup
+
+## Lokale Datenverwaltung
+
+Unter `/#secrets` gibt es lokale Datenaktionen:
+
+- `Export Data`: schreibt einen secret-freien JSON-Export nach `exports/`
+- `Clear Run Data`: exportiert zuerst und loescht danach Laufzeitdaten
+
+`Clear Run Data` entfernt generierte Runs, Targets, SERP-Ergebnisse, Pages,
+Evidence, Ratings, Drafts und Statuslogs. Profile, Use Cases und `.env` bleiben
+erhalten. Die Aktion wird in `local_operations` protokolliert.
 
 ## Engine-Evaluation
 

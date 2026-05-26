@@ -391,7 +391,8 @@ label,
   color: var(--blue);
 }
 
-.status-pill.ready {
+.status-pill.ready,
+.status-pill.ok {
   background: var(--green-soft);
   color: var(--green);
 }
@@ -413,12 +414,15 @@ label,
   color: var(--blue);
 }
 
-.status-pill.missing {
+.status-pill.missing,
+.status-pill.error {
   background: var(--red-soft);
   color: var(--red);
 }
 
 .status-pill.optional,
+.status-pill.warning,
+.status-pill.skipped,
 .status-pill.completed_with_errors,
 .status-pill.p0,
 .status-pill.p10,

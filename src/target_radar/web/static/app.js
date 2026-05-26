@@ -6,6 +6,7 @@ const state = {
   useCases: [],
   searchProfiles: [],
   providerStatus: null,
+  preflight: null,
   localSettings: null,
   domainPolicies: null,
   contextSources: [],
@@ -150,6 +151,13 @@ const elements = {
   localSettingsGroups: document.querySelector("#localSettingsGroups"),
   localSettingsStatus: document.querySelector("#localSettingsStatus"),
   saveLocalSettingsButton: document.querySelector("#saveLocalSettingsButton"),
+  preflightStatus: document.querySelector("#preflightStatus"),
+  preflightList: document.querySelector("#preflightList"),
+  preflightJson: document.querySelector("#preflightJson"),
+  copyPreflightButton: document.querySelector("#copyPreflightButton"),
+  localDataStatus: document.querySelector("#localDataStatus"),
+  exportLocalDataButton: document.querySelector("#exportLocalDataButton"),
+  clearRunDataButton: document.querySelector("#clearRunDataButton"),
 };
 
 document.querySelector("#refreshButton").addEventListener("click", refreshAll);
@@ -183,6 +191,9 @@ elements.saveSearchProfileButton.addEventListener("click", saveSearchProfileFrom
 elements.deleteSearchProfileButton.addEventListener("click", deleteSelectedSearchProfile);
 elements.addBlacklistDomainButton.addEventListener("click", addBlacklistDomain);
 elements.saveLocalSettingsButton.addEventListener("click", saveLocalSettings);
+elements.copyPreflightButton.addEventListener("click", copyPreflightDiagnostics);
+elements.exportLocalDataButton.addEventListener("click", exportLocalData);
+elements.clearRunDataButton.addEventListener("click", clearRunData);
 elements.clearContextRunFilterButton.addEventListener("click", () => {
   state.selectedContextRunId = null;
   loadContextSources();
@@ -208,6 +219,7 @@ async function refreshAll() {
   await loadUseCases();
   await Promise.all([
     loadProviderStatus(),
+    loadPreflight(),
     loadLocalSettings(),
     loadDomainPolicies(),
     loadQueue(),
@@ -1296,10 +1308,37 @@ async function loadProviderStatus() {
   renderProviderStatus(data);
 }
 
+async function loadPreflight() {
+  const data = await api("/api/preflight");
+  state.preflight = data;
+  renderPreflight(data);
+}
+
 async function loadLocalSettings() {
   const data = await api("/api/local-settings");
   state.localSettings = data;
   renderLocalSettings(data);
+}
+
+function renderPreflight(data) {
+  if (!elements.preflightList) return;
+  elements.preflightStatus.outerHTML = pill(data.status || "unknown", "preflightStatus");
+  elements.preflightStatus = document.querySelector("#preflightStatus");
+  elements.preflightJson.value = JSON.stringify(data, null, 2);
+  elements.preflightList.innerHTML = "";
+  for (const check of data.checks || []) {
+    const item = document.createElement("article");
+    item.className = "item provider-card";
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(check.label || check.key)}</span>
+        ${pill(check.status || "unknown")}
+      </div>
+      <p>${escapeHtml(check.message || "")}</p>
+      ${check.next_step ? `<p class="muted">${escapeHtml(check.next_step)}</p>` : ""}
+    `;
+    elements.preflightList.appendChild(item);
+  }
 }
 
 function renderLocalSettings(data) {
@@ -1384,6 +1423,51 @@ async function saveLocalSettings() {
     elements.localSettingsStatus.textContent = error.message;
   } finally {
     elements.saveLocalSettingsButton.disabled = false;
+  }
+}
+
+async function copyPreflightDiagnostics() {
+  const text = elements.preflightJson.value;
+  try {
+    await navigator.clipboard.writeText(text);
+    elements.localDataStatus.textContent = "Diagnostics copied";
+  } catch {
+    elements.preflightJson.select();
+    document.execCommand("copy");
+    elements.localDataStatus.textContent = "Diagnostics copied";
+  }
+}
+
+async function exportLocalData() {
+  elements.localDataStatus.textContent = "Exporting...";
+  elements.exportLocalDataButton.disabled = true;
+  try {
+    const data = await api("/api/local-data/export", { method: "POST", body: {} });
+    elements.localDataStatus.textContent = `Exported: ${data.output_path}`;
+    await loadPreflight();
+  } catch (error) {
+    elements.localDataStatus.textContent = error.message;
+  } finally {
+    elements.exportLocalDataButton.disabled = false;
+  }
+}
+
+async function clearRunData() {
+  if (!window.confirm("Run data will be exported first, then deleted locally.")) return;
+  elements.localDataStatus.textContent = "Exporting and clearing...";
+  elements.clearRunDataButton.disabled = true;
+  try {
+    const data = await api("/api/local-data/clear-run-data", { method: "POST", body: {} });
+    const deleted = Object.entries(data.clear.counts_before || {})
+      .filter((entry) => Number(entry[1]) > 0)
+      .map((entry) => `${entry[0]}:${entry[1]}`)
+      .join(", ");
+    elements.localDataStatus.textContent = `Exported: ${data.export.output_path}. Cleared: ${deleted || "none"}`;
+    await refreshAll();
+  } catch (error) {
+    elements.localDataStatus.textContent = error.message;
+  } finally {
+    elements.clearRunDataButton.disabled = false;
   }
 }
 

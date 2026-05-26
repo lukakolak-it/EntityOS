@@ -383,6 +383,35 @@
         <section class="panel secrets-status-panel" aria-labelledby="secretsStatusTitle">
           <div class="panel-head">
             <h2 id="secretsStatusTitle">Checks</h2>
+            <span id="preflightStatus" class="status-pill active">local</span>
+          </div>
+          <div id="preflightList" class="stack"></div>
+          <div class="detail">
+            <label>Diagnostic JSON</label>
+            <textarea id="preflightJson" class="code-input short-textarea" readonly></textarea>
+            <div class="actions">
+              <button id="copyPreflightButton" type="button">Copy Diagnostics</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel local-data-panel" aria-labelledby="localDataTitle">
+          <div class="panel-head">
+            <h2 id="localDataTitle">Local Data</h2>
+            <span class="status-pill optional">runtime</span>
+          </div>
+          <div class="detail">
+            <div id="localDataStatus" class="editor-status"></div>
+            <div class="actions">
+              <button id="exportLocalDataButton" type="button">Export Data</button>
+              <button id="clearRunDataButton" class="danger" type="button">Clear Run Data</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel secrets-provider-panel" aria-labelledby="secretsProviderTitle">
+          <div class="panel-head">
+            <h2 id="secretsProviderTitle">Providers</h2>
             <span class="status-pill active">local</span>
           </div>
           <div id="secretsProviderStatusList" class="stack"></div>

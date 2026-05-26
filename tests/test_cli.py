@@ -67,6 +67,10 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(diagnose_payload["database"]["status"], "ok")
         self.assertEqual(diagnose_payload["database"]["url"], "[REDACTED]")
+        self.assertIn("checks", diagnose_payload)
+        self.assertEqual(diagnose_payload["database"]["migration_status"], "current")
+        self.assertGreaterEqual(diagnose_payload["database"]["schema_version"], 1)
+        self.assertIn("providers", diagnose_payload)
         self.assertTrue(privacy_payload["ok"])
 
     def test_evaluate_command_runs_engine_baseline(self) -> None:

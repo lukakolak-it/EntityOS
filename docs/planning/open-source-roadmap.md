@@ -328,6 +328,8 @@ Akzeptanzkriterien:
 
 ## Sprint 19: Installation, Migration und lokale Diagnose
 
+Status: umgesetzt.
+
 Ziel:
 
 Ein externer Nutzer soll das Projekt ohne persoenliche Einweisung starten
@@ -335,11 +337,14 @@ koennen.
 
 ### Slice 19.1: Setup-Pfad vereinfachen
 
+Status: umgesetzt.
+
 Umfang:
 
 - README auf aktuellen Stand bringen
 - `.env.example` vollstaendig dokumentieren
 - Setup-Schritte fuer Windows und Unix beschreiben
+- README beschreibt Mock-Start, UI, Diagnose und Provider-Konfiguration
 
 Akzeptanzkriterien:
 
@@ -349,11 +354,15 @@ Akzeptanzkriterien:
 
 ### Slice 19.2: Preflight-Diagnose
 
+Status: umgesetzt.
+
 Umfang:
 
 - Diagnose fuer Python-Version, DB, Schreibrechte, Brave, Ollama und Modelle
 - UI-Seite fuer Provider- und Systemstatus ausbauen
 - klare Fehlertexte mit naechstem Schritt
+- `/api/preflight`, CLI-`diagnose` und UI-Diagnose liefern denselben
+  secret-sicheren Snapshot
 
 Akzeptanzkriterien:
 
@@ -363,11 +372,15 @@ Akzeptanzkriterien:
 
 ### Slice 19.3: Datenbankmigrationen und Backup
 
+Status: umgesetzt.
+
 Umfang:
 
 - lokale Migrationsstrategie fuer SQLite festlegen
 - Backup vor Migration anbieten
 - Schema-Version sichtbar machen
+- SQLite `user_version` wird gepflegt
+- bestehende DB-Dateien werden vor Migration unter `backups/` gesichert
 
 Akzeptanzkriterien:
 
@@ -377,11 +390,15 @@ Akzeptanzkriterien:
 
 ### Slice 19.4: Lokale Datenverwaltung
 
+Status: umgesetzt.
+
 Umfang:
 
 - UI-Aktion fuer Run-Daten loeschen
 - Export vor Loeschung anbieten
 - Secrets nie exportieren
+- Export und Clear-Run-Data sind in der UI unter `#secrets` erreichbar
+- Loeschaktionen werden in `local_operations` protokolliert
 
 Akzeptanzkriterien:
 

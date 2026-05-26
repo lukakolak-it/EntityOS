@@ -17,7 +17,7 @@ from target_radar.domain import (
     Target,
     TargetStatus,
 )
-from target_radar.storage import NotFoundError, SQLiteStore, init_db
+from target_radar.storage import NotFoundError, SCHEMA_VERSION, SQLiteStore, init_db, schema_status
 from target_radar.use_cases import UseCaseConfig, UseCaseStatus, get_default_use_case
 
 
@@ -50,8 +50,10 @@ class SQLiteStorageTests(unittest.TestCase):
                 "target_scores",
                 "action_drafts",
                 "evidence",
+                "local_operations",
             }.issubset(table_names)
         )
+        self.assertEqual(schema_status(self.store.connection)["current_version"], SCHEMA_VERSION)
 
     def test_default_use_cases_are_seeded(self) -> None:
         use_cases = self.store.list_use_cases(status=UseCaseStatus.TEMPLATE)
@@ -213,6 +215,7 @@ class SQLiteStorageTests(unittest.TestCase):
 
             search_columns = _column_names(connection, "search_profiles")
             run_columns = _column_names(connection, "pipeline_runs")
+            schema = schema_status(connection)
             migrated_search_profile = connection.execute(
                 "SELECT use_case_id FROM search_profiles WHERE id = 1"
             ).fetchone()
@@ -223,6 +226,50 @@ class SQLiteStorageTests(unittest.TestCase):
         self.assertIn("attributes_json", search_columns)
         self.assertIn("use_case_snapshot_json", run_columns)
         self.assertIsNotNone(migrated_search_profile["use_case_id"])
+        self.assertEqual(schema["current_version"], SCHEMA_VERSION)
+
+    def test_file_database_is_backed_up_before_schema_migration(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "legacy.sqlite3"
+            connection = sqlite3.connect(db_path)
+            try:
+                connection.execute("CREATE TABLE legacy_table (id INTEGER PRIMARY KEY)")
+                connection.commit()
+                init_db(connection)
+                backups = list((db_path.parent / "backups").glob("legacy.schema-v*.sqlite3"))
+            finally:
+                connection.close()
+
+        self.assertEqual(len(backups), 1)
+
+    def test_local_data_can_be_exported_and_run_data_cleared(self) -> None:
+        profile = self.store.create_profile(Profile(name="Runtime Data Profile"))
+        search_profile = self.store.create_search_profile(
+            SearchProfile(profile_id=profile.id, name="Runtime Search")
+        )
+        run = self.store.create_pipeline_run(PipelineRun(search_profile_id=search_profile.id))
+        target = self.store.create_target(
+            Target(
+                domain="runtime.example",
+                base_url="https://runtime.example",
+                status=TargetStatus.NEEDS_REVIEW,
+            )
+        )
+
+        export = self.store.export_local_data()
+        cleared = self.store.clear_run_data(export_path="exports/test.json")
+        operations = self.store.list_local_operations()
+
+        self.assertFalse(export["secrets_included"])
+        self.assertEqual(export["counts"]["pipeline_runs"], 1)
+        self.assertEqual(cleared["counts_before"]["targets"], 1)
+        self.assertEqual(cleared["counts_after"]["targets"], 0)
+        self.assertEqual(cleared["counts_after"]["pipeline_runs"], 0)
+        self.assertEqual(self.store.get_search_profile(search_profile.id).id, search_profile.id)
+        self.assertEqual(operations[0]["operation"], "clear_run_data")
 
     def test_status_log_allows_null_pipeline_run_for_api_actions(self) -> None:
         target = self.store.create_target(

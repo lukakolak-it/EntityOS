@@ -34,6 +34,34 @@ from target_radar.use_cases import (
 )
 
 
+LOCAL_EXPORT_TABLES = (
+    "profiles",
+    "use_cases",
+    "search_profiles",
+    "pipeline_runs",
+    "targets",
+    "source_queries",
+    "serp_results",
+    "target_pages",
+    "evidence",
+    "target_status_log",
+    "target_scores",
+    "action_drafts",
+    "local_operations",
+)
+LOCAL_RUN_DATA_DELETE_ORDER = (
+    "action_drafts",
+    "target_scores",
+    "evidence",
+    "target_pages",
+    "target_status_log",
+    "serp_results",
+    "source_queries",
+    "pipeline_runs",
+    "targets",
+)
+
+
 class StorageError(RuntimeError):
     """Base storage error."""
 
@@ -90,6 +118,128 @@ class SQLiteStore:
 
     def close(self) -> None:
         self.connection.close()
+
+    def export_local_data(self) -> dict[str, Any]:
+        """Return a secret-free local data export payload."""
+
+        generated_at = datetime.now(UTC)
+        tables: dict[str, list[dict[str, Any]]] = {}
+        counts: dict[str, int] = {}
+        for table in LOCAL_EXPORT_TABLES:
+            if not self._table_exists(table):
+                tables[table] = []
+                counts[table] = 0
+                continue
+            rows = self.connection.execute(f"SELECT * FROM {table} ORDER BY id ASC").fetchall()
+            payload_rows = [_export_row(row) for row in rows]
+            tables[table] = payload_rows
+            counts[table] = len(payload_rows)
+        return {
+            "format": "target-radar-local-data-v1",
+            "generated_at": _format_dt(generated_at),
+            "secrets_included": False,
+            "counts": counts,
+            "tables": tables,
+        }
+
+    def clear_run_data(self, *, export_path: str | None = None) -> dict[str, Any]:
+        """Delete generated run data while keeping profiles, use cases and settings."""
+
+        before = self.table_counts(LOCAL_RUN_DATA_DELETE_ORDER)
+        metadata = {
+            "export_path": export_path,
+            "counts_before": before,
+            "deleted_tables": list(LOCAL_RUN_DATA_DELETE_ORDER),
+        }
+        with self.connection:
+            self.connection.execute("PRAGMA foreign_keys = ON")
+            for table in LOCAL_RUN_DATA_DELETE_ORDER:
+                if self._table_exists(table):
+                    self.connection.execute(f"DELETE FROM {table}")
+            operation = self._record_local_operation_in_transaction(
+                operation="clear_run_data",
+                status="completed",
+                metadata=metadata,
+            )
+        after = self.table_counts(LOCAL_RUN_DATA_DELETE_ORDER)
+        return {
+            "operation": operation,
+            "counts_before": before,
+            "counts_after": after,
+            "export_path": export_path,
+        }
+
+    def table_counts(self, tables: Iterable[str]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for table in tables:
+            if not self._table_exists(table):
+                counts[table] = 0
+                continue
+            row = self.connection.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()
+            counts[table] = int(row["count"])
+        return counts
+
+    def record_local_operation(
+        self,
+        *,
+        operation: str,
+        status: str,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        with self.connection:
+            return self._record_local_operation_in_transaction(
+                operation=operation,
+                status=status,
+                metadata=metadata or {},
+            )
+
+    def list_local_operations(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        if not self._table_exists("local_operations"):
+            return []
+        rows = self.connection.execute(
+            """
+            SELECT * FROM local_operations
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [_operation_from_row(row) for row in rows]
+
+    def _record_local_operation_in_transaction(
+        self,
+        *,
+        operation: str,
+        status: str,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        now = datetime.now(UTC)
+        cursor = self.connection.execute(
+            """
+            INSERT INTO local_operations (
+                operation, status, metadata_json, created_at
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (operation, status, _json_dumps(metadata), _format_dt(now)),
+        )
+        return {
+            "id": int(cursor.lastrowid),
+            "operation": operation,
+            "status": status,
+            "metadata": metadata,
+            "created_at": _format_dt(now),
+        }
+
+    def _table_exists(self, table: str) -> bool:
+        row = self.connection.execute(
+            """
+            SELECT name FROM sqlite_master
+            WHERE type = 'table' AND name = ?
+            """,
+            (table,),
+        ).fetchone()
+        return row is not None
 
     def save_use_case(self, use_case: UseCaseConfig) -> int:
         validated = validate_use_case_config(use_case)
@@ -1280,6 +1430,27 @@ def _json_loads(value: str | None, default: Any) -> Any:
     if value is None:
         return default
     return json.loads(value)
+
+
+def _export_row(row: sqlite3.Row) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    for key in row.keys():
+        value = row[key]
+        if key.endswith("_json"):
+            payload[key.removesuffix("_json")] = _json_loads(value, {} if value else {})
+        else:
+            payload[key] = value
+    return payload
+
+
+def _operation_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    return {
+        "id": int(row["id"]),
+        "operation": row["operation"],
+        "status": row["status"],
+        "metadata": _json_loads(row["metadata_json"], {}),
+        "created_at": row["created_at"],
+    }
 
 
 def _use_case_values(

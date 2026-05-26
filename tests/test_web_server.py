@@ -85,6 +85,7 @@ class WebServerTests(unittest.TestCase):
             try:
                 index = _http_text(f"{base_url}/")
                 provider_status_payload = _http_json(f"{base_url}/api/provider-status")
+                preflight_payload = _http_json(f"{base_url}/api/preflight")
                 local_settings_payload = _http_json(f"{base_url}/api/local-settings")
                 context_sources_payload = _http_json(f"{base_url}/api/context-sources")
                 saved_local_settings_payload = _http_json(
@@ -252,6 +253,17 @@ class WebServerTests(unittest.TestCase):
                     method="POST",
                     payload={},
                 )
+                local_data_export_payload = _http_json(
+                    f"{base_url}/api/local-data/export",
+                    method="POST",
+                    payload={},
+                )
+                local_data_clear_payload = _http_json(
+                    f"{base_url}/api/local-data/clear-run-data",
+                    method="POST",
+                    payload={},
+                )
+                queue_after_clear_payload = _http_json(f"{base_url}/api/review-queue")
             finally:
                 server.shutdown()
                 server.server_close()
@@ -263,10 +275,15 @@ class WebServerTests(unittest.TestCase):
         self.assertIn("#secrets", index)
         self.assertIn("Run konfigurieren", index)
         self.assertIn("Provider Status", index)
+        self.assertIn("Preflight", index)
+        self.assertIn("Local Data", index)
         self.assertIn("Context Sources", index)
         self.assertTrue(provider_status_payload["search"]["mock_ready"])
         self.assertIn("models", provider_status_payload["llm"]["light"])
         self.assertNotIn("api_key", json.dumps(provider_status_payload).lower())
+        self.assertIn("checks", preflight_payload)
+        self.assertEqual(preflight_payload["database"]["migration_status"], "current")
+        self.assertNotIn("test-secret-value", json.dumps(preflight_payload))
         self.assertGreaterEqual(len(local_settings_payload["groups"]), 1)
         self.assertEqual(
             _settings_field(saved_local_settings_payload, "SEARCH_PROVIDER")["value"],
@@ -330,6 +347,11 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(rerate_payload["reprocess"]["rated_count"], 1)
         self.assertEqual(draft_payload["reprocess"]["drafted_count"], 1)
         self.assertEqual(action_payload["status_log"]["to_status"], "approved")
+        self.assertFalse(local_data_export_payload["secrets_included"])
+        self.assertGreaterEqual(local_data_export_payload["counts"]["pipeline_runs"], 1)
+        self.assertFalse(local_data_clear_payload["export"]["secrets_included"])
+        self.assertGreaterEqual(local_data_clear_payload["clear"]["counts_before"]["targets"], 1)
+        self.assertEqual(queue_after_clear_payload["items"], [])
 
 
 def _seed_context_source(database_url: str) -> tuple[int, int]:

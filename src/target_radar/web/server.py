@@ -9,6 +9,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import asdict, replace
+from datetime import UTC, datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -35,6 +36,7 @@ from target_radar.engines.rating import (
     RatingEngine,
     create_rating_engine,
 )
+from target_radar.ops import collect_diagnostics
 from target_radar.pipeline import (
     FetchConfig as PipelineFetchConfig,
     GeneratedFakeFetcher,
@@ -50,6 +52,7 @@ from target_radar.use_cases import UseCaseConfig, UseCaseStatus, validate_use_ca
 
 
 STATIC_DIR = Path(__file__).with_name("static")
+LOCAL_EXPORT_DIR = Path("exports")
 LOGGER = logging.getLogger(__name__)
 FULL_PIPELINE_PHASES = (
     PipelinePhase.LEAD,
@@ -187,6 +190,8 @@ def _make_handler(
                     self._send_json({"status": "ok", "host": "127.0.0.1"})
                 elif parsed.path == "/api/provider-status":
                     self._handle_provider_status()
+                elif parsed.path == "/api/preflight":
+                    self._handle_preflight()
                 elif parsed.path == "/api/local-settings":
                     self._handle_local_settings()
                 elif parsed.path == "/api/domain-policies":
@@ -223,6 +228,10 @@ def _make_handler(
                     self._handle_run_preview()
                 elif parsed.path == "/api/local-settings":
                     self._handle_local_settings_save()
+                elif parsed.path == "/api/local-data/export":
+                    self._handle_local_data_export()
+                elif parsed.path == "/api/local-data/clear-run-data":
+                    self._handle_local_data_clear()
                 elif parsed.path == "/api/search-profiles":
                     self._handle_search_profile_create()
                 elif parsed.path == "/api/domain-policies/blacklist":
@@ -286,6 +295,15 @@ def _make_handler(
         def _handle_provider_status(self) -> None:
             self._send_json(_provider_status_payload(self._config(), database_url))
 
+        def _handle_preflight(self) -> None:
+            self._send_json(
+                collect_diagnostics(
+                    database_url,
+                    config=self._config(),
+                    env_file=env_file,
+                )
+            )
+
         def _handle_local_settings(self) -> None:
             self._send_json(_local_settings_payload(self._config(), env_file=env_file))
 
@@ -299,6 +317,25 @@ def _make_handler(
                 _validate_local_setting_updates(env_file, updates)
                 _update_env_file_values(env_file, updates)
             self._send_json(_local_settings_payload(self._config(), env_file=env_file))
+
+        def _handle_local_data_export(self) -> None:
+            store = self._store()
+            try:
+                payload = _write_local_data_export(store)
+                self._send_json(payload)
+            finally:
+                store.close()
+
+        def _handle_local_data_clear(self) -> None:
+            store = self._store()
+            try:
+                export_payload = _write_local_data_export(store)
+                clear_payload = store.clear_run_data(
+                    export_path=str(export_payload["output_path"])
+                )
+                self._send_json({"export": export_payload, "clear": clear_payload})
+            finally:
+                store.close()
 
         def _handle_domain_policies(self) -> None:
             store = self._store()
@@ -1037,6 +1074,34 @@ def _non_empty_value(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _write_local_data_export(store: SQLiteStore) -> dict[str, Any]:
+    payload = store.export_local_data()
+    LOCAL_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+    output_path = LOCAL_EXPORT_DIR / f"target-radar-local-data-{timestamp}.json"
+    output_path.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    operation = store.record_local_operation(
+        operation="export_local_data",
+        status="completed",
+        metadata={
+            "output_path": str(output_path),
+            "counts": payload["counts"],
+            "secrets_included": False,
+        },
+    )
+    return {
+        "format": payload["format"],
+        "generated_at": payload["generated_at"],
+        "output_path": str(output_path),
+        "secrets_included": False,
+        "counts": payload["counts"],
+        "operation": operation,
+    }
 
 
 def _parse_id_path(path: str, prefix: str) -> int:
