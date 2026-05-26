@@ -58,9 +58,11 @@ $env:PYTHONPATH='src'
 py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 run-fake
 ```
 
-In der UI kann ein Fake Run unter `/#runs` gestartet werden. Unter `/#secrets`
-zeigt die Preflight-Diagnose, ob Python, Datenbank, Schreibrechte, Brave,
-Ollama und lokale Modelle einsatzbereit sind.
+Die UI startet unter `/#dashboard` mit dem naechsten lokalen Arbeitsschritt.
+Ein Fake Run kann unter `/#runs` gestartet werden. Unter `/#review` gibt es
+Queue-Filter, Bulk-Entscheidungen und Target-Details. Unter `/#secrets` zeigt
+die Preflight-Diagnose, ob Python, Datenbank, Schreibrechte, Brave, Ollama und
+lokale Modelle einsatzbereit sind.
 
 ## Echte Provider
 

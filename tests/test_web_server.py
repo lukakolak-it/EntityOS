@@ -11,8 +11,11 @@ from pathlib import Path
 from target_radar.domain import (
     ImportStatus,
     LeadResultStatus,
+    PipelinePhase,
     PipelineRun,
     Profile,
+    RatingResult,
+    RecommendedAction,
     SearchProfile,
     Target,
     TargetStatus,
@@ -22,6 +25,57 @@ from target_radar.web.server import create_server
 
 
 class WebServerTests(unittest.TestCase):
+    def test_review_queue_filters_bulk_action_and_undo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database_url = f"sqlite:///{Path(tmpdir) / 'target-radar.sqlite3'}"
+            target_id, run_id, use_case_id = _seed_review_queue_item(database_url)
+            env_file = Path(tmpdir) / ".env"
+            env_file.write_text("SEARCH_PROVIDER=mock\n", encoding="utf-8")
+            server = create_server(
+                database_url=database_url,
+                host="127.0.0.1",
+                port=0,
+                env_file=env_file,
+            )
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base_url = f"http://127.0.0.1:{server.server_port}"
+            try:
+                filtered_payload = _http_json(
+                    f"{base_url}/api/review-queue"
+                    f"?use_case_id={use_case_id}&pipeline_run_id={run_id}"
+                    "&status=needs_review&recommended_action=review"
+                    "&source_type=company_site&risk_type=missing_ai_evidence"
+                )
+                bulk_payload = _http_json(
+                    f"{base_url}/api/review-queue/bulk-action",
+                    method="POST",
+                    payload={"target_ids": [target_id], "action": "reject"},
+                )
+                rejected_detail = _http_json(f"{base_url}/api/targets/{target_id}")
+                undo_payload = _http_json(
+                    f"{base_url}/api/targets/{target_id}/undo-review",
+                    method="POST",
+                    payload={},
+                )
+                restored_detail = _http_json(f"{base_url}/api/targets/{target_id}")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+
+        self.assertEqual([item["id"] for item in filtered_payload["items"]], [target_id])
+        self.assertEqual(filtered_payload["items"][0]["source_type"], "company_site")
+        self.assertEqual(bulk_payload["updated_count"], 1)
+        self.assertEqual(bulk_payload["status_logs"][0]["to_status"], "rejected")
+        self.assertEqual(
+            bulk_payload["status_logs"][0]["metadata"]["trigger"],
+            "ui_bulk_action",
+        )
+        self.assertEqual(rejected_detail["target"]["status"], "rejected")
+        self.assertEqual(undo_payload["status_log"]["to_status"], "needs_review")
+        self.assertEqual(restored_detail["target"]["status"], "needs_review")
+
     def test_context_source_can_be_attached_as_target_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             database_url = f"sqlite:///{Path(tmpdir) / 'target-radar.sqlite3'}"
@@ -278,6 +332,9 @@ class WebServerTests(unittest.TestCase):
         self.assertIn("Preflight", index)
         self.assertIn("Local Data", index)
         self.assertIn("Context Sources", index)
+        self.assertIn("#dashboard", index)
+        self.assertIn("Dashboard", index)
+        self.assertIn("Reject selected", index)
         self.assertTrue(provider_status_payload["search"]["mock_ready"])
         self.assertIn("models", provider_status_payload["llm"]["light"])
         self.assertNotIn("api_key", json.dumps(provider_status_payload).lower())
@@ -352,6 +409,61 @@ class WebServerTests(unittest.TestCase):
         self.assertFalse(local_data_clear_payload["export"]["secrets_included"])
         self.assertGreaterEqual(local_data_clear_payload["clear"]["counts_before"]["targets"], 1)
         self.assertEqual(queue_after_clear_payload["items"], [])
+
+
+def _seed_review_queue_item(database_url: str) -> tuple[int, int, int]:
+    store = SQLiteStore.open(database_url)
+    try:
+        profile = store.create_profile(Profile(name="Queue API Profile"))
+        use_case_id = store.get_use_case_id_by_slug("application_student")
+        search_profile = store.create_search_profile(
+            SearchProfile(
+                profile_id=profile.id,
+                name="Queue API Search",
+                use_case_id=use_case_id,
+            )
+        )
+        run = store.create_pipeline_run(PipelineRun(search_profile_id=search_profile.id))
+        target = store.create_target(
+            Target(
+                domain="queue-api.example",
+                base_url="https://queue-api.example/jobs/python",
+                status=TargetStatus.NEEDS_REVIEW,
+                metadata={
+                    "lead_metadata": {
+                        "source_quality": {
+                            "source_type": "company_site",
+                            "source_quality_score": 82,
+                            "source_risks": [
+                                {"type": "deep_url", "value": 3},
+                            ],
+                        }
+                    }
+                },
+            )
+        )
+        store.set_target_status(
+            target.id,
+            TargetStatus.NEEDS_REVIEW,
+            PipelinePhase.REVIEW,
+            pipeline_run_id=run.id,
+            reason="seed queue item",
+        )
+        store.save_rating(
+            RatingResult(
+                target_id=target.id,
+                pipeline_run_id=run.id,
+                recommended_action=RecommendedAction.REVIEW,
+                rule_score=75,
+                confidence=0.82,
+                rating_status="use_case_rated",
+                reasons=[{"type": "role", "value": "Python"}],
+                risks=[{"type": "missing_ai_evidence", "value": "source"}],
+            )
+        )
+        return target.id, run.id, use_case_id
+    finally:
+        store.close()
 
 
 def _seed_context_source(database_url: str) -> tuple[int, int]:

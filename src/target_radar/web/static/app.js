@@ -3,6 +3,9 @@ const state = {
   selectedUseCaseSlug: null,
   useCaseTab: "basis",
   queue: [],
+  dashboardQueue: [],
+  selectedQueueIds: new Set(),
+  runs: [],
   useCases: [],
   searchProfiles: [],
   providerStatus: null,
@@ -19,7 +22,7 @@ const state = {
 const USE_CASE_TABS = (
   ["basis", "fields", "queries", "sources", "rating", "output", "review", "json"]
 );
-const PAGE_IDS = new Set(["review", "use-cases", "profiles", "runs", "secrets"]);
+const PAGE_IDS = new Set(["dashboard", "review", "use-cases", "profiles", "runs", "secrets"]);
 const RUN_DEFAULTS_KEY = "target-radar-run-defaults-v1";
 const KNOWN_SOURCE_TYPES = new Set([
   "official_site",
@@ -79,9 +82,40 @@ const elements = {
   serverStatus: document.querySelector("#serverStatus"),
   navLinks: Array.from(document.querySelectorAll("[data-nav-page]")),
   pages: Array.from(document.querySelectorAll("[data-page]")),
+  dashboardNextAction: document.querySelector("#dashboardNextAction"),
+  dashboardPreflightStatus: document.querySelector("#dashboardPreflightStatus"),
+  dashboardReviewCount: document.querySelector("#dashboardReviewCount"),
+  dashboardReviewHint: document.querySelector("#dashboardReviewHint"),
+  dashboardLatestRun: document.querySelector("#dashboardLatestRun"),
+  dashboardLatestRunHint: document.querySelector("#dashboardLatestRunHint"),
+  dashboardErrorCount: document.querySelector("#dashboardErrorCount"),
+  dashboardErrorHint: document.querySelector("#dashboardErrorHint"),
+  dashboardProviderState: document.querySelector("#dashboardProviderState"),
+  dashboardProviderHint: document.querySelector("#dashboardProviderHint"),
+  dashboardRunButton: document.querySelector("#dashboardRunButton"),
+  dashboardReviewButton: document.querySelector("#dashboardReviewButton"),
+  dashboardSecretsButton: document.querySelector("#dashboardSecretsButton"),
+  dashboardRunCount: document.querySelector("#dashboardRunCount"),
+  dashboardRunsList: document.querySelector("#dashboardRunsList"),
+  dashboardUseCaseCount: document.querySelector("#dashboardUseCaseCount"),
+  dashboardUseCaseList: document.querySelector("#dashboardUseCaseList"),
+  dashboardProviderList: document.querySelector("#dashboardProviderList"),
   queueBody: document.querySelector("#queueBody"),
   queueCount: document.querySelector("#queueCount"),
+  queueSelectedCount: document.querySelector("#queueSelectedCount"),
+  queueFilterSummary: document.querySelector("#queueFilterSummary"),
   queueUseCaseFilter: document.querySelector("#queueUseCaseFilter"),
+  queueRunFilter: document.querySelector("#queueRunFilter"),
+  queueStatusFilter: document.querySelector("#queueStatusFilter"),
+  queueActionFilter: document.querySelector("#queueActionFilter"),
+  queueSourceTypeFilter: document.querySelector("#queueSourceTypeFilter"),
+  queueRiskFilter: document.querySelector("#queueRiskFilter"),
+  queueClearFiltersButton: document.querySelector("#queueClearFiltersButton"),
+  queueSelectAll: document.querySelector("#queueSelectAll"),
+  bulkRejectButton: document.querySelector("#bulkRejectButton"),
+  bulkBlacklistButton: document.querySelector("#bulkBlacklistButton"),
+  bulkUndoButton: document.querySelector("#bulkUndoButton"),
+  queueBulkStatus: document.querySelector("#queueBulkStatus"),
   runUseCaseSelect: document.querySelector("#runUseCaseSelect"),
   detailEmpty: document.querySelector("#detailEmpty"),
   detailContent: document.querySelector("#detailContent"),
@@ -91,6 +125,8 @@ const elements = {
   targetUseCase: document.querySelector("#targetUseCase"),
   targetUpdated: document.querySelector("#targetUpdated"),
   targetSourceQuality: document.querySelector("#targetSourceQuality"),
+  targetHighlights: document.querySelector("#targetHighlights"),
+  targetTimeline: document.querySelector("#targetTimeline"),
   ratingsList: document.querySelector("#ratingsList"),
   draftsList: document.querySelector("#draftsList"),
   evidenceList: document.querySelector("#evidenceList"),
@@ -161,6 +197,9 @@ const elements = {
 };
 
 document.querySelector("#refreshButton").addEventListener("click", refreshAll);
+elements.dashboardRunButton.addEventListener("click", () => showPage("runs"));
+elements.dashboardReviewButton.addEventListener("click", () => showPage("review"));
+elements.dashboardSecretsButton.addEventListener("click", () => showPage("secrets"));
 elements.runConfiguredButton.addEventListener("click", runFromForm);
 elements.saveRunDefaultsButton.addEventListener("click", saveRunDefaults);
 elements.runUseCaseSelect.addEventListener("change", () => {
@@ -183,7 +222,24 @@ elements.runSearchProfileSelect.addEventListener("change", () => {
   elements.runMaxPages,
 ].forEach((element) => element.addEventListener("input", scheduleRunPreview));
 
-elements.queueUseCaseFilter.addEventListener("change", loadQueue);
+[
+  elements.queueUseCaseFilter,
+  elements.queueRunFilter,
+  elements.queueStatusFilter,
+  elements.queueActionFilter,
+  elements.queueSourceTypeFilter,
+  elements.queueRiskFilter,
+].forEach((element) => {
+  element.addEventListener("change", () => {
+    state.selectedQueueIds.clear();
+    loadQueue();
+  });
+});
+elements.queueClearFiltersButton.addEventListener("click", clearQueueFilters);
+elements.queueSelectAll.addEventListener("change", toggleVisibleQueueSelection);
+elements.bulkRejectButton.addEventListener("click", () => bulkReviewAction("reject"));
+elements.bulkBlacklistButton.addEventListener("click", () => bulkReviewAction("blacklist"));
+elements.bulkUndoButton.addEventListener("click", () => bulkReviewAction("undo-review"));
 elements.importUseCaseFile.addEventListener("change", importUseCaseFromFile);
 elements.importUseCaseButton.addEventListener("click", importUseCaseFromTextarea);
 elements.newSearchProfileButton.addEventListener("click", () => renderSearchProfileEditor(null));
@@ -222,6 +278,7 @@ async function refreshAll() {
     loadPreflight(),
     loadLocalSettings(),
     loadDomainPolicies(),
+    loadDashboardQueue(),
     loadQueue(),
     loadRuns(),
     loadContextSources(),
@@ -233,6 +290,7 @@ async function refreshAll() {
   }
   renderRunAttributeFields();
   scheduleRunPreview();
+  renderDashboard();
   renderPage();
 }
 
@@ -248,7 +306,7 @@ function renderPage() {
 
 function currentPage() {
   const raw = window.location.hash.replace("#", "");
-  return PAGE_IDS.has(raw) ? raw : "review";
+  return PAGE_IDS.has(raw) ? raw : "dashboard";
 }
 
 function showPage(page) {
@@ -257,6 +315,126 @@ function showPage(page) {
     window.location.hash = page;
   } else {
     renderPage();
+  }
+}
+
+function renderDashboard() {
+  if (!elements.dashboardReviewCount) return;
+  const openReviews = state.dashboardQueue.length;
+  const latestRun = state.runs[0] || null;
+  const runErrors = state.runs.reduce((sum, run) => (
+    sum + Number(run.stats?.error_count || 0) + (run.error_message ? 1 : 0)
+  ), 0);
+  const preflightStatus = state.preflight?.status || "unknown";
+  const searchReady = Boolean(state.providerStatus?.search?.configured_ready);
+  const lightReady = Boolean(state.providerStatus?.llm?.light?.configured);
+  const providerState = searchReady && lightReady ? "ready" : "check";
+
+  elements.dashboardReviewCount.textContent = String(openReviews);
+  elements.dashboardReviewHint.textContent = openReviews
+    ? `${openReviews} Targets warten`
+    : "keine offenen Targets";
+  elements.dashboardLatestRun.textContent = latestRun ? `#${latestRun.id}` : "-";
+  elements.dashboardLatestRunHint.textContent = latestRun
+    ? `${latestRun.status} - ${formatDate(latestRun.created_at)}`
+    : "Run konfigurieren";
+  elements.dashboardErrorCount.textContent = String(runErrors);
+  elements.dashboardErrorHint.textContent = runErrors ? "Fehler in Runs pruefen" : "keine Run-Fehler";
+  elements.dashboardProviderState.textContent = providerState;
+  elements.dashboardProviderHint.textContent = searchReady
+    ? `${state.providerStatus.search.configured_provider} search`
+    : "Search Setup fehlt";
+  elements.dashboardPreflightStatus.outerHTML = pill(preflightStatus, "dashboardPreflightStatus");
+  elements.dashboardPreflightStatus = document.querySelector("#dashboardPreflightStatus");
+
+  if (preflightStatus === "error" || preflightStatus === "warning" || providerState !== "ready") {
+    elements.dashboardNextAction.textContent = "Naechster Schritt: Setup unter Secrets pruefen.";
+  } else if (openReviews) {
+    elements.dashboardNextAction.textContent = "Naechster Schritt: offene Targets reviewen.";
+  } else if (state.searchProfiles.length) {
+    elements.dashboardNextAction.textContent = "Naechster Schritt: neuen lokalen Run starten.";
+  } else {
+    elements.dashboardNextAction.textContent = "Naechster Schritt: Search Profile anlegen.";
+  }
+
+  renderDashboardRuns();
+  renderDashboardUseCases();
+  renderDashboardProviderChecks();
+}
+
+function renderDashboardRuns() {
+  elements.dashboardRunCount.textContent = String(state.runs.length);
+  elements.dashboardRunsList.innerHTML = "";
+  if (!state.runs.length) {
+    elements.dashboardRunsList.appendChild(emptyItem("Keine Runs."));
+    return;
+  }
+  for (const run of state.runs.slice(0, 5)) {
+    const item = document.createElement("article");
+    item.className = "item selectable";
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">Run #${run.id}</span>
+        ${pill(run.status)}
+      </div>
+      <p>${escapeHtml(run.use_case_name || "no use case")} - ${escapeHtml(run.mode)} - ${escapeHtml(formatDate(run.created_at))}</p>
+      ${run.error_message ? `<p class="muted">${escapeHtml(run.error_message)}</p>` : ""}
+      ${renderMetricChips(run.stats || {})}
+    `;
+    item.addEventListener("click", () => showPage("runs"));
+    elements.dashboardRunsList.appendChild(item);
+  }
+}
+
+function renderDashboardUseCases() {
+  const activeUseCases = state.useCases.filter((item) => !["inactive", "archived"].includes(item.status));
+  elements.dashboardUseCaseCount.textContent = String(activeUseCases.length);
+  elements.dashboardUseCaseList.innerHTML = "";
+  if (!activeUseCases.length) {
+    elements.dashboardUseCaseList.appendChild(emptyItem("Keine aktiven Use Cases."));
+    return;
+  }
+  for (const useCase of activeUseCases.slice(0, 6)) {
+    const item = document.createElement("article");
+    item.className = "item selectable";
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(useCase.name)}</span>
+        ${pill(useCase.status)}
+      </div>
+      <p>${escapeHtml(useCase.slug)} - ${useCase.rating_policy.criteria.length} Kriterien - ${escapeHtml(useCase.draft_policy.draft_type)}</p>
+    `;
+    item.addEventListener("click", () => {
+      state.selectedUseCaseSlug = useCase.slug;
+      renderUseCases();
+      showPage("use-cases");
+    });
+    elements.dashboardUseCaseList.appendChild(item);
+  }
+}
+
+function renderDashboardProviderChecks() {
+  elements.dashboardProviderList.innerHTML = "";
+  const checks = (state.preflight?.checks || []).filter((check) => (
+    ["error", "warning"].includes(check.status)
+  ));
+  if (!checks.length && state.providerStatus) {
+    renderProviderStatusCards(state.providerStatus, elements.dashboardProviderList);
+    return;
+  }
+  for (const check of checks.slice(0, 5)) {
+    const item = document.createElement("article");
+    item.className = "item selectable";
+    item.innerHTML = `
+      <div class="item-header">
+        <span class="item-title">${escapeHtml(check.label || check.key)}</span>
+        ${pill(check.status)}
+      </div>
+      <p>${escapeHtml(check.message || "")}</p>
+      ${check.next_step ? `<p class="muted">${escapeHtml(check.next_step)}</p>` : ""}
+    `;
+    item.addEventListener("click", () => showPage("secrets"));
+    elements.dashboardProviderList.appendChild(item);
   }
 }
 
@@ -1827,31 +2005,164 @@ async function addBlacklistDomain() {
 }
 
 async function loadQueue() {
-  const selectedUseCaseId = selectedNumber(elements.queueUseCaseFilter.value);
-  const query = selectedUseCaseId ? `?limit=50&use_case_id=${selectedUseCaseId}` : "?limit=50";
-  const data = await api(`/api/review-queue${query}`);
+  const params = queueFilterParams();
+  const data = await api(`/api/review-queue?${params.toString()}`);
   state.queue = data.items;
+  const visibleIds = new Set(data.items.map((item) => item.id));
+  state.selectedQueueIds = new Set(
+    Array.from(state.selectedQueueIds).filter((id) => visibleIds.has(id))
+  );
   elements.queueCount.textContent = String(data.items.length);
-  elements.queueBody.innerHTML = "";
+  renderQueue();
+}
 
-  for (const item of data.items) {
+async function loadDashboardQueue() {
+  const data = await api("/api/review-queue?limit=200");
+  state.dashboardQueue = data.items;
+}
+
+function queueFilterParams() {
+  const params = new URLSearchParams({ limit: "200" });
+  const filters = {
+    use_case_id: selectedNumber(elements.queueUseCaseFilter.value),
+    pipeline_run_id: selectedNumber(elements.queueRunFilter.value),
+    status: elements.queueStatusFilter.value,
+    recommended_action: elements.queueActionFilter.value,
+    source_type: elements.queueSourceTypeFilter.value,
+    risk_type: elements.queueRiskFilter.value,
+  };
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) params.set(key, String(value));
+  }
+  return params;
+}
+
+function renderQueue() {
+  elements.queueBody.innerHTML = "";
+  elements.queueSelectedCount.textContent = String(state.selectedQueueIds.size);
+  elements.queueFilterSummary.textContent = queueFilterSummary();
+  elements.queueSelectAll.checked = (
+    state.queue.length > 0 && state.queue.every((item) => state.selectedQueueIds.has(item.id))
+  );
+  elements.queueSelectAll.indeterminate = (
+    state.selectedQueueIds.size > 0 && !elements.queueSelectAll.checked
+  );
+  if (!state.queue.length) {
+    const row = document.createElement("tr");
+    row.innerHTML = `<td colspan="10" class="muted">Keine Queue-Eintraege fuer diese Filter.</td>`;
+    elements.queueBody.appendChild(row);
+    return;
+  }
+
+  for (const item of state.queue) {
     const row = document.createElement("tr");
     row.className = item.id === state.selectedTargetId ? "selected" : "";
+    const checked = state.selectedQueueIds.has(item.id) ? "checked" : "";
     row.innerHTML = `
+      <td class="check-cell"><input data-queue-select="${item.id}" type="checkbox" ${checked} aria-label="${escapeAttribute(item.domain)} auswaehlen"></td>
       <td>${escapeHtml(item.domain)}</td>
       <td>${pill(item.use_case_slug || "none")}</td>
+      <td>${item.pipeline_run_id ? `#${escapeHtml(item.pipeline_run_id)}` : "-"}</td>
       <td>${pill(item.status)}</td>
       <td>${pill(item.recommended_action || "none")}</td>
+      <td>${pill(item.source_type || "unknown")}</td>
+      <td>${escapeHtml((item.risk_types || []).slice(0, 2).join(", ") || "-")}</td>
       <td>${displayScore(item.ai_score, item.rule_score)}</td>
       <td>${formatConfidence(item.confidence)}</td>
     `;
     row.addEventListener("click", () => loadTarget(item.id));
+    const checkbox = row.querySelector("[data-queue-select]");
+    checkbox.addEventListener("click", (event) => event.stopPropagation());
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        state.selectedQueueIds.add(item.id);
+      } else {
+        state.selectedQueueIds.delete(item.id);
+      }
+      renderQueue();
+    });
     elements.queueBody.appendChild(row);
   }
 }
 
+function queueFilterSummary() {
+  const entries = [];
+  const selectedUseCase = state.useCases.find((item) => (
+    String(item.db_id) === elements.queueUseCaseFilter.value
+  ));
+  if (selectedUseCase) entries.push(`Use Case: ${selectedUseCase.name}`);
+  if (elements.queueRunFilter.value) entries.push(`Run: #${elements.queueRunFilter.value}`);
+  if (elements.queueStatusFilter.value) entries.push(`Status: ${elements.queueStatusFilter.value}`);
+  if (elements.queueActionFilter.value) entries.push(`Action: ${elements.queueActionFilter.value}`);
+  if (elements.queueSourceTypeFilter.value) entries.push(`Source: ${elements.queueSourceTypeFilter.value}`);
+  if (elements.queueRiskFilter.value) entries.push(`Risiko: ${elements.queueRiskFilter.value}`);
+  return entries.length ? entries.join(" | ") : "alle offenen Targets";
+}
+
+function clearQueueFilters() {
+  elements.queueUseCaseFilter.value = "";
+  elements.queueRunFilter.value = "";
+  elements.queueStatusFilter.value = "";
+  elements.queueActionFilter.value = "";
+  elements.queueSourceTypeFilter.value = "";
+  elements.queueRiskFilter.value = "";
+  state.selectedQueueIds.clear();
+  loadQueue();
+}
+
+function toggleVisibleQueueSelection() {
+  if (elements.queueSelectAll.checked) {
+    for (const item of state.queue) {
+      state.selectedQueueIds.add(item.id);
+    }
+  } else {
+    for (const item of state.queue) {
+      state.selectedQueueIds.delete(item.id);
+    }
+  }
+  renderQueue();
+}
+
+async function bulkReviewAction(action) {
+  const targetIds = Array.from(state.selectedQueueIds);
+  if (!targetIds.length) {
+    elements.queueBulkStatus.textContent = "Keine Targets ausgewaehlt.";
+    return;
+  }
+  if (!window.confirm(`${targetIds.length} Targets per Bulk-Aktion '${action}' bearbeiten?`)) {
+    return;
+  }
+  elements.queueBulkStatus.textContent = "Bulk-Aktion laeuft...";
+  setBulkButtonsDisabled(true);
+  try {
+    const data = await api("/api/review-queue/bulk-action", {
+      method: "POST",
+      body: { target_ids: targetIds, action },
+    });
+    elements.queueBulkStatus.textContent = `${data.updated_count} Targets aktualisiert.`;
+    state.selectedQueueIds.clear();
+    await Promise.all([loadDashboardQueue(), loadQueue(), loadRuns(), loadDomainPolicies()]);
+    renderDashboard();
+    if (state.selectedTargetId) {
+      await loadTarget(state.selectedTargetId);
+    }
+  } catch (error) {
+    elements.queueBulkStatus.textContent = error.message;
+  } finally {
+    setBulkButtonsDisabled(false);
+  }
+}
+
+function setBulkButtonsDisabled(disabled) {
+  elements.bulkRejectButton.disabled = disabled;
+  elements.bulkBlacklistButton.disabled = disabled;
+  elements.bulkUndoButton.disabled = disabled;
+}
+
 async function loadRuns() {
   const data = await api("/api/pipeline-runs?limit=10");
+  state.runs = data.runs;
+  renderQueueRunOptions();
   elements.runsList.innerHTML = "";
   if (data.runs.length === 0) {
     elements.runsList.appendChild(emptyItem("Keine Runs."));
@@ -1878,6 +2189,20 @@ async function loadRuns() {
     });
     elements.runsList.appendChild(item);
   }
+}
+
+function renderQueueRunOptions() {
+  const previous = elements.queueRunFilter.value;
+  elements.queueRunFilter.innerHTML = `<option value="">Alle Runs</option>`;
+  for (const run of state.runs) {
+    const option = document.createElement("option");
+    option.value = String(run.id);
+    option.textContent = `#${run.id} - ${run.use_case_name || run.status}`;
+    elements.queueRunFilter.appendChild(option);
+  }
+  elements.queueRunFilter.value = optionExists(elements.queueRunFilter, previous)
+    ? previous
+    : "";
 }
 
 async function loadContextSources() {
@@ -1959,11 +2284,102 @@ async function loadTarget(targetId) {
   elements.targetUpdated.textContent = formatDate(target.updated_at);
   elements.targetSourceQuality.textContent = sourceQualitySummary(target.metadata);
 
+  renderTargetHighlights(data, queueItem);
+  renderTargetTimeline(data);
   renderRatings(data.ratings);
   renderDrafts(data.drafts);
   renderEvidence(data.evidence);
   renderPages(data.pages);
   renderStatusLogs(data.status_logs);
+}
+
+function renderTargetHighlights(data, queueItem) {
+  const latestRating = data.ratings[0] || null;
+  const latestDraft = data.drafts[0] || null;
+  const risks = latestRating?.risks || [];
+  const reasons = latestRating?.reasons || [];
+  const topReasons = compactFacts(reasons, 3);
+  const topRisks = compactFacts(risks, 3);
+  elements.targetHighlights.innerHTML = `
+    <article class="highlight-item">
+      <label>Entscheidung</label>
+      <strong>${escapeHtml(latestRating?.recommended_action || queueItem?.recommended_action || "none")}</strong>
+      <span>${displayScore(latestRating?.ai_score, latestRating?.rule_score)} Score - ${formatConfidence(latestRating?.confidence)}</span>
+    </article>
+    <article class="highlight-item">
+      <label>Gruende</label>
+      ${topReasons.length ? renderList(topReasons) : `<span class="muted">keine Gruende</span>`}
+    </article>
+    <article class="highlight-item">
+      <label>Risiken</label>
+      ${topRisks.length ? renderList(topRisks) : `<span class="muted">keine Risiken</span>`}
+    </article>
+    <article class="highlight-item">
+      <label>Evidence / Draft</label>
+      <strong>${data.evidence.length} / ${data.drafts.length}</strong>
+      <span>${latestDraft ? `${latestDraft.draft_type} - ${latestDraft.status}` : "kein Draft"}</span>
+    </article>
+  `;
+}
+
+function renderTargetTimeline(data) {
+  const events = [];
+  for (const log of data.status_logs || []) {
+    events.push({
+      at: log.created_at,
+      type: log.phase,
+      title: `${log.from_status || "none"} -> ${log.to_status}`,
+      detail: log.reason || log.error_message || "",
+      state: log.to_status,
+    });
+  }
+  for (const page of data.pages || []) {
+    events.push({
+      at: page.fetched_at || page.created_at,
+      type: "fetch",
+      title: page.page_type,
+      detail: page.error_message || page.url,
+      state: page.error_message ? "error" : "completed",
+    });
+  }
+  for (const rating of data.ratings || []) {
+    events.push({
+      at: rating.created_at,
+      type: "rating",
+      title: rating.rating_version,
+      detail: `${rating.recommended_action} - ${displayScore(rating.ai_score, rating.rule_score)} Score`,
+      state: rating.rating_status,
+    });
+  }
+  for (const draft of data.drafts || []) {
+    events.push({
+      at: draft.created_at,
+      type: "draft",
+      title: draft.draft_type,
+      detail: draft.subject || draft.status,
+      state: draft.status,
+    });
+  }
+  events.sort((left, right) => new Date(right.at || 0) - new Date(left.at || 0));
+  elements.targetTimeline.innerHTML = events.length
+    ? events.slice(0, 12).map(renderTimelineEvent).join("")
+    : `<div class="empty inline">Keine Timeline.</div>`;
+}
+
+function renderTimelineEvent(event) {
+  return `
+    <article class="timeline-event">
+      <div>
+        ${pill(event.type)}
+        ${pill(event.state)}
+      </div>
+      <div>
+        <strong>${escapeHtml(event.title)}</strong>
+        <p>${escapeHtml(event.detail || "")}</p>
+      </div>
+      <span>${escapeHtml(formatDate(event.at))}</span>
+    </article>
+  `;
 }
 
 function renderRatings(ratings) {
@@ -2242,10 +2658,25 @@ function emptyItem(text) {
 function renderFacts(label, facts) {
   if (!facts.length) return "";
   const items = facts.slice(0, 4).map((fact) => {
-    const text = fact.text || fact.value || fact.evidence || fact.weighted_score || JSON.stringify(fact);
+    const text = factText(fact);
     return `<li>${escapeHtml(String(text))}</li>`;
   }).join("");
   return `<div class="fact-list"><span>${escapeHtml(label)}</span><ul>${items}</ul></div>`;
+}
+
+function compactFacts(facts, limit) {
+  return facts
+    .filter((fact) => !["criterion_score", "partial_ai_grounding"].includes(fact.type))
+    .slice(0, limit)
+    .map((fact) => factText(fact));
+}
+
+function factText(fact) {
+  if (!fact || typeof fact !== "object") return String(fact || "");
+  const value = fact.text || fact.value || fact.evidence || fact.weighted_score;
+  if (typeof value === "object") return JSON.stringify(value);
+  if (value !== undefined && value !== null && value !== "") return String(value);
+  return JSON.stringify(fact);
 }
 
 function renderDraftValidation(metadata) {

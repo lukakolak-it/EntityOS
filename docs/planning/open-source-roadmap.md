@@ -415,11 +415,15 @@ angenehm machen.
 
 ### Slice 20.1: Dashboard
 
+Status: umgesetzt.
+
 Umfang:
 
 - letzte Runs, offene Reviews, Fehler und Providerstatus zusammenfassen
 - Schnellaktionen fuer neuen Run und Review Queue
 - aktive Use Cases sichtbar machen
+- `#dashboard` ist die lokale Startseite und zeigt den naechsten operativen
+  Schritt statt Marketing-Inhalt
 
 Akzeptanzkriterien:
 
@@ -429,11 +433,16 @@ Akzeptanzkriterien:
 
 ### Slice 20.2: Review Queue Filter und Bulk-Aktionen
 
+Status: umgesetzt.
+
 Umfang:
 
 - Filter nach Use Case, Run, Status, Action, Source Type und Risiko
 - Bulk-Aktionen fuer offensichtliche Rejects oder Blacklist
 - Review-Entscheidungen rueckgaengig machen
+- `/api/review-queue` unterstuetzt die Filter serverseitig
+- `/api/review-queue/bulk-action` protokolliert Bulk-Entscheidungen im
+  Status-Log mit `trigger=ui_bulk_action`
 
 Akzeptanzkriterien:
 
@@ -443,11 +452,15 @@ Akzeptanzkriterien:
 
 ### Slice 20.3: Target Detail Politur
 
+Status: umgesetzt.
+
 Umfang:
 
 - Timeline aus Run, Fetch, Rating, Draft und Review
 - Evidence, Rating-Gruende und Draft nebeneinander besser verknuepfen
 - direkte Reprocess-Aktionen klarer machen
+- Target Detail zeigt Entscheidungs-Highlights, Gruende, Risiken,
+  Evidence/Draft-Status und eine kompakte Timeline
 
 Akzeptanzkriterien:
 
@@ -457,12 +470,19 @@ Akzeptanzkriterien:
 
 ### Slice 20.4: UI-Smoke- und Regressionstests
 
+Status: umgesetzt als serverseitiger UI/API-Smoke ohne Browser-Abhaengigkeit.
+
 Umfang:
 
 - Playwright-Smoke fuer Startseite, Run, Review, Target Detail, Use Cases und
   Secrets
 - Screenshot-Checks fuer Kernseiten
 - stabile Testdaten verwenden
+- aktuell: stdlib-basierter Server-Smoke prueft statische UI-Anker,
+  Dashboard/Review-Controls, Queue-Filter, Bulk-Aktion und Undo-Review
+- Browser-/Screenshot-Pruefung bleibt fuer einen spaeteren Release-Hardening-
+  Schritt optional, damit die lokale Dev-Installation keine Node/Browser-
+  Abhaengigkeit braucht
 
 Akzeptanzkriterien:
 

@@ -1337,18 +1337,40 @@ class SQLiteStore:
         limit: int = 50,
         offset: int = 0,
         use_case_id: int | None = None,
+        pipeline_run_id: int | None = None,
+        status: str | None = None,
+        recommended_action: str | None = None,
+        source_type: str | None = None,
+        risk_type: str | None = None,
     ) -> list[dict[str, Any]]:
-        use_case_filter = ""
-        params: list[object] = [
-            TargetStatus.NEEDS_REVIEW.value,
-            TargetStatus.RATING_PARTIAL.value,
-            TargetStatus.DRAFT_PENDING.value,
-            TargetStatus.DRAFT_FAILED.value,
-        ]
+        statuses = (
+            [status]
+            if status
+            else [
+                TargetStatus.NEEDS_REVIEW.value,
+                TargetStatus.RATING_PARTIAL.value,
+                TargetStatus.DRAFT_PENDING.value,
+                TargetStatus.DRAFT_FAILED.value,
+            ]
+        )
+        filters = [f"targets.status IN ({', '.join('?' for _ in statuses)})"]
+        params: list[object] = list(statuses)
         if use_case_id is not None:
-            use_case_filter = "AND pipeline_runs.use_case_id = ?"
+            filters.append("pipeline_runs.use_case_id = ?")
             params.append(use_case_id)
-        params.extend([limit, offset])
+        if pipeline_run_id is not None:
+            filters.append(
+                "COALESCE(latest_score.pipeline_run_id, latest_status_log.pipeline_run_id) = ?"
+            )
+            params.append(pipeline_run_id)
+        if recommended_action:
+            filters.append("latest_score.recommended_action = ?")
+            params.append(recommended_action)
+
+        python_filtered = bool(source_type or risk_type)
+        sql_limit = max(1000, limit + offset) if python_filtered else limit
+        sql_offset = 0 if python_filtered else offset
+        params.extend([sql_limit, sql_offset])
         rows = self.connection.execute(
             f"""
             SELECT
@@ -1357,6 +1379,7 @@ class SQLiteStore:
                 targets.base_url,
                 targets.source,
                 targets.status,
+                targets.metadata_json,
                 targets.updated_at,
                 latest_score.pipeline_run_id AS score_pipeline_run_id,
                 latest_score.rule_score,
@@ -1364,6 +1387,9 @@ class SQLiteStore:
                 latest_score.confidence,
                 latest_score.recommended_action,
                 latest_score.rating_status,
+                latest_score.source_quality AS score_source_quality,
+                latest_score.reasons_json,
+                latest_score.risks_json,
                 pipeline_runs.id AS pipeline_run_id,
                 pipeline_runs.search_profile_id,
                 pipeline_runs.use_case_id,
@@ -1402,8 +1428,7 @@ class SQLiteStore:
                 )
             LEFT JOIN use_cases
                 ON use_cases.id = pipeline_runs.use_case_id
-            WHERE targets.status IN (?, ?, ?, ?)
-            {use_case_filter}
+            WHERE {" AND ".join(filters)}
             ORDER BY
                 CASE latest_score.recommended_action
                     WHEN 'draft' THEN 0
@@ -1419,7 +1444,18 @@ class SQLiteStore:
             """,
             tuple(params),
         ).fetchall()
-        return [dict(row) for row in rows]
+        items = [_review_queue_item_from_row(row) for row in rows]
+        if source_type:
+            items = [item for item in items if item.get("source_type") == source_type]
+        if risk_type:
+            items = [
+                item
+                for item in items
+                if risk_type in set(item.get("risk_types") or [])
+            ]
+        if python_filtered:
+            items = items[offset : offset + limit]
+        return items
 
 
 def _json_dumps(value: Any) -> str:
@@ -1430,6 +1466,59 @@ def _json_loads(value: str | None, default: Any) -> Any:
     if value is None:
         return default
     return json.loads(value)
+
+
+def _review_queue_item_from_row(row: sqlite3.Row) -> dict[str, Any]:
+    payload = dict(row)
+    metadata = _json_loads(payload.pop("metadata_json"), {})
+    risks = _json_loads(payload.pop("risks_json"), [])
+    reasons = _json_loads(payload.pop("reasons_json"), [])
+    source_type = _review_source_type(metadata, payload.get("score_source_quality"))
+    source_risks = _review_source_risks(metadata)
+    risk_types = sorted(
+        {
+            str(risk.get("type"))
+            for risk in list(risks) + source_risks
+            if isinstance(risk, dict) and risk.get("type")
+        }
+    )
+    payload["metadata"] = metadata
+    payload["source_type"] = source_type
+    payload["source_risks"] = source_risks
+    payload["risk_types"] = risk_types
+    payload["reason_count"] = len(reasons)
+    payload["risk_count"] = len(risks) + len(source_risks)
+    return payload
+
+
+def _review_source_type(
+    metadata: dict[str, Any],
+    score_source_quality: str | None,
+) -> str | None:
+    for candidate in (
+        metadata.get("source_quality"),
+        (metadata.get("lead_metadata") or {}).get("source_quality")
+        if isinstance(metadata.get("lead_metadata"), dict)
+        else None,
+    ):
+        if isinstance(candidate, dict) and candidate.get("source_type"):
+            return str(candidate["source_type"])
+    return score_source_quality
+
+
+def _review_source_risks(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    for candidate in (
+        metadata.get("source_quality"),
+        (metadata.get("lead_metadata") or {}).get("source_quality")
+        if isinstance(metadata.get("lead_metadata"), dict)
+        else None,
+    ):
+        if not isinstance(candidate, dict):
+            continue
+        risks = candidate.get("source_risks")
+        if isinstance(risks, list):
+            return [risk for risk in risks if isinstance(risk, dict)]
+    return []
 
 
 def _export_row(row: sqlite3.Row) -> dict[str, Any]:

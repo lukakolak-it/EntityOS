@@ -234,6 +234,8 @@ def _make_handler(
                     self._handle_local_data_clear()
                 elif parsed.path == "/api/search-profiles":
                     self._handle_search_profile_create()
+                elif parsed.path == "/api/review-queue/bulk-action":
+                    self._handle_review_queue_bulk_action()
                 elif parsed.path == "/api/domain-policies/blacklist":
                     self._handle_domain_blacklist()
                 elif parsed.path == "/api/domain-policies/unblock":
@@ -349,7 +351,9 @@ def _make_handler(
             limit = int(params.get("limit", ["50"])[0])
             offset = int(params.get("offset", ["0"])[0])
             raw_use_case_id = params.get("use_case_id", [None])[0]
+            raw_pipeline_run_id = params.get("pipeline_run_id", [None])[0]
             use_case_id = int(raw_use_case_id) if raw_use_case_id else None
+            pipeline_run_id = int(raw_pipeline_run_id) if raw_pipeline_run_id else None
             store = self._store()
             try:
                 self._send_json(
@@ -358,7 +362,53 @@ def _make_handler(
                             limit=limit,
                             offset=offset,
                             use_case_id=use_case_id,
+                            pipeline_run_id=pipeline_run_id,
+                            status=_optional_str(params.get("status", [None])[0]),
+                            recommended_action=_optional_str(
+                                params.get("recommended_action", [None])[0]
+                            ),
+                            source_type=_optional_str(
+                                params.get("source_type", [None])[0]
+                            ),
+                            risk_type=_optional_str(params.get("risk_type", [None])[0]),
                         )
+                    }
+                )
+            finally:
+                store.close()
+
+        def _handle_review_queue_bulk_action(self) -> None:
+            payload = self._read_json(default={})
+            target_ids = _target_id_list(payload.get("target_ids"))
+            action = str(payload.get("action") or "").strip().lower().replace("_", "-")
+            action_map = {
+                "approve": TargetStatus.APPROVED,
+                "reject": TargetStatus.REJECTED,
+                "blacklist": TargetStatus.BLACKLISTED,
+                "undo-review": TargetStatus.NEEDS_REVIEW,
+            }
+            if action not in action_map:
+                raise ValueError("action must be approve, reject, blacklist or undo-review")
+            if len(target_ids) > 200:
+                raise ValueError("bulk action is limited to 200 targets")
+
+            store = self._store()
+            try:
+                logs = [
+                    store.set_target_status(
+                        target_id,
+                        action_map[action],
+                        PipelinePhase.REVIEW,
+                        reason=f"ui bulk action: {action}",
+                        metadata={"trigger": "ui_bulk_action", "action": action},
+                    )
+                    for target_id in target_ids
+                ]
+                self._send_json(
+                    {
+                        "action": action,
+                        "updated_count": len(logs),
+                        "status_logs": [_status_log_payload(log) for log in logs],
                     }
                 )
             finally:
@@ -706,6 +756,7 @@ def _make_handler(
                 "approve": TargetStatus.APPROVED,
                 "reject": TargetStatus.REJECTED,
                 "blacklist": TargetStatus.BLACKLISTED,
+                "undo-review": TargetStatus.NEEDS_REVIEW,
                 "refetch": TargetStatus.FETCH_PENDING,
                 "rerate": TargetStatus.RATING_PENDING,
                 "regenerate-draft": TargetStatus.DRAFT_PENDING,
@@ -746,7 +797,11 @@ def _make_handler(
                 log = store.set_target_status(
                     target_id,
                     action_map[action],
-                    PipelinePhase.REVIEW if action in {"approve", "reject", "blacklist"} else PipelinePhase.REPROCESS,
+                    (
+                        PipelinePhase.REVIEW
+                        if action in {"approve", "reject", "blacklist", "undo-review"}
+                        else PipelinePhase.REPROCESS
+                    ),
                     reason=f"ui action: {action}",
                     metadata={"trigger": "ui_action", "action": action},
                 )
@@ -1492,6 +1547,21 @@ def _optional_positive_int(value: object) -> int | None:
     if parsed <= 0:
         return None
     return parsed
+
+
+def _target_id_list(value: object) -> list[int]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("target_ids must be a non-empty list")
+    target_ids: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        parsed = int(item)
+        if parsed <= 0:
+            raise ValueError("target_ids must be positive")
+        if parsed not in seen:
+            target_ids.append(parsed)
+            seen.add(parsed)
+    return target_ids
 
 
 def _required_positive_int(value: object, field_name: str) -> int:

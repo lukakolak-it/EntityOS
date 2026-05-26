@@ -18,6 +18,7 @@
       </div>
 
       <nav class="app-nav" aria-label="Main">
+        <a href="#dashboard" data-nav-page="dashboard">Dashboard</a>
         <a href="#review" data-nav-page="review">Review</a>
         <a href="#use-cases" data-nav-page="use-cases">Use Cases</a>
         <a href="#profiles" data-nav-page="profiles">Profiles</a>
@@ -31,25 +32,169 @@
     </header>
 
     <main class="layout">
+      <section class="page dashboard-page" data-page="dashboard" aria-label="Dashboard">
+        <section class="panel dashboard-primary-panel" aria-labelledby="dashboardTitle">
+          <div class="panel-head">
+            <div>
+              <h2 id="dashboardTitle">Dashboard</h2>
+              <span id="dashboardNextAction" class="panel-subtitle">Lade lokalen Status...</span>
+            </div>
+            <span id="dashboardPreflightStatus" class="status-pill muted">unknown</span>
+          </div>
+          <div class="dashboard-summary">
+            <article class="summary-tile">
+              <label>Offene Reviews</label>
+              <strong id="dashboardReviewCount">0</strong>
+              <span id="dashboardReviewHint">Review Queue</span>
+            </article>
+            <article class="summary-tile">
+              <label>Letzter Run</label>
+              <strong id="dashboardLatestRun">-</strong>
+              <span id="dashboardLatestRunHint">Noch kein Run</span>
+            </article>
+            <article class="summary-tile">
+              <label>Fehler</label>
+              <strong id="dashboardErrorCount">0</strong>
+              <span id="dashboardErrorHint">Runs pruefen</span>
+            </article>
+            <article class="summary-tile">
+              <label>Provider</label>
+              <strong id="dashboardProviderState">-</strong>
+              <span id="dashboardProviderHint">Setup</span>
+            </article>
+          </div>
+          <div class="actions dashboard-actions">
+            <button id="dashboardRunButton" class="primary" type="button">Run konfigurieren</button>
+            <button id="dashboardReviewButton" type="button">Review Queue</button>
+            <button id="dashboardSecretsButton" type="button">Setup pruefen</button>
+          </div>
+        </section>
+
+        <section class="panel dashboard-runs-panel" aria-labelledby="dashboardRunsTitle">
+          <div class="panel-head">
+            <h2 id="dashboardRunsTitle">Letzte Runs</h2>
+            <span id="dashboardRunCount" class="count">0</span>
+          </div>
+          <div id="dashboardRunsList" class="stack"></div>
+        </section>
+
+        <section class="panel dashboard-usecases-panel" aria-labelledby="dashboardUseCasesTitle">
+          <div class="panel-head">
+            <h2 id="dashboardUseCasesTitle">Aktive Use Cases</h2>
+            <span id="dashboardUseCaseCount" class="count">0</span>
+          </div>
+          <div id="dashboardUseCaseList" class="stack"></div>
+        </section>
+
+        <section class="panel dashboard-provider-panel" aria-labelledby="dashboardProviderTitle">
+          <div class="panel-head">
+            <h2 id="dashboardProviderTitle">Provider & Checks</h2>
+            <span class="status-pill active">local</span>
+          </div>
+          <div id="dashboardProviderList" class="stack"></div>
+        </section>
+      </section>
+
       <section class="page review-page" data-page="review" aria-label="Review">
         <section class="panel queue-panel" aria-labelledby="queueTitle">
           <div class="panel-head">
             <h2 id="queueTitle">Review Queue</h2>
             <div class="panel-controls">
+              <span id="queueFilterSummary" class="panel-subtitle">alle offenen Targets</span>
+              <button id="queueClearFiltersButton" type="button">Filter reset</button>
+              <span id="queueSelectedCount" class="count">0</span>
+              <span id="queueCount" class="count">0</span>
+            </div>
+          </div>
+          <div class="queue-controls">
+            <div class="queue-filters">
+              <div>
+                <label>Use Case</label>
               <select id="queueUseCaseFilter" aria-label="Queue Use Case Filter">
                 <option value="">Alle Use Cases</option>
               </select>
-              <span id="queueCount" class="count">0</span>
+              </div>
+              <div>
+                <label>Run</label>
+                <select id="queueRunFilter">
+                  <option value="">Alle Runs</option>
+                </select>
+              </div>
+              <div>
+                <label>Status</label>
+                <select id="queueStatusFilter">
+                  <option value="">Offen</option>
+                  <option value="needs_review">needs_review</option>
+                  <option value="rating_partial">rating_partial</option>
+                  <option value="draft_pending">draft_pending</option>
+                  <option value="draft_failed">draft_failed</option>
+                  <option value="approved">approved</option>
+                  <option value="rejected">rejected</option>
+                  <option value="blacklisted">blacklisted</option>
+                </select>
+              </div>
+              <div>
+                <label>Action</label>
+                <select id="queueActionFilter">
+                  <option value="">Alle Actions</option>
+                  <option value="draft">draft</option>
+                  <option value="review">review</option>
+                  <option value="skip">skip</option>
+                </select>
+              </div>
+              <div>
+                <label>Source Type</label>
+                <select id="queueSourceTypeFilter">
+                  <option value="">Alle Types</option>
+                  <option value="company_site">company_site</option>
+                  <option value="official_site">official_site</option>
+                  <option value="registry">registry</option>
+                  <option value="directory">directory</option>
+                  <option value="news">news</option>
+                  <option value="repository">repository</option>
+                  <option value="marketplace">marketplace</option>
+                  <option value="job_board">job_board</option>
+                  <option value="social">social</option>
+                  <option value="search_result">search_result</option>
+                  <option value="unknown">unknown</option>
+                </select>
+              </div>
+              <div>
+                <label>Risiko</label>
+                <select id="queueRiskFilter">
+                  <option value="">Alle Risiken</option>
+                  <option value="missing_ai_evidence">missing_ai_evidence</option>
+                  <option value="missing_required_evidence">missing_required_evidence</option>
+                  <option value="missing_topic_match">missing_topic_match</option>
+                  <option value="context_source">context_source</option>
+                  <option value="secondary_source">secondary_source</option>
+                  <option value="listing_or_search_page">listing_or_search_page</option>
+                  <option value="blocked_source_type">blocked_source_type</option>
+                  <option value="deep_url">deep_url</option>
+                  <option value="missing_context">missing_context</option>
+                  <option value="draft_validation">draft_validation</option>
+                </select>
+              </div>
+            </div>
+            <div class="bulk-bar">
+              <button id="bulkRejectButton" class="danger" type="button">Reject selected</button>
+              <button id="bulkBlacklistButton" class="danger" type="button">Blacklist selected</button>
+              <button id="bulkUndoButton" type="button">Undo review</button>
+              <span id="queueBulkStatus" class="editor-status"></span>
             </div>
           </div>
           <div class="table-wrap">
             <table>
               <thead>
                 <tr>
+                  <th class="check-cell"><input id="queueSelectAll" type="checkbox" aria-label="Alle sichtbaren Queue-Eintraege auswaehlen"></th>
                   <th>Target</th>
                   <th>Use Case</th>
+                  <th>Run</th>
                   <th>Status</th>
                   <th>Action</th>
+                  <th>Source</th>
+                  <th>Risks</th>
                   <th>Score</th>
                   <th>Conf.</th>
                 </tr>
@@ -89,14 +234,22 @@
               </div>
             </div>
 
+            <div id="targetHighlights" class="highlight-grid"></div>
+
             <div class="actions">
               <button data-action="approve" type="button">Approve</button>
               <button data-action="reject" type="button">Reject</button>
               <button data-action="blacklist" class="danger" type="button">Blacklist</button>
+              <button data-action="undo-review" type="button">Undo Review</button>
               <button data-action="refetch" type="button">Refetch</button>
               <button data-action="rerate" type="button">Rerate</button>
               <button data-action="regenerate-draft" type="button">Draft</button>
             </div>
+
+            <section class="full-detail-section">
+              <h3>Timeline</h3>
+              <div id="targetTimeline" class="timeline"></div>
+            </section>
 
             <div class="split">
               <section>

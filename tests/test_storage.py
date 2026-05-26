@@ -471,6 +471,66 @@ class SQLiteStorageTests(unittest.TestCase):
 
         self.assertEqual(domains, {"blacklisted.example"})
 
+    def test_review_queue_filters_by_run_action_source_and_risk(self) -> None:
+        profile = self.store.create_profile(Profile(name="Queue Filter Profile"))
+        use_case_id = self.store.get_use_case_id_by_slug("application_student")
+        search_profile = self.store.create_search_profile(
+            SearchProfile(
+                profile_id=profile.id,
+                name="Queue Filter Search",
+                use_case_id=use_case_id,
+            )
+        )
+        run = self.store.create_pipeline_run(
+            PipelineRun(search_profile_id=search_profile.id)
+        )
+        target = self.store.create_target(
+            Target(
+                domain="queue-filter.example",
+                base_url="https://queue-filter.example",
+                status=TargetStatus.NEEDS_REVIEW,
+                metadata={
+                    "lead_metadata": {
+                        "source_quality": {
+                            "source_type": "company_site",
+                            "source_quality_score": 78,
+                            "source_risks": [
+                                {"type": "deep_url", "value": 4},
+                            ],
+                        }
+                    }
+                },
+            )
+        )
+        self.store.save_rating(
+            RatingResult(
+                target_id=target.id,
+                pipeline_run_id=run.id,
+                recommended_action=RecommendedAction.REVIEW,
+                rule_score=72,
+                confidence=0.8,
+                rating_status="use_case_rated",
+                risks=[{"type": "missing_ai_evidence", "value": "source"}],
+            )
+        )
+
+        items = self.store.list_review_queue_items(
+            pipeline_run_id=run.id,
+            status="needs_review",
+            recommended_action="review",
+            source_type="company_site",
+            risk_type="missing_ai_evidence",
+        )
+        deep_url_items = self.store.list_review_queue_items(
+            source_type="company_site",
+            risk_type="deep_url",
+        )
+
+        self.assertEqual([item["domain"] for item in items], ["queue-filter.example"])
+        self.assertEqual(items[0]["source_type"], "company_site")
+        self.assertIn("missing_ai_evidence", items[0]["risk_types"])
+        self.assertEqual([item["domain"] for item in deep_url_items], ["queue-filter.example"])
+
 
 def _column_names(connection: sqlite3.Connection, table_name: str) -> set[str]:
     rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
