@@ -13,9 +13,13 @@ docs/evaluation/engine-eval-baseline.json
 
 Umfang:
 
-- 12 Source-Quality-Faelle
-- 16 Rating-Faelle
-- 5 Draft-Grounding-Faelle
+- 20 Source-Quality-Faelle
+- 22 Rating-Faelle
+- 9 Draft-Grounding-Faelle
+
+Die Baseline umfasst damit 51 Faelle und deckt direkte Unternehmensseiten,
+Kontextquellen, blockierte Quellen, Use-Case-Rating, AI-Grounding und
+Draft-Grounding ab.
 
 Ausfuehrung:
 
@@ -39,6 +43,10 @@ Wenn ein Fall fehlschlaegt:
 - Erwartung pruefen, wenn die Engine absichtlich besser geworden ist.
 - Engine fixen, wenn die Erwartung weiterhin fachlich richtig ist.
 - Einen neuen Fall ergaenzen, wenn ein echter Run eine neue Fehlerklasse zeigt.
+
+Jeder Fehler enthaelt `section`, `case_id` und `expected_action`, damit ein
+CI-Fehler direkt einem Eval-Bereich und einer fachlichen Erwartung zugeordnet
+werden kann.
 
 ## Lokales Review-Feedback
 

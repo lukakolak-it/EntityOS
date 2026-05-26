@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  quality-gates:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: src
+      SEARCH_PROVIDER: mock
+      LLM_PROVIDER: fake
+      LLM_LIGHT_PROVIDER: fake
+      TARGET_RADAR_ENV: test
+      DATABASE_URL: sqlite:///:memory:
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Compile Python
+        run: python -m compileall src
+
+      - name: Run tests
+        run: python -m unittest discover -s tests
+
+      - name: Run engine eval
+        run: python -m target_radar.cli evaluate
+
+      - name: Run privacy check
+        run: python -m target_radar.cli privacy-check --root .
+
+      - name: Check browser JavaScript syntax
+        run: node --check src/target_radar/web/static/app.js
+
+      - name: Check whitespace
+        run: git diff --check

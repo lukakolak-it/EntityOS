@@ -101,6 +101,20 @@ Migrationsstatus und das letzte Backup.
 
 Unter `/#secrets` kann lokale Laufzeitdaten exportiert und anschliessend
 geloescht werden. Profile, Use Cases und `.env` bleiben dabei erhalten.
+Bugreports sollen nur redigierte Diagnoseausgaben enthalten. Sicherheits- und
+Datenschutzgrenzen stehen in `SECURITY.md`.
+
+## Budgetgrenzen
+
+Die lokale UI erzwingt harte Run-Limits, damit echte Provider nicht
+versehentlich unbegrenzt genutzt werden:
+
+- maximal 100 Suchanfragen pro Run
+- maximal 20 Ergebnisse pro Query
+- maximal 20 Fetch-Seiten pro Target
+
+Die Run-Vorschau unter `/#runs` zeigt vor dem Start die maximale Anzahl an
+Suchergebnissen, Fetches und LLM-Bewertungen.
 
 ## Tests
 
@@ -108,6 +122,8 @@ geloescht werden. Profile, Use Cases und `.env` bleiben dabei erhalten.
 $env:PYTHONPATH='src'
 py -m compileall src
 py -m unittest discover -s tests
+py -m target_radar.cli evaluate
+py -m target_radar.cli privacy-check --root .
 node --check src\target_radar\web\static\app.js
 git diff --check
 ```

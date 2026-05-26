@@ -27,11 +27,43 @@ class EvaluationTests(unittest.TestCase):
         result = run_evaluation(DEFAULT_EVALUATION_FIXTURE)
 
         self.assertEqual(result["status"], "passed")
-        self.assertEqual(result["total"], 33)
+        self.assertGreaterEqual(result["total"], 50)
+        self.assertEqual(result["total"], 51)
         self.assertEqual(result["failed"], 0)
-        self.assertEqual(result["sections"]["source_quality"]["total"], 12)
-        self.assertEqual(result["sections"]["rating"]["total"], 16)
-        self.assertEqual(result["sections"]["draft"]["total"], 5)
+        self.assertEqual(result["sections"]["source_quality"]["total"], 20)
+        self.assertEqual(result["sections"]["rating"]["total"], 22)
+        self.assertEqual(result["sections"]["draft"]["total"], 9)
+
+    def test_eval_failures_include_section_case_and_expected_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fixture_path = Path(tmpdir) / "source-quality-failure.json"
+            fixture_path.write_text(
+                """
+                {
+                  "name": "source_quality_failure",
+                  "source_quality": [
+                    {
+                      "id": "sq_failure_contract",
+                      "use_case": "company_osint",
+                      "url": "https://www.google.com/search?q=solar",
+                      "title": "Solar Search",
+                      "snippet": "Search result page.",
+                      "expected_source_type": "company_site",
+                      "expected_action": "import"
+                    }
+                  ]
+                }
+                """,
+                encoding="utf-8",
+            )
+
+            result = run_evaluation(fixture_path)
+
+        failure = result["sections"]["source_quality"]["failures"][0]
+        self.assertEqual(failure["section"], "source_quality")
+        self.assertEqual(failure["case_id"], "sq_failure_contract")
+        self.assertEqual(failure["expected_action"], "import")
+        self.assertIn("section=source_quality", failure["failure_summary"])
 
     def test_review_feedback_export_and_eval(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

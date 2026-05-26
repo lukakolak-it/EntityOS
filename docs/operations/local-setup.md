@@ -233,12 +233,27 @@ Der Check prueft:
 - leere API-Key-Platzhalter in `.env.example`,
 - moegliche Secret-Zuweisungen in versionierten Textdateien.
 
+## Budgetgrenzen
+
+Die UI begrenzt echte Provider-Laeufe hart:
+
+- `request_budget <= 100`
+- `results_per_query <= 20`
+- `max_pages_per_target <= 20`
+
+Unter `/#runs` zeigt die Vorschau vor dem Start die maximale Zahl an Queries,
+Suchergebnissen, Fetch-Requests und LLM-Bewertungen. Bei zu hohen Eingaben
+antwortet die API mit `400`, statt Werte still zu erhoehen oder zu kappen.
+
 ## Tests
 
 ```powershell
 $env:PYTHONPATH='src'
 py -m unittest discover -s tests
 py -m compileall src
+py -m target_radar.cli evaluate
+py -m target_radar.cli privacy-check --root .
+node --check src\target_radar\web\static\app.js
 git diff --check
 ```
 

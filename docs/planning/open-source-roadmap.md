@@ -499,12 +499,17 @@ darf.
 
 ### Slice 21.1: Eval-Goldset erweitern
 
+Status: umgesetzt.
+
 Umfang:
 
 - echte, anonymisierte oder synthetisierte Faelle fuer Source Quality, Rating,
   Draft und Use Cases sammeln
 - erwartete Aktionen festlegen
 - bekannte Grenzfaelle dokumentieren
+- Baseline `docs/evaluation/engine-eval-baseline.json` enthaelt 51
+  deterministische Faelle
+- Eval-Fehler nennen `section`, `case_id` und `expected_action`
 
 Akzeptanzkriterien:
 
@@ -514,11 +519,15 @@ Akzeptanzkriterien:
 
 ### Slice 21.2: CI-Basis
 
+Status: umgesetzt.
+
 Umfang:
 
 - GitHub Actions fuer Tests, Compile, Eval und Datenschutz-Check
 - keine Secrets fuer Standard-CI noetig
 - optionaler Provider-Test bleibt lokal
+- `.github/workflows/ci.yml` nutzt Mock/Fake-Provider und prueft Compile,
+  Tests, Eval, Privacy-Check, JS-Syntax und Whitespace
 
 Akzeptanzkriterien:
 
@@ -528,11 +537,16 @@ Akzeptanzkriterien:
 
 ### Slice 21.3: Performance- und Budgetgrenzen
 
+Status: umgesetzt.
+
 Umfang:
 
 - Run-Budget, Query-Budget, Fetch-Limits und LLM-Timeouts dokumentieren
 - UI zeigt geschaetzte Kosten/Risiken pro Run
 - harte Limits gegen versehentliche grosse Runs
+- Run Preview zeigt maximale Queries, Suchergebnisse, Fetches und
+  LLM-Bewertungen
+- API lehnt Werte ueber den UI-Limits mit `400` ab
 
 Akzeptanzkriterien:
 
@@ -542,12 +556,17 @@ Akzeptanzkriterien:
 
 ### Slice 21.4: Security- und Privacy-Review
 
+Status: umgesetzt.
+
 Umfang:
 
 - Secrets-Seite pruefen
 - Exportformate auf Secret-Leaks testen
 - lokale Datenpfade und `.gitignore` validieren
 - Security Policy schreiben
+- `SECURITY.md` beschreibt lokale Scope-Grenzen, Secret-Regeln und Reporting
+- README und Operations-Doku nennen lokale Datenhaltung, Budgetgrenzen und
+  Privacy-Check
 
 Akzeptanzkriterien:
 

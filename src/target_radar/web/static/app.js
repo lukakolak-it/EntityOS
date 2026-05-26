@@ -1887,12 +1887,30 @@ async function loadRunPreview() {
           <h3>Source Policy</h3>
           ${renderList(sourcePolicyPreview({ source_policy: data.source_policy }))}
           ${data.missing_required.length ? `<p class="muted">Missing: ${escapeHtml(data.missing_required.join(", "))}</p>` : ""}
+          <h3>Budget</h3>
+          ${renderRunBudget(data.budget)}
         </section>
       </div>
     `;
   } catch (error) {
     elements.runPreview.innerHTML = `<p class="muted">${escapeHtml(error.message)}</p>`;
   }
+}
+
+function renderRunBudget(budget) {
+  if (!budget) return `<div class="empty inline">-</div>`;
+  const rows = [
+    `queries: ${budget.query_count}/${budget.request_budget}`,
+    `search results max: ${budget.max_search_results}`,
+    `pages max: ${budget.potential_pages}`,
+    `network fetches max: ${budget.network_fetch_requests}`,
+    `LLM calls max: ${budget.max_llm_evaluations}`,
+    `limits: ${budget.hard_limits.request_budget} queries, ${budget.hard_limits.results_per_query} results/query, ${budget.hard_limits.max_pages_per_target} pages/target`,
+  ];
+  const warnings = budget.warnings?.length
+    ? `<p class="muted">Warnings: ${escapeHtml(budget.warnings.join(", "))}</p>`
+    : "";
+  return `${renderList(rows)}${warnings}`;
 }
 
 function saveRunDefaults() {

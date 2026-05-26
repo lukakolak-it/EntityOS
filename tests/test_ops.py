@@ -134,6 +134,17 @@ class OpsTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(result["findings"][0]["code"], "tracked_local_data")
 
+    def test_security_policy_documents_local_secret_boundaries(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        security = (root / "SECURITY.md").read_text(encoding="utf-8")
+        gitignore = (root / ".gitignore").read_text(encoding="utf-8")
+
+        self.assertIn("127.0.0.1", security)
+        self.assertIn(".env", security)
+        self.assertIn("privacy-check", security)
+        self.assertIn("data/*", gitignore)
+        self.assertIn("exports/", gitignore)
+
 
 if __name__ == "__main__":
     unittest.main()

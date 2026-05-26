@@ -402,7 +402,7 @@ def _run_source_quality_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
             "action": case["expected_action"],
         }
         results.append(_case_result(case["id"], actual, expected))
-    return _section_result(results)
+    return _section_result("source_quality", results)
 
 
 def _run_rating_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
@@ -439,7 +439,7 @@ def _run_rating_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         if "expected_risk_types" in case:
             expected["risk_types"] = sorted(case["expected_risk_types"])
         results.append(_case_result(case["id"], actual, expected))
-    return _section_result(results)
+    return _section_result("rating", results)
 
 
 def _run_draft_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
@@ -495,7 +495,7 @@ def _run_draft_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
                 value: True for value in case.get("forbidden_body_contains", [])
             }
         results.append(_case_result(case["id"], actual, expected))
-    return _section_result(results)
+    return _section_result("draft", results)
 
 
 def _run_review_feedback_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
@@ -513,7 +513,7 @@ def _run_review_feedback_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
         if not result["passed"]:
             result["triage"] = _review_feedback_triage(case, actual, expected)
         results.append(result)
-    section = _section_result(results)
+    section = _section_result("review_feedback", results)
     triage_items = [
         result["triage"]
         for result in results
@@ -634,16 +634,40 @@ def _case_result(
     }
 
 
-def _section_result(results: list[dict[str, Any]]) -> dict[str, Any]:
+def _section_result(section_name: str, results: list[dict[str, Any]]) -> dict[str, Any]:
     passed = sum(1 for result in results if result["passed"])
     total = len(results)
+    failures = [
+        _failure_with_section(section_name, result)
+        for result in results
+        if not result["passed"]
+    ]
     return {
         "total": total,
         "passed": passed,
         "failed": total - passed,
         "accuracy": _ratio(passed, total),
-        "failures": [result for result in results if not result["passed"]],
+        "failures": failures,
     }
+
+
+def _failure_with_section(section_name: str, result: dict[str, Any]) -> dict[str, Any]:
+    expected = dict(result.get("expected") or {})
+    expected_action = (
+        expected.get("recommended_action")
+        or expected.get("action")
+        or expected.get("status")
+        or "n/a"
+    )
+    enriched = dict(result)
+    enriched["section"] = section_name
+    enriched["case_id"] = result.get("id")
+    enriched["expected_action"] = expected_action
+    enriched["failure_summary"] = (
+        f"section={section_name} case_id={result.get('id')} "
+        f"expected_action={expected_action}"
+    )
+    return enriched
 
 
 def _load_fixture(path: str | Path) -> dict[str, Any]:

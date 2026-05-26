@@ -62,6 +62,9 @@ FULL_PIPELINE_PHASES = (
     PipelinePhase.RATING,
     PipelinePhase.DRAFT,
 )
+MAX_UI_REQUEST_BUDGET = 100
+MAX_UI_RESULTS_PER_QUERY = 20
+MAX_UI_PAGES_PER_TARGET = 20
 
 LOCAL_SETTING_FIELDS: tuple[dict[str, Any], ...] = (
     {
@@ -564,7 +567,9 @@ def _make_handler(
             payload = self._read_json(default={})
             store = self._store()
             try:
-                self._send_json(_run_preview_payload(store, payload))
+                self._send_json(
+                    _run_preview_payload(store, payload, config=self._config())
+                )
             finally:
                 store.close()
 
@@ -663,12 +668,23 @@ def _make_handler(
             phase_mode = _phase_mode(payload.get("phase_mode"))
             draft_enabled = _bool_payload(payload.get("draft_enabled"), default=True)
             phases = _phases_for_mode(phase_mode, draft_enabled=draft_enabled)
-            request_budget = _positive_int(payload.get("request_budget"), default=10, maximum=100)
-            results_per_query = _positive_int(payload.get("results_per_query"), default=5, maximum=20)
+            request_budget = _positive_int(
+                payload.get("request_budget"),
+                default=10,
+                maximum=MAX_UI_REQUEST_BUDGET,
+                field_name="request_budget",
+            )
+            results_per_query = _positive_int(
+                payload.get("results_per_query"),
+                default=5,
+                maximum=MAX_UI_RESULTS_PER_QUERY,
+                field_name="results_per_query",
+            )
             max_pages_per_target = _positive_int(
                 payload.get("max_pages_per_target"),
                 default=2 if provider_mode == "fake" else self._config().fetch.max_pages_per_target,
-                maximum=20,
+                maximum=MAX_UI_PAGES_PER_TARGET,
+                field_name="max_pages_per_target",
             )
             store = self._store()
             try:
@@ -1573,13 +1589,21 @@ def _required_positive_int(value: object, field_name: str) -> int:
     return parsed
 
 
-def _positive_int(value: object, *, default: int, maximum: int) -> int:
+def _positive_int(
+    value: object,
+    *,
+    default: int,
+    maximum: int,
+    field_name: str = "numeric run value",
+) -> int:
     if value is None or value == "":
         return default
     parsed = int(value)
     if parsed <= 0:
-        raise ValueError("numeric run values must be positive")
-    return min(parsed, maximum)
+        raise ValueError(f"{field_name} must be positive")
+    if parsed > maximum:
+        raise ValueError(f"{field_name} must be <= {maximum}")
+    return parsed
 
 
 def _tuple_payload(
@@ -1721,7 +1745,17 @@ def _unblock_domain(store: SQLiteStore, domain: str) -> Target:
     return store.get_target(existing.id)
 
 
-def _run_preview_payload(store: SQLiteStore, payload: dict[str, Any]) -> dict[str, Any]:
+def _run_preview_payload(
+    store: SQLiteStore,
+    payload: dict[str, Any],
+    *,
+    config: AppConfig,
+) -> dict[str, Any]:
+    provider_mode = _provider_mode(payload.get("provider_mode"))
+    llm_mode = _llm_mode(payload.get("llm_mode"))
+    fetch_mode = _fetch_mode(payload.get("fetch_mode"), provider_mode=provider_mode)
+    phase_mode = _phase_mode(payload.get("phase_mode"))
+    draft_enabled = _bool_payload(payload.get("draft_enabled"), default=True)
     search_profile_id = _optional_positive_int(payload.get("search_profile_id"))
     use_case_id = _optional_positive_int(payload.get("use_case_id"))
     if search_profile_id is not None:
@@ -1792,7 +1826,24 @@ def _run_preview_payload(store: SQLiteStore, payload: dict[str, Any]) -> dict[st
 
     selected_use_case_id = use_case_id or search_profile.use_case_id
     use_case = store.get_use_case(selected_use_case_id) if selected_use_case_id else None
-    request_budget = _positive_int(payload.get("request_budget"), default=10, maximum=100)
+    request_budget = _positive_int(
+        payload.get("request_budget"),
+        default=10,
+        maximum=MAX_UI_REQUEST_BUDGET,
+        field_name="request_budget",
+    )
+    results_per_query = _positive_int(
+        payload.get("results_per_query"),
+        default=5,
+        maximum=MAX_UI_RESULTS_PER_QUERY,
+        field_name="results_per_query",
+    )
+    max_pages_per_target = _positive_int(
+        payload.get("max_pages_per_target"),
+        default=2 if provider_mode == "fake" else config.fetch.max_pages_per_target,
+        maximum=MAX_UI_PAGES_PER_TARGET,
+        field_name="max_pages_per_target",
+    )
     queries = QueryBuilder().build(
         search_profile,
         template_set=None,
@@ -1832,13 +1883,81 @@ def _run_preview_payload(store: SQLiteStore, payload: dict[str, Any]) -> dict[st
         "source_policy": source_policy,
         "missing_required": missing_required,
         "valid": not missing_required,
-        "budget": {
-            "request_budget": request_budget,
-            "results_per_query": _positive_int(
-                payload.get("results_per_query"),
-                default=5,
-                maximum=20,
-            ),
+        "budget": _run_budget_preview(
+            query_count=len(queries),
+            results_per_query=results_per_query,
+            max_pages_per_target=max_pages_per_target,
+            request_budget=request_budget,
+            provider_mode=provider_mode,
+            llm_mode=llm_mode,
+            fetch_mode=fetch_mode,
+            phase_mode=phase_mode,
+            draft_enabled=draft_enabled,
+            use_case=use_case,
+        ),
+    }
+
+
+def _run_budget_preview(
+    *,
+    query_count: int,
+    results_per_query: int,
+    max_pages_per_target: int,
+    request_budget: int,
+    provider_mode: str,
+    llm_mode: str,
+    fetch_mode: str,
+    phase_mode: str,
+    draft_enabled: bool,
+    use_case: UseCaseConfig | None,
+) -> dict[str, Any]:
+    phases = _phases_for_mode(phase_mode, draft_enabled=draft_enabled)
+    max_search_results = query_count * results_per_query
+    potential_pages = max_search_results * max_pages_per_target
+    network_fetch_requests = (
+        potential_pages
+        if fetch_mode == "http" and PipelinePhase.FETCH in phases
+        else 0
+    )
+    llm_criteria = 0
+    if use_case is not None:
+        llm_criteria = sum(
+            1
+            for criterion in use_case.rating_policy.criteria
+            if getattr(criterion.evaluation, "value", criterion.evaluation)
+            in {"llm", "hybrid"}
+        )
+    max_llm_evaluations = (
+        max_search_results * llm_criteria
+        if llm_mode != "off" and PipelinePhase.RATING in phases
+        else 0
+    )
+    warnings = []
+    if provider_mode != "fake" and query_count >= 50:
+        warnings.append("high_search_budget")
+    if network_fetch_requests >= 200:
+        warnings.append("high_fetch_budget")
+    if max_llm_evaluations >= 100:
+        warnings.append("high_llm_budget")
+    return {
+        "request_budget": request_budget,
+        "query_count": query_count,
+        "results_per_query": results_per_query,
+        "max_search_results": max_search_results,
+        "max_pages_per_target": max_pages_per_target,
+        "potential_pages": potential_pages,
+        "network_fetch_requests": network_fetch_requests,
+        "max_llm_evaluations": max_llm_evaluations,
+        "provider_mode": provider_mode,
+        "llm_mode": llm_mode,
+        "fetch_mode": fetch_mode,
+        "phase_mode": phase_mode,
+        "draft_enabled": draft_enabled,
+        "warnings": warnings,
+        "hard_limits": {
+            "request_budget": MAX_UI_REQUEST_BUDGET,
+            "results_per_query": MAX_UI_RESULTS_PER_QUERY,
+            "max_pages_per_target": MAX_UI_PAGES_PER_TARGET,
         },
     }
 

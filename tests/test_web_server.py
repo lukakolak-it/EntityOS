@@ -230,6 +230,15 @@ class WebServerTests(unittest.TestCase):
                         },
                     },
                 )
+                oversized_budget_status = _http_status(
+                    f"{base_url}/api/run-preview",
+                    method="POST",
+                    payload={
+                        "use_case_id": 2,
+                        "request_budget": 101,
+                        "results_per_query": 1,
+                    },
+                )
                 patched_full_profile_payload = _http_json(
                     f"{base_url}/api/search-profiles/{created_profile_payload['search_profile']['id']}",
                     method="PATCH",
@@ -374,6 +383,10 @@ class WebServerTests(unittest.TestCase):
         self.assertGreaterEqual(len(preview_payload["queries"]), 1)
         self.assertGreaterEqual(len(preview_payload["query_packs"]), 1)
         self.assertEqual(preview_payload["queries"][0]["query_pack"], "company_core")
+        self.assertEqual(preview_payload["budget"]["request_budget"], 2)
+        self.assertEqual(preview_payload["budget"]["max_search_results"], 2)
+        self.assertEqual(preview_payload["budget"]["hard_limits"]["request_budget"], 100)
+        self.assertEqual(oversized_budget_status, 400)
         self.assertEqual(
             patched_full_profile_payload["search_profile"]["attributes"]["topics"],
             ["Security"],
