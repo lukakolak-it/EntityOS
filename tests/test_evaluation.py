@@ -165,6 +165,19 @@ class EvaluationTests(unittest.TestCase):
                         confidence=0.5,
                     )
                 )
+                store.set_target_status(
+                    target.id,
+                    TargetStatus.APPROVED,
+                    PipelinePhase.REVIEW,
+                    reason="previous review",
+                )
+                store.set_target_status(
+                    target.id,
+                    TargetStatus.NEEDS_REVIEW,
+                    PipelinePhase.RATING,
+                    pipeline_run_id=run.id,
+                    reason="rerun requires review",
+                )
             finally:
                 store.close()
 

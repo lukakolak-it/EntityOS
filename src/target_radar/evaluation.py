@@ -368,7 +368,7 @@ def _run_review_backlog(store: SQLiteStore, run_id: int) -> dict[str, Any]:
     backlog = [
         item
         for item in targets
-        if item["status"] in reviewable_statuses and item["review_status"] is None
+        if item["status"] in reviewable_statuses
     ]
     by_action: dict[str, int] = {}
     by_status: dict[str, int] = {}
