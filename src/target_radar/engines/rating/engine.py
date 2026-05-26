@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, replace
 from urllib.parse import urlparse
 
@@ -265,6 +266,26 @@ class RatingEngine:
         risks = rule_gate.risks + [
             risk for item in criterion_results for risk in item["risks"]
         ]
+        topic_gate = _topic_gate(use_case, search_profile, evidence)
+        missing_topic_match = False
+        if topic_gate is not None:
+            if topic_gate["matched"]:
+                reasons.append(
+                    {
+                        "type": "topic_match",
+                        "value": topic_gate["topic"],
+                        "matched_token": topic_gate["matched_token"],
+                    }
+                )
+            else:
+                missing_topic_match = True
+                confidence = min(confidence, 0.4)
+                risks.append(
+                    {
+                        "type": "missing_topic_match",
+                        "value": list(topic_gate["topics"]),
+                    }
+                )
         partial_ai_evidence = any(
             risk.get("type") == "missing_ai_evidence"
             for risk in risks
@@ -272,7 +293,12 @@ class RatingEngine:
         missing_required_evidence = any(
             item["missing_required_evidence"] for item in criterion_results
         )
-        if missing_llm or partial_ai_evidence or missing_required_evidence:
+        if (
+            missing_llm
+            or partial_ai_evidence
+            or missing_required_evidence
+            or missing_topic_match
+        ):
             action = RecommendedAction.REVIEW
             rating_status = "rating_partial"
         else:
@@ -520,6 +546,93 @@ def _criterion_payload(payload: dict[str, object], criterion_key: str) -> dict[s
     enriched = dict(payload)
     enriched.setdefault("criterion", criterion_key)
     return enriched
+
+
+_TOPIC_TOKEN_RE = re.compile(r"[\wäöüÄÖÜß]+", re.UNICODE)
+_TOPIC_STOPWORDS = frozenset(
+    {
+        "ag",
+        "anbieter",
+        "company",
+        "dienstleister",
+        "firma",
+        "fuer",
+        "für",
+        "gmbh",
+        "it",
+        "kg",
+        "service",
+        "services",
+        "thema",
+        "unternehmen",
+        "und",
+    }
+)
+
+
+def _topic_gate(
+    use_case: UseCaseConfig,
+    search_profile: SearchProfile,
+    evidence: list[Evidence],
+) -> dict[str, object] | None:
+    if "topics" not in use_case.attribute_schema.field_keys:
+        return None
+    topics = _attribute_terms(search_profile, "topics")
+    if not topics:
+        return None
+    context_text = _normalize_text(" ".join(item.text for item in evidence))
+    context_tokens = set(_topic_tokens(context_text))
+    region_tokens = {
+        token
+        for region in search_profile.regions + _attribute_terms(search_profile, "regions")
+        for token in _topic_tokens(region)
+    }
+    for topic in topics:
+        normalized_topic = _normalize_text(topic)
+        topic_tokens = [
+            token
+            for token in _topic_tokens(topic)
+            if _is_meaningful_topic_token(token, region_tokens)
+        ]
+        if (
+            normalized_topic
+            and normalized_topic not in _TOPIC_STOPWORDS
+            and normalized_topic in context_text
+        ):
+            return {
+                "matched": True,
+                "topic": topic,
+                "matched_token": normalized_topic,
+                "topics": topics,
+            }
+        for token in topic_tokens:
+            if token in context_tokens or (len(token) >= 5 and token in context_text):
+                return {
+                    "matched": True,
+                    "topic": topic,
+                    "matched_token": token,
+                    "topics": topics,
+                }
+    return {"matched": False, "topics": topics}
+
+
+def _attribute_terms(search_profile: SearchProfile, key: str) -> tuple[str, ...]:
+    value = search_profile.attributes.get(key)
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value.strip(),) if value.strip() else ()
+    if isinstance(value, (list, tuple, set)):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    return (str(value).strip(),) if str(value).strip() else ()
+
+
+def _topic_tokens(value: str) -> tuple[str, ...]:
+    return tuple(token.casefold() for token in _TOPIC_TOKEN_RE.findall(value))
+
+
+def _is_meaningful_topic_token(token: str, region_tokens: set[str]) -> bool:
+    return len(token) >= 3 and token not in _TOPIC_STOPWORDS and token not in region_tokens
 
 
 def _criterion_evidence(

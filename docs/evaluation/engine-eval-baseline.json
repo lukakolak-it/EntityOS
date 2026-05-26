@@ -267,6 +267,41 @@
       "expected_status": "use_case_rated"
     },
     {
+      "id": "rt_osint_missing_topic_match",
+      "use_case": "company_osint",
+      "url": "https://it-alpha.example/",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 90}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Solar"], "industries": ["IT"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://it-alpha.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "IT Alpha GmbH ist ein IT-Dienstleister in Essen mit Kontakt und belastbaren Firmeninformationen."
+        }
+      ],
+      "ai_response": {
+        "ai_score": 92,
+        "confidence": 0.9,
+        "recommended_action": "draft",
+        "reasons": [
+          {
+            "text": "Gute allgemeine Firmen-Evidence.",
+            "source_url": "https://it-alpha.example/",
+            "evidence": "IT-Dienstleister in Essen"
+          }
+        ],
+        "risks": []
+      },
+      "expected_action": "review",
+      "expected_status": "rating_partial",
+      "expected_risk_types": ["missing_topic_match"]
+    },
+    {
       "id": "rt_osint_missing_required_evidence",
       "use_case": "company_osint",
       "url": "https://solar-gamma.example/jobs",

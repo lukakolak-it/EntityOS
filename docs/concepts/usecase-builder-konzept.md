@@ -506,6 +506,10 @@ MVP-Auswertung:
 - LLM-Kriterien bekommen Suchprofil, Evidence, Source-Quality und die `llm_instruction`.
 - Hybrid-Kriterien nutzen Rule-Score und LLM-Score gemeinsam; im MVP ist der einfache Merge `max(rule_score, llm_score)`, damit gute harte Signale nicht durch unsichere LLM-Auswertung verloren gehen.
 - Wenn ein LLM-Kriterium wegen fehlendem Provider nicht bewertet werden kann, wird das Target nicht automatisch zu `draft`, sondern landet mit Risiko in `review`.
+- Use Cases mit einem Eingabefeld `topics` bekommen zusaetzlich ein
+  deterministisches Topic-Fit-Gate. Ohne belegten Topic-Bezug in der Evidence
+  wird kein `draft` empfohlen, auch wenn Region, Kontakt und Quellenlage gut
+  aussehen.
 
 ### DraftEngine
 

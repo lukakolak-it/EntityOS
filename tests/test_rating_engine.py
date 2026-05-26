@@ -299,6 +299,64 @@ class RatingEngineTests(unittest.TestCase):
         self.assertTrue(
             any(reason.get("criterion") == "credibility" for reason in rating.reasons)
         )
+        self.assertTrue(
+            any(reason.get("type") == "topic_match" for reason in rating.reasons)
+        )
+
+    def test_company_osint_missing_topic_match_prevents_draft(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "industries": ["IT"], "regions": ["Essen"]},
+        )
+        self.target.metadata["lead_metadata"] = {
+            "source_quality": {
+                "source_type": "company_site",
+                "source_quality_score": 90,
+            }
+        }
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/about",
+                text=(
+                    "Example GmbH ist ein IT-Dienstleister in Essen mit Kontakt "
+                    "und belastbaren Firmeninformationen."
+                ),
+                context_type="about",
+            )
+        ]
+        engine = RatingEngine(
+            ai_provider=FakeAIRatingProvider(
+                AIRatingResponse(
+                    ai_score=92,
+                    confidence=0.91,
+                    recommended_action=RecommendedAction.DRAFT,
+                    reasons=[
+                        {
+                            "text": "Gute allgemeine Firmen-Evidence.",
+                            "source_url": "https://example.com/about",
+                            "evidence": "IT-Dienstleister in Essen",
+                        }
+                    ],
+                )
+            )
+        )
+
+        rating = engine.rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.REVIEW)
+        self.assertEqual(rating.rating_status, "rating_partial")
+        self.assertLessEqual(rating.confidence, 0.4)
+        self.assertTrue(
+            any(risk.get("type") == "missing_topic_match" for risk in rating.risks)
+        )
 
     def test_use_case_llm_context_is_scoped_to_evidence_types(self) -> None:
         osint_profile = SearchProfile(

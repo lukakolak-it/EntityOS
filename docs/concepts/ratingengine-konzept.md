@@ -257,6 +257,39 @@ Damit bewertet z. B. `role_fit` nicht versehentlich nur anhand einer
 Kontaktseite, und OSINT-Kriterien koennen Context Sources wie Verzeichnisse,
 News oder Register bewusst einbeziehen.
 
+### Topic-Fit Gate fuer OSINT
+
+Bei Use Cases mit einem Attribute-Feld `topics` reicht ein guter allgemeiner
+Firmenkontext nicht fuer `draft`. Die RatingEngine prueft zusaetzlich
+deterministisch, ob die gespeicherte Evidence mindestens einen sinnvollen
+Topic-Bezug enthaelt.
+
+Beispiel:
+
+```yaml
+attributes:
+  topics:
+    - Solar
+  industries:
+    - IT
+  regions:
+    - Essen
+```
+
+Eine Seite zu einem allgemeinen IT-Dienstleister in Essen kann dann trotz guter
+Kontakt- und Quellenlage hoechstens `review` werden, solange in der Evidence
+kein Solar-Bezug vorkommt.
+
+Auswertung:
+
+- Topic-Phrasen und sinnvolle Topic-Tokens werden gegen die Evidence-Texte
+  geprueft.
+- Regionale Tokens und generische Begriffe wie `services`, `unternehmen` oder
+  `it` zaehlen nicht als Topic-Beleg.
+- Bei Treffer schreibt die Engine einen Reason `topic_match`.
+- Ohne Treffer schreibt sie ein Risiko `missing_topic_match`, begrenzt die
+  Confidence auf maximal `0.4` und setzt `recommended_action = review`.
+
 Regeln:
 
 - Keine unbelegten Behauptungen.

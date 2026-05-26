@@ -1823,6 +1823,35 @@ Akzeptanzkriterien:
   geprueft werden sollten.
 - Tests decken die Triage eines Review-Konflikts ab.
 
+### Slice E10: OSINT Topic-Fit Gate
+
+Status: umgesetzt.
+
+Ziel:
+
+`company_osint` soll keine Drafts mehr erzeugen, wenn ein Target nur wegen
+Region, Kontakt und allgemeiner Quellenlage gut wirkt, aber keinen belegten
+Bezug zum gesuchten Topic hat.
+
+Umfang:
+
+- deterministisches Topic-Fit-Gate fuer Use Cases mit `topics`-Feld
+- Topic-Phrasen und sinnvolle Topic-Tokens gegen Evidence-Texte pruefen
+- generische Tokens wie `services`, `unternehmen` oder `it` nicht als
+  Topic-Beleg zaehlen
+- fehlenden Topic-Bezug als `missing_topic_match` markieren
+- Confidence bei fehlendem Topic-Bezug auf maximal `0.4` begrenzen
+- Draft-Empfehlung bei fehlendem Topic-Bezug zu `review` degradieren
+- Eval-Baseline um False-Positive-Fall fuer breite Industrie-Treffer erweitern
+
+Akzeptanzkriterien:
+
+- Ein allgemeiner IT-Dienstleister in Essen wird bei Topic `Solar` nicht mehr
+  zu `draft`.
+- Ein echter Solar-Treffer behaelt `topic_match` und kann weiter `draft`
+  werden.
+- Eval-Suite deckt `missing_topic_match` ab.
+
 ## Sprint 15: DraftEngine Research Summary stabilisieren
 
 Ziel: Research-Summary-Drafts sollen mit echter Evidence erzeugbar sein, ohne an
