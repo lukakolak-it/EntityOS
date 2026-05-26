@@ -13,6 +13,8 @@ from typing import Mapping
 
 
 DEFAULT_ENV_FILE = ".env"
+SUPPORTED_LLM_PROVIDERS = frozenset({"fake", "mock", "openai", "ollama", "local"})
+UNIMPLEMENTED_LLM_PROVIDERS = frozenset({"anthropic", "gemini", "mistral"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -179,15 +181,15 @@ def load_app_config(
             repo=_get_optional_str(values, "GITHUB_REPO"),
         ),
         llm=LLMSettings(
-            provider=_get_str(values, "LLM_PROVIDER", "local"),
+            provider=_get_llm_provider(values, "LLM_PROVIDER", "local"),
             model=_get_str(values, "LLM_MODEL", "llama3.1:8b"),
-            heavy_provider=_get_str(values, "LLM_HEAVY_PROVIDER", "openai"),
+            heavy_provider=_get_llm_provider(values, "LLM_HEAVY_PROVIDER", "openai"),
             heavy_model=_get_str(
                 values,
                 "LLM_HEAVY_MODEL",
                 _get_str(values, "OPENAI_MODEL", "gpt-5.5"),
             ),
-            light_provider=_get_str(values, "LLM_LIGHT_PROVIDER", "ollama"),
+            light_provider=_get_llm_provider(values, "LLM_LIGHT_PROVIDER", "ollama"),
             light_model=_get_str(
                 values,
                 "LLM_LIGHT_MODEL",
@@ -295,6 +297,22 @@ def _get_optional_str(values: Mapping[str, str], key: str) -> str | None:
 def _get_str(values: Mapping[str, str], key: str, default: str) -> str:
     value = _get_optional_str(values, key)
     return value if value is not None else default
+
+
+def _get_llm_provider(values: Mapping[str, str], key: str, default: str) -> str:
+    provider = _get_str(values, key, default).strip().lower()
+    if provider in UNIMPLEMENTED_LLM_PROVIDERS:
+        raise ValueError(
+            f"{key}={provider} is configured, but this LLM provider is not "
+            "implemented yet. Supported providers: "
+            f"{', '.join(sorted(SUPPORTED_LLM_PROVIDERS))}."
+        )
+    if provider not in SUPPORTED_LLM_PROVIDERS:
+        raise ValueError(
+            f"{key}={provider} is not supported. Supported providers: "
+            f"{', '.join(sorted(SUPPORTED_LLM_PROVIDERS))}."
+        )
+    return provider
 
 
 def _get_int(values: Mapping[str, str], key: str, default: int) -> int:

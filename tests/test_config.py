@@ -99,6 +99,16 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.infrastructure.database_url, "sqlite:///from-file.sqlite3")
         self.assertEqual(config.lead_budget.request_budget, 10)
 
+    def test_unimplemented_llm_provider_fails_at_config_load(self) -> None:
+        with self.assertRaisesRegex(
+            ValueError,
+            "LLM_HEAVY_PROVIDER=anthropic.*not implemented yet",
+        ):
+            load_app_config(
+                env_file=None,
+                environ={"LLM_HEAVY_PROVIDER": "anthropic"},
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

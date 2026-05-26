@@ -81,6 +81,28 @@ class ReleaseDocsTests(unittest.TestCase):
             with self.subTest(gate=gate):
                 self.assertIn(gate, ci)
 
+    def test_sprint_decision_merge_uses_rating_action_vocabulary(self) -> None:
+        roadmap = (ROOT / "docs" / "planning" / "sprints-und-slices.md").read_text(
+            encoding="utf-8"
+        )
+        decision_merge = roadmap.split("### Slice 5.5: Decision Merge", 1)[1].split(
+            "### Slice 5.6: Rating-Versionen",
+            1,
+        )[0]
+
+        for action in ("skip", "review", "draft"):
+            with self.subTest(action=action):
+                self.assertIn(f"`{action}`", decision_merge)
+        for stale_action in (
+            "recommended",
+            "maybe",
+            "reject",
+            "needs_context",
+            "needs_review",
+        ):
+            with self.subTest(stale_action=stale_action):
+                self.assertNotIn(f"`{stale_action}`", decision_merge)
+
 
 if __name__ == "__main__":
     unittest.main()

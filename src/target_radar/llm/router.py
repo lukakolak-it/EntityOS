@@ -5,6 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from target_radar.config import AppConfig
+from target_radar.config.settings import (
+    SUPPORTED_LLM_PROVIDERS,
+    UNIMPLEMENTED_LLM_PROVIDERS,
+)
 from target_radar.llm.clients import (
     FakeLLMClient,
     LLMClient,
@@ -101,4 +105,12 @@ def _create_client(*, provider: str, model: str, config: AppConfig) -> LLMClient
             base_url=config.llm.local_base_url,
             api_key=config.llm.local_api_key,
         )
-    raise ValueError(f"unsupported LLM provider: {provider}")
+    if normalized in UNIMPLEMENTED_LLM_PROVIDERS:
+        raise ValueError(
+            f"LLM provider {normalized!r} is configured, but it is not implemented yet. "
+            f"Supported providers: {', '.join(sorted(SUPPORTED_LLM_PROVIDERS))}."
+        )
+    raise ValueError(
+        f"unsupported LLM provider: {provider}. Supported providers: "
+        f"{', '.join(sorted(SUPPORTED_LLM_PROVIDERS))}."
+    )

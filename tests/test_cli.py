@@ -6,8 +6,13 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
+import target_radar.cli as cli
+from target_radar.config import load_app_config
 from target_radar.cli import main
+from target_radar.engines.lead import LeadEngineConfig
 
 
 class CliTests(unittest.TestCase):
@@ -129,6 +134,68 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["review_backlog"]["total"], 1)
         self.assertEqual(payload["output_path"], str(output_path))
         self.assertTrue(output_exists)
+
+    def test_run_configured_preserves_source_block_threshold(self) -> None:
+        captured = {}
+        config = load_app_config(
+            env_file=None,
+            environ={
+                "TARGET_RADAR_SOURCE_BLOCK_THRESHOLD": "72",
+                "SEARCH_PROVIDER": "mock",
+                "LLM_HEAVY_PROVIDER": "fake",
+                "LLM_LIGHT_PROVIDER": "fake",
+            },
+        )
+        fake_lead_engine = SimpleNamespace(
+            provider=SimpleNamespace(name="mock"),
+            config=LeadEngineConfig(
+                request_budget=100,
+                results_per_query=10,
+                template_set="application_student",
+                source_block_threshold=72,
+            ),
+        )
+
+        class StubPipelineOrchestrator:
+            def __init__(self, _store, lead_engine, **_kwargs) -> None:
+                captured["lead_config"] = lead_engine.config
+
+            def run(self, _request):
+                return SimpleNamespace(
+                    run=SimpleNamespace(id=1, status=SimpleNamespace(value="completed")),
+                    review_target_count=0,
+                    fetched_count=0,
+                    evidence_count=0,
+                    rated_count=0,
+                    drafted_count=0,
+                    error_count=0,
+                    import_results=[],
+                )
+
+        args = SimpleNamespace(
+            profile_name="Configured",
+            search_name="Configured Search",
+            role=["Werkstudent IT"],
+            region=["Essen"],
+            tech=["Python"],
+            request_budget=3,
+            results_per_query=2,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database_url = f"sqlite:///{Path(tmpdir) / 'target-radar.sqlite3'}"
+            with patch.object(cli, "create_lead_engine", return_value=fake_lead_engine):
+                with patch.object(cli, "create_rating_engine", return_value=object()):
+                    with patch.object(cli, "PipelineOrchestrator", StubPipelineOrchestrator):
+                        buffer = io.StringIO()
+                        with redirect_stdout(buffer):
+                            exit_code = cli._run_configured(args, database_url, config)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(captured["lead_config"].request_budget, 3)
+        self.assertEqual(captured["lead_config"].results_per_query, 2)
+        self.assertEqual(captured["lead_config"].template_set, "application_student")
+        self.assertEqual(captured["lead_config"].source_block_threshold, 72)
 
 
 def _run_cli(*args: str) -> dict[str, object]:

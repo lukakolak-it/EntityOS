@@ -246,6 +246,7 @@ def _run_configured(args, database_url: str, config) -> int:
             request_budget=args.request_budget,
             results_per_query=args.results_per_query,
             template_set=lead_engine.config.template_set,
+            source_block_threshold=lead_engine.config.source_block_threshold,
         )
         result = PipelineOrchestrator(
             store,
