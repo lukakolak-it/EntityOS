@@ -20,6 +20,12 @@ class EvidenceType(StrEnum):
     CONTEXT_REGISTRY = "context_registry"
     CONTEXT_REPOSITORY = "context_repository"
     CONTEXT_SOURCE = "context_source"
+    IDENTITY = "identity"
+    ACTIVITY = "activity"
+    REPUTATION = "reputation"
+    CONTACT = "contact"
+    OFFICIAL_CLAIM = "official_claim"
+    THIRD_PARTY_CLAIM = "third_party_claim"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,11 +48,13 @@ class EvidenceEngine:
 
         context_type = _target_context_type(page.page_type)
         evidence_type = _target_evidence_type(context_type)
+        evidence_category = _target_evidence_category(context_type)
         evidence_metadata = _clean_metadata(metadata or {})
         evidence_metadata.update(
             _clean_metadata(
                 {
                     "evidence_type": evidence_type.value,
+                    "evidence_category": evidence_category.value,
                     "provenance": "target_page",
                     "page_id": page.id,
                     "page_type": page.page_type,
@@ -94,10 +102,12 @@ class EvidenceEngine:
             source_quality = {}
         source_type = str(source_quality.get("source_type") or "unknown")
         evidence_type = _context_evidence_type(source_type)
+        evidence_category = _context_evidence_category(source_type)
 
         evidence_metadata = _clean_metadata(
             {
                 "evidence_type": evidence_type.value,
+                "evidence_category": evidence_category.value,
                 "provenance": "context_source",
                 "context_source_id": context_source.get("id"),
                 "source_query_id": context_source.get("source_query_id"),
@@ -149,6 +159,26 @@ def _context_evidence_type(source_type: str) -> EvidenceType:
         "registry": EvidenceType.CONTEXT_REGISTRY,
         "repository": EvidenceType.CONTEXT_REPOSITORY,
     }.get(source_type, EvidenceType.CONTEXT_SOURCE)
+
+
+def _target_evidence_category(context_type: str) -> EvidenceType:
+    return {
+        "contact": EvidenceType.CONTACT,
+        "career": EvidenceType.ACTIVITY,
+        "about": EvidenceType.OFFICIAL_CLAIM,
+        "homepage": EvidenceType.OFFICIAL_CLAIM,
+    }.get(context_type, EvidenceType.OFFICIAL_CLAIM)
+
+
+def _context_evidence_category(source_type: str) -> EvidenceType:
+    return {
+        "registry": EvidenceType.IDENTITY,
+        "directory": EvidenceType.REPUTATION,
+        "news": EvidenceType.ACTIVITY,
+        "repository": EvidenceType.ACTIVITY,
+        "official_site": EvidenceType.OFFICIAL_CLAIM,
+        "company_site": EvidenceType.OFFICIAL_CLAIM,
+    }.get(source_type, EvidenceType.THIRD_PARTY_CLAIM)
 
 
 def _target_priority(context_type: str) -> int:

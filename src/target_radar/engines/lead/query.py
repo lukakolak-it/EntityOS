@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 
 from target_radar.domain import SearchProfile
-from target_radar.use_cases import UseCaseConfig, template_variables
+from target_radar.use_cases import QueryPack, QueryPolicy, UseCaseConfig, template_variables
 
 
 _NEGATIVE_TOKEN_RE = re.compile(r'-(?:"[^"]+"|\S+)')
@@ -21,6 +21,7 @@ class QueryCandidate:
     query_template: str
     template_set: str
     score: int
+    query_pack: str | None = None
 
 
 class QueryBuilder:
@@ -36,14 +37,21 @@ class QueryBuilder:
     ) -> list[QueryCandidate]:
         if use_case is not None:
             selected_template_set = template_set or use_case.query_policy.default_template_set
-            rendered = self._render_use_case(search_profile, use_case)
+            rendered = self._render_use_case(
+                search_profile,
+                use_case,
+                selected_template_set=selected_template_set,
+            )
         else:
             selected_template_set = template_set or self._infer_template_set(search_profile)
-            rendered = self._render(search_profile, selected_template_set)
+            rendered = [
+                (text, template, score, selected_template_set, None)
+                for text, template, score in self._render(search_profile, selected_template_set)
+            ]
 
         seen: set[str] = set()
         candidates: list[QueryCandidate] = []
-        for text, template, score in rendered:
+        for text, template, score, rendered_template_set, query_pack in rendered:
             normalized = normalize_query(text)
             if not normalized:
                 continue
@@ -61,8 +69,9 @@ class QueryBuilder:
                     text=normalized,
                     query_hash=query_hash,
                     query_template=template,
-                    template_set=selected_template_set,
+                    template_set=rendered_template_set,
                     score=score,
+                    query_pack=query_pack,
                 )
             )
             if limit is not None and len(candidates) >= limit:
@@ -138,29 +147,42 @@ class QueryBuilder:
         self,
         search_profile: SearchProfile,
         use_case: UseCaseConfig,
-    ) -> list[tuple[str, str, int]]:
-        rendered: list[tuple[str, str, int]] = []
+        *,
+        selected_template_set: str,
+    ) -> list[tuple[str, str, int, str, str | None]]:
+        rendered: list[tuple[str, str, int, str, str | None]] = []
         if search_profile.manual_query:
-            rendered.append((search_profile.manual_query, "manual_query", 100))
+            rendered.append((
+                search_profile.manual_query,
+                "manual_query",
+                100,
+                use_case.query_policy.default_template_set,
+                None,
+            ))
 
         values_by_field = _search_profile_values(search_profile)
-        for index, template in enumerate(use_case.query_policy.templates):
-            variables = sorted(template_variables(template))
-            value_sets: list[tuple[str, tuple[str, ...]]] = []
-            for variable in variables:
-                field_key = use_case.query_policy.variable_map.get(variable, variable)
-                values = values_by_field.get(field_key, ())
-                if not values:
-                    break
-                value_sets.append((variable, values))
-            else:
-                score = _use_case_template_score(template, index)
-                for values in itertools.product(*(item[1] for item in value_sets)):
-                    context = {
-                        variable: value
-                        for (variable, _field_values), value in zip(value_sets, values)
-                    }
-                    rendered.append((template.format(**context), template, score))
+        packs = _selected_query_packs(use_case.query_policy, selected_template_set)
+        if packs:
+            for pack_index, pack in enumerate(packs):
+                pack_rendered = _render_templates(
+                    templates=pack.templates,
+                    values_by_field=values_by_field,
+                    variable_map=use_case.query_policy.variable_map,
+                    score_offset=-(pack_index * 3),
+                    template_set=use_case.query_policy.default_template_set,
+                    query_pack=pack.key,
+                )
+                rendered.extend(pack_rendered[: pack.request_budget])
+        else:
+            rendered.extend(
+                _render_templates(
+                    templates=use_case.query_policy.templates,
+                    values_by_field=values_by_field,
+                    variable_map=use_case.query_policy.variable_map,
+                    template_set=use_case.query_policy.default_template_set,
+                    query_pack=None,
+                )
+            )
 
         return sorted(rendered, key=lambda item: item[2], reverse=True)
 
@@ -208,6 +230,47 @@ def _exclude_terms(
     if use_case is not None:
         terms.extend(use_case.query_policy.exclude_terms)
     return tuple(_dedupe_preserve_order(terms))
+
+
+def _selected_query_packs(
+    query_policy: QueryPolicy,
+    selected_template_set: str,
+) -> tuple[QueryPack, ...]:
+    if not query_policy.query_packs:
+        return ()
+    if selected_template_set == query_policy.default_template_set:
+        return query_policy.query_packs
+    return tuple(pack for pack in query_policy.query_packs if pack.key == selected_template_set)
+
+
+def _render_templates(
+    *,
+    templates: tuple[str, ...],
+    values_by_field: dict[str, tuple[str, ...]],
+    variable_map: dict[str, str],
+    template_set: str,
+    query_pack: str | None,
+    score_offset: int = 0,
+) -> list[tuple[str, str, int, str, str | None]]:
+    rendered: list[tuple[str, str, int, str, str | None]] = []
+    for index, template in enumerate(templates):
+        variables = sorted(template_variables(template))
+        value_sets: list[tuple[str, tuple[str, ...]]] = []
+        for variable in variables:
+            field_key = variable_map.get(variable, variable)
+            values = values_by_field.get(field_key, ())
+            if not values:
+                break
+            value_sets.append((variable, values))
+        else:
+            score = _use_case_template_score(template, index) + score_offset
+            for values in itertools.product(*(item[1] for item in value_sets)):
+                context = {
+                    variable: value
+                    for (variable, _field_values), value in zip(value_sets, values)
+                }
+                rendered.append((template.format(**context), template, score, template_set, query_pack))
+    return sorted(rendered, key=lambda item: item[2], reverse=True)
 
 
 def _append_exclusions(query: str, exclude_terms: tuple[str, ...]) -> str:

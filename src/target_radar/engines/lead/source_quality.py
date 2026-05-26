@@ -22,6 +22,7 @@ class SourceType(StrEnum):
     NEWS = "news"
     REGISTRY = "registry"
     MARKETPLACE = "marketplace"
+    SEARCH_RESULT = "search_result"
     UNKNOWN = "unknown"
 
 
@@ -109,6 +110,7 @@ class SourceQualityClassifier:
         SourceType.JOB_BOARD,
         SourceType.SOCIAL,
         SourceType.MARKETPLACE,
+        SourceType.SEARCH_RESULT,
     )
     preferred_domains: tuple[str, ...] = ()
     relevant_path_tokens: tuple[str, ...] = _RELEVANT_PATH_TOKENS
@@ -293,6 +295,9 @@ _DOMAIN_SOURCE_TYPES: dict[str, SourceType] = {
     "faz.net": SourceType.NEWS,
     "sueddeutsche.de": SourceType.NEWS,
     "heise.de": SourceType.NEWS,
+    "google.com": SourceType.SEARCH_RESULT,
+    "bing.com": SourceType.SEARCH_RESULT,
+    "duckduckgo.com": SourceType.SEARCH_RESULT,
 }
 
 _JOB_BOARD_TOKENS = (

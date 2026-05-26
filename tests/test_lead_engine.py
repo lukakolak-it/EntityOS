@@ -59,6 +59,7 @@ class LeadEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(queries[0].template_set, "company_osint")
+        self.assertEqual(queries[0].query_pack, "company_core")
         self.assertEqual(
             queries[0].text,
             "Zero Trust Unternehmen Essen -jobs -stellenangebote -karriere -praktikum -werkstudent",
@@ -68,7 +69,7 @@ class LeadEngineTests(unittest.TestCase):
             {query.text for query in QueryBuilder().build(
                 search_profile,
                 use_case=get_default_use_case("company_osint"),
-                limit=5,
+                limit=7,
             )},
         )
         self.assertNotIn(
@@ -76,7 +77,7 @@ class LeadEngineTests(unittest.TestCase):
             {query.text for query in QueryBuilder().build(
                 search_profile,
                 use_case=get_default_use_case("company_osint"),
-                limit=5,
+                limit=9,
             )},
         )
         self.assertIn(
@@ -84,7 +85,7 @@ class LeadEngineTests(unittest.TestCase):
             {query.text for query in QueryBuilder().build(
                 search_profile,
                 use_case=get_default_use_case("company_osint"),
-                limit=7,
+                limit=10,
             )},
         )
 
@@ -313,6 +314,19 @@ class LeadEngineTests(unittest.TestCase):
         self.assertEqual(news.source_type, SourceType.NEWS)
         self.assertEqual(blocked.recommended_action, SourceImportAction.BLOCK)
         self.assertEqual(blocked.score, 0)
+
+    def test_source_quality_classifies_search_result_pages(self) -> None:
+        classifier = SourceQualityClassifier()
+
+        result = classifier.classify(
+            SearchResult(
+                url="https://www.google.com/search?q=solar+essen",
+                title="Google Search",
+            )
+        )
+
+        self.assertEqual(result.source_type, SourceType.SEARCH_RESULT)
+        self.assertEqual(result.recommended_action, SourceImportAction.BLOCK)
 
     def test_source_quality_knows_concept_job_boards_and_review_portals(self) -> None:
         classifier = SourceQualityClassifier()

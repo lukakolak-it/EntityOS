@@ -5,6 +5,7 @@ import unittest
 from target_radar.use_cases import (
     DEFAULT_USE_CASES,
     DRAFT_OUTPUT_SCHEMAS,
+    QueryPack,
     SourcePolicy,
     UseCaseConfig,
     get_default_use_case,
@@ -37,9 +38,17 @@ class UseCaseSchemaTests(unittest.TestCase):
 
     def test_company_osint_query_policy_uses_direct_templates_and_exclusions(self) -> None:
         use_case = get_default_use_case("company_osint")
+        query_pack_keys = {pack.key for pack in use_case.query_policy.query_packs}
 
         self.assertIn("{topic} Impressum {region}", use_case.query_policy.templates)
         self.assertIn("{industry} Unternehmen {region}", use_case.query_policy.templates)
+        self.assertEqual(
+            query_pack_keys,
+            {"company_core", "open_source_project", "vendor_research"},
+        )
+        self.assertTrue(
+            any("{topic} repository" in pack.templates for pack in use_case.query_policy.query_packs)
+        )
         self.assertLess(
             use_case.query_policy.templates.index("{topic} Referenzen {region}"),
             use_case.query_policy.templates.index("{industry} Unternehmen {region}"),
@@ -59,6 +68,20 @@ class UseCaseSchemaTests(unittest.TestCase):
         payload["query_policy"]["variable_map"]["role"] = "missing_roles"
 
         with self.assertRaisesRegex(ValueError, "missing_roles"):
+            validate_use_case_config(payload)
+
+    def test_query_pack_templates_are_validated(self) -> None:
+        payload = get_default_use_case("company_osint").to_dict()
+        payload["query_policy"]["query_packs"] = [
+            QueryPack(
+                key="broken_pack",
+                label="Broken",
+                request_budget=1,
+                templates=("{missing} {region}",),
+            ).to_dict()
+        ]
+
+        with self.assertRaisesRegex(ValueError, "missing"):
             validate_use_case_config(payload)
 
     def test_source_policy_rejects_conflicting_source_types(self) -> None:
@@ -131,6 +154,8 @@ class UseCaseSchemaTests(unittest.TestCase):
 
         self.assertEqual(use_case.draft_policy.draft_type, "research_summary")
         self.assertIn("evidence", DRAFT_OUTPUT_SCHEMAS["research_summary"])
+        self.assertIn("evidence", DRAFT_OUTPUT_SCHEMAS["company_summary"])
+        self.assertIn("evidence", DRAFT_OUTPUT_SCHEMAS["vendor_risk_note"])
         self.assertIn("risks_or_uncertainties", use_case.draft_policy.required_sections)
 
     def test_template_variable_parser_rejects_format_specs(self) -> None:

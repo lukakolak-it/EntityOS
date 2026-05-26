@@ -7,8 +7,8 @@ from target_radar.engines.draft.context import DraftContext
 
 class TemplateDraftGenerator:
     def generate(self, context: DraftContext, *, draft_type: str) -> tuple[str, str]:
-        if draft_type == "research_summary":
-            return _research_summary(context)
+        if draft_type in _RESEARCH_DRAFT_TITLES:
+            return _research_summary(context, draft_type=draft_type)
         if draft_type != "application_email":
             raise ValueError(f"unsupported draft_type: {draft_type}")
 
@@ -33,16 +33,28 @@ class TemplateDraftGenerator:
         return subject, body
 
 
-def _research_summary(context: DraftContext) -> tuple[str, str]:
-    subject = f"Research Summary: {context.target_domain}"
+_RESEARCH_DRAFT_TITLES = {
+    "research_summary": "Research Summary",
+    "company_summary": "Company Summary",
+    "project_summary": "Project Summary",
+    "vendor_risk_note": "Vendor Risk Note",
+}
+
+
+def _research_summary(context: DraftContext, *, draft_type: str) -> tuple[str, str]:
+    title = _RESEARCH_DRAFT_TITLES[draft_type]
+    subject = f"{title}: {context.target_domain}"
     items = context.evidence_items[:4]
     findings = "\n".join(
-        _finding_line(item.ref, item.evidence_type, item.text) for item in items
+        _finding_line(item.ref, item.evidence_type, item.evidence_category, item.text)
+        for item in items
     )
     if not findings:
         findings = "- Keine belastbaren Belege gefunden."
     evidence_lines = "\n".join(
-        f"- {item.ref}: {item.source_url}" for item in items
+        f"- {item.ref}: [{_evidence_label(item.evidence_type, item.evidence_category)}] "
+        f"{item.source_url}"
+        for item in items
     )
     if not evidence_lines:
         evidence_lines = "- Keine Quellen gespeichert."
@@ -55,21 +67,67 @@ def _research_summary(context: DraftContext) -> tuple[str, str]:
             f"Title\n{subject}",
             (
                 "Summary\n"
-                f"{context.target_domain} wurde anhand von {len(items)} lokal "
-                "gespeicherten Evidence-Objekten bewertet. Die folgenden Punkte "
-                "sind Arbeitsnotizen fuer die manuelle Pruefung."
+                f"{_summary_sentence(context, draft_type, len(items))} "
+                "Die folgenden Punkte sind Arbeitsnotizen fuer die manuelle Pruefung."
             ),
             f"Key Findings\n{findings}",
             f"Evidence\n{evidence_lines}",
             f"Risks Or Uncertainties\n{risks}",
-            "Next Steps\n- Quellen manuell pruefen und Entscheidung in der Review Queue treffen.",
+            f"Next Steps\n{_next_steps(draft_type)}",
         ]
     )
     return subject, body
 
 
-def _finding_line(ref: str, evidence_type: str, text: str) -> str:
-    return f"- {ref}: [{evidence_type}] {_clip_text(text, 260)}"
+def _summary_sentence(context: DraftContext, draft_type: str, evidence_count: int) -> str:
+    if draft_type == "company_summary":
+        return (
+            f"{context.target_domain} wurde als Unternehmen anhand von {evidence_count} "
+            "lokal gespeicherten Evidence-Objekten bewertet."
+        )
+    if draft_type == "project_summary":
+        return (
+            f"{context.target_domain} wurde als Projekt oder Repository anhand von "
+            f"{evidence_count} lokal gespeicherten Evidence-Objekten bewertet."
+        )
+    if draft_type == "vendor_risk_note":
+        return (
+            f"{context.target_domain} wurde als moeglicher Anbieter anhand von "
+            f"{evidence_count} lokal gespeicherten Evidence-Objekten auf Risiken "
+            "und offene Pruefpunkte bewertet."
+        )
+    return (
+        f"{context.target_domain} wurde anhand von {evidence_count} lokal gespeicherten "
+        "Evidence-Objekten bewertet."
+    )
+
+
+def _next_steps(draft_type: str) -> str:
+    if draft_type == "vendor_risk_note":
+        return "\n".join(
+            [
+                "- Quellen manuell pruefen.",
+                "- Offene Risiken vor einer Anbieterentscheidung klaeren.",
+            ]
+        )
+    if draft_type == "project_summary":
+        return "\n".join(
+            [
+                "- Repository- und Aktivitaetshinweise manuell pruefen.",
+                "- Entscheidung in der Review Queue dokumentieren.",
+            ]
+        )
+    return "- Quellen manuell pruefen und Entscheidung in der Review Queue treffen."
+
+
+def _finding_line(ref: str, evidence_type: str, evidence_category: str, text: str) -> str:
+    return f"- {ref}: [{_evidence_label(evidence_type, evidence_category)}] {_clip_text(text, 260)}"
+
+
+def _evidence_label(evidence_type: str, evidence_category: str) -> str:
+    if evidence_category and evidence_category != evidence_type:
+        return f"{evidence_category}/{evidence_type}"
+    return evidence_type
 
 
 def _risk_line(risk: dict[str, object]) -> str:

@@ -112,6 +112,7 @@ class DraftEngine:
                         "ref": item.ref,
                         "source_url": item.source_url,
                         "evidence_type": item.evidence_type,
+                        "evidence_category": item.evidence_category,
                         "context_type": item.context_type,
                         "priority": item.priority,
                     }
@@ -125,13 +126,13 @@ class DraftEngine:
 
 
 def _draft_version(draft_type: str) -> str:
-    if draft_type == "research_summary":
-        return "research-summary-v1"
+    if _is_research_draft(draft_type):
+        return f"{draft_type.replace('_', '-')}-v1"
     return "application-email-v1"
 
 
 def _context_budget(draft_type: str, max_body_chars: int | None) -> int:
-    if draft_type == "research_summary":
+    if _is_research_draft(draft_type):
         if max_body_chars is None:
             return 1800
         return max(600, min(1800, max_body_chars // 2))
@@ -139,31 +140,31 @@ def _context_budget(draft_type: str, max_body_chars: int | None) -> int:
 
 
 def _snippet_limit(draft_type: str) -> int:
-    if draft_type == "research_summary":
+    if _is_research_draft(draft_type):
         return 4
     return 1
 
 
 def _required_source_urls(draft_type: str, context) -> tuple[str, ...]:
-    if draft_type != "research_summary":
+    if not _is_research_draft(draft_type):
         return ()
     return tuple(item.source_url for item in context.evidence_items if item.source_url)
 
 
 def _required_evidence_refs(draft_type: str, context) -> tuple[str, ...]:
-    if draft_type != "research_summary":
+    if not _is_research_draft(draft_type):
         return ()
     return tuple(item.ref for item in context.evidence_items)
 
 
 def _required_claim_refs(draft_type: str, context) -> tuple[str, ...]:
-    if draft_type != "research_summary":
+    if not _is_research_draft(draft_type):
         return ()
     return tuple(item.ref for item in context.evidence_items)
 
 
 def _claim_refs(draft_type: str, context) -> list[dict[str, object]]:
-    if draft_type != "research_summary":
+    if not _is_research_draft(draft_type):
         return []
     return [
         {
@@ -171,6 +172,7 @@ def _claim_refs(draft_type: str, context) -> list[dict[str, object]]:
             "ref": item.ref,
             "source_url": item.source_url,
             "evidence_type": item.evidence_type,
+            "evidence_category": item.evidence_category,
             "context_type": item.context_type,
             "priority": item.priority,
         }
@@ -188,7 +190,7 @@ def _fit_body_to_limit(
 ) -> str:
     if len(body) <= max_body_chars:
         return body
-    if draft_type == "research_summary":
+    if _is_research_draft(draft_type):
         compact = _compact_research_summary_body(
             subject=subject,
             context=context,
@@ -262,9 +264,10 @@ def _render_compact_research_summary(
 
 
 def _compact_finding_line(item: DraftEvidenceSnippet, *, finding_chars: int) -> str:
+    evidence_label = _evidence_label(item)
     if finding_chars <= 0:
-        return f"- {item.ref}: [{item.evidence_type}] siehe Evidence."
-    return f"- {item.ref}: [{item.evidence_type}] {_clip_text(item.text, finding_chars)}"
+        return f"- {item.ref}: [{evidence_label}] siehe Evidence."
+    return f"- {item.ref}: [{evidence_label}] {_clip_text(item.text, finding_chars)}"
 
 
 def _compact_risks(context: DraftContext, *, risk_limit: int) -> str:
@@ -287,3 +290,18 @@ def _clip_text(value: str, max_chars: int) -> str:
     if max_chars <= 1:
         return "."
     return cleaned[: max_chars - 1].rstrip() + "."
+
+
+def _is_research_draft(draft_type: str) -> bool:
+    return draft_type in {
+        "research_summary",
+        "company_summary",
+        "project_summary",
+        "vendor_risk_note",
+    }
+
+
+def _evidence_label(item: DraftEvidenceSnippet) -> str:
+    if item.evidence_category and item.evidence_category != item.evidence_type:
+        return f"{item.evidence_category}/{item.evidence_type}"
+    return item.evidence_type

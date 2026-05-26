@@ -1666,16 +1666,34 @@ def _run_preview_payload(store: SQLiteStore, payload: dict[str, Any]) -> dict[st
     )
     missing_required = _missing_required_fields(search_profile, use_case)
     source_policy = use_case.source_policy.to_dict() if use_case is not None else {}
+    query_packs = []
+    if use_case is not None:
+        query_counts: dict[str, int] = {}
+        for query in queries:
+            if query.query_pack:
+                query_counts[query.query_pack] = query_counts.get(query.query_pack, 0) + 1
+        query_packs = [
+            {
+                "key": pack.key,
+                "label": pack.label,
+                "description": pack.description,
+                "request_budget": pack.request_budget,
+                "query_count": query_counts.get(pack.key, 0),
+            }
+            for pack in use_case.query_policy.query_packs
+        ]
     return {
         "queries": [
             {
                 "text": query.text,
                 "template": query.query_template,
                 "template_set": query.template_set,
+                "query_pack": query.query_pack,
                 "score": query.score,
             }
             for query in queries
         ],
+        "query_packs": query_packs,
         "source_policy": source_policy,
         "missing_required": missing_required,
         "valid": not missing_required,

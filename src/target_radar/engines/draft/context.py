@@ -15,6 +15,7 @@ class DraftEvidenceSnippet:
     source_url: str
     evidence_id: int | None
     evidence_type: str
+    evidence_category: str
     context_type: str
     priority: int
 
@@ -74,6 +75,7 @@ class DraftContextBuilder:
                     source_url=item.source_url,
                     evidence_id=item.id,
                     evidence_type=_evidence_type(item),
+                    evidence_category=_evidence_category(item),
                     context_type=item.context_type,
                     priority=item.priority,
                 )
@@ -97,7 +99,7 @@ class DraftContextBuilder:
 
 def _evidence_sort_key(evidence: Evidence) -> tuple[int, int, str]:
     return (
-        -_type_priority(_evidence_type(evidence)),
+        -max(_type_priority(_evidence_type(evidence)), _type_priority(_evidence_category(evidence))),
         -evidence.priority,
         evidence.source_url,
     )
@@ -117,6 +119,12 @@ def _dedupe_ranked_evidence(ranked: list[Evidence]) -> list[Evidence]:
 
 def _type_priority(evidence_type: str) -> int:
     priorities = {
+        "identity": 125,
+        "official_claim": 75,
+        "reputation": 110,
+        "third_party_claim": 100,
+        "contact": 95,
+        "activity": 85,
         "context_registry": 120,
         "context_news": 105,
         "context_directory": 100,
@@ -129,6 +137,26 @@ def _type_priority(evidence_type: str) -> int:
         "context_source": 40,
     }
     return priorities.get(evidence_type, 10)
+
+
+def _evidence_category(evidence: Evidence) -> str:
+    metadata = evidence.metadata if isinstance(evidence.metadata, dict) else {}
+    explicit_category = metadata.get("evidence_category")
+    if explicit_category:
+        return str(explicit_category)
+    evidence_type = _evidence_type(evidence)
+    return {
+        "target_contact": "contact",
+        "target_career": "activity",
+        "target_about": "official_claim",
+        "target_homepage": "official_claim",
+        "target_page": "official_claim",
+        "context_registry": "identity",
+        "context_directory": "reputation",
+        "context_news": "activity",
+        "context_repository": "activity",
+        "context_source": "third_party_claim",
+    }.get(evidence_type, "official_claim")
 
 
 def _evidence_type(evidence: Evidence) -> str:

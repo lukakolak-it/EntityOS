@@ -101,7 +101,8 @@ Aufgabe: aus Seiten und Kontextquellen nachvollziehbare Belege erzeugen.
 Die EvidenceEngine:
 
 - erzeugt typisierte Evidence aus Target Pages,
-- taggt jede Evidence mit `evidence_type` und `provenance`,
+- taggt jede Evidence mit `evidence_type`, `evidence_category` und
+  `provenance`,
 - haelt Page-Evidence und Context-Source-Evidence unterscheidbar,
 - kann `review_source`-SERP-Ergebnisse einem konkreten Target zuordnen,
 - uebernimmt Source-Quality-, Query- und Run-Bezug in die Evidence-Metadaten.
@@ -118,6 +119,19 @@ Aktuelle Evidence Types:
 - `context_registry`
 - `context_repository`
 - `context_source`
+
+Neutrale Evidence Categories:
+
+- `identity`
+- `activity`
+- `reputation`
+- `contact`
+- `official_claim`
+- `third_party_claim`
+
+`evidence_type` bleibt fuer bestehende Use Cases und Legacy-Evidence stabil.
+`evidence_category` ist die allgemeinere OSINT-Sicht und kann von Rating- oder
+Draft-Policies genauso wie ein Evidence Type referenziert werden.
 
 Context-Source-Zuordnung:
 

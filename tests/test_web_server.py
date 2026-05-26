@@ -298,6 +298,8 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(created_profile_payload["search_profile"]["roles"], [])
         self.assertTrue(preview_payload["valid"])
         self.assertGreaterEqual(len(preview_payload["queries"]), 1)
+        self.assertGreaterEqual(len(preview_payload["query_packs"]), 1)
+        self.assertEqual(preview_payload["queries"][0]["query_pack"], "company_core")
         self.assertEqual(
             patched_full_profile_payload["search_profile"]["attributes"]["topics"],
             ["Security"],

@@ -765,7 +765,7 @@ def _criterion_evidence(
     return [
         item
         for item in evidence
-        if _evidence_type(item) in accepted
+        if _evidence_labels(item) & accepted
     ]
 
 
@@ -810,6 +810,39 @@ def _evidence_type(evidence: Evidence) -> str:
     }.get(evidence.context_type, "target_page")
 
 
+def _evidence_category(evidence: Evidence) -> str:
+    metadata = evidence.metadata if isinstance(evidence.metadata, dict) else {}
+    explicit_category = metadata.get("evidence_category")
+    if explicit_category:
+        return str(explicit_category)
+    explicit_type = str(metadata.get("evidence_type") or "")
+    if explicit_type:
+        return {
+            "target_contact": "contact",
+            "target_career": "activity",
+            "target_about": "official_claim",
+            "target_homepage": "official_claim",
+            "target_page": "official_claim",
+            "context_registry": "identity",
+            "context_directory": "reputation",
+            "context_news": "activity",
+            "context_repository": "activity",
+            "context_source": "third_party_claim",
+        }.get(explicit_type, explicit_type)
+    return {
+        "contact": "contact",
+        "career": "activity",
+        "about": "official_claim",
+        "homepage": "official_claim",
+        "page": "official_claim",
+        "context_source": "third_party_claim",
+    }.get(evidence.context_type, "official_claim")
+
+
+def _evidence_labels(evidence: Evidence) -> set[str]:
+    return {_evidence_type(evidence), _evidence_category(evidence)}
+
+
 def _evidence_payload(evidence: list[Evidence]) -> list[dict[str, object]]:
     payload: list[dict[str, object]] = []
     for item in evidence:
@@ -820,6 +853,7 @@ def _evidence_payload(evidence: list[Evidence]) -> list[dict[str, object]]:
                 "source_url": item.source_url,
                 "context_type": item.context_type,
                 "evidence_type": _evidence_type(item),
+                "evidence_category": _evidence_category(item),
                 "provenance": metadata.get("provenance"),
                 "source_type": metadata.get("source_type"),
                 "context_source_id": metadata.get("context_source_id"),

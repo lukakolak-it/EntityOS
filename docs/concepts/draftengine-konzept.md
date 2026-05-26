@@ -162,6 +162,7 @@ wurde:
 - `ref`, z. B. `E1`
 - `source_url`
 - `evidence_type`
+- `evidence_category`
 - `context_type`
 - `priority`
 - `evidence_total_chars`
@@ -171,9 +172,10 @@ Damit sind Drafts reproduzierbarer und lange Seiten koennen die Validierung
 nicht mehr durch unbounded Kontext sprengen.
 
 Fuer die Review-UI speichert `used_context.claim_refs` dieselben stabilen
-Referenzen mit `evidence_id`, `source_url`, `evidence_type`, `context_type` und
-`priority`. Die UI kann dadurch `E1`, `E2` usw. direkt mit Evidence-Karten
-verknuepfen und fehlende Finding-Refs oder Quellen im Draft sichtbar machen.
+Referenzen mit `evidence_id`, `source_url`, `evidence_type`,
+`evidence_category`, `context_type` und `priority`. Die UI kann dadurch `E1`,
+`E2` usw. direkt mit Evidence-Karten verknuepfen und fehlende Finding-Refs oder
+Quellen im Draft sichtbar machen.
 
 ### Snippet-Qualitaet
 
@@ -201,7 +203,7 @@ Research Summaries nutzen deshalb stabile Evidence-Referenzen:
 
 ```text
 Key Findings
-- E1: [context_directory] ...
+- E1: [reputation/context_directory] ...
 
 Evidence
 - E1: https://example.com/source
@@ -210,7 +212,8 @@ Evidence
 Jeder Finding-Eintrag verweist auf eine Evidence-Referenz. Dieselbe Referenz
 muss in der Quellenliste auftauchen. Die Validierung prueft bei Research
 Summaries, dass alle verwendeten Evidence-Refs und Source-URLs im Body
-enthalten sind.
+enthalten sind. Die Varianten `company_summary`, `project_summary` und
+`vendor_risk_note` verwenden dieselbe Grounding-Logik wie `research_summary`.
 
 Claim-Level-Grounding:
 

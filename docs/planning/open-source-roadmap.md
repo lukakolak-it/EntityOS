@@ -239,6 +239,8 @@ Akzeptanzkriterien:
 
 ## Sprint 18: OSINT-Kern generalisieren
 
+Status: umgesetzt.
+
 Ziel:
 
 Das System soll nicht mehr nach Jobportal-Logik riechen, sondern als
@@ -246,12 +248,18 @@ allgemeines lokales Research-Werkzeug funktionieren.
 
 ### Slice 18.1: Neutrale Source-Type-Taxonomie
 
+Status: umgesetzt.
+
 Umfang:
 
 - Source Types fuer Registry, Directory, News, Repository, Social, Official Site
   und Search Result vereinheitlichen
 - alte jobbezogene Begriffe nur im Bewerbungs-Use-Case belassen
 - Klassifizierungsregeln dokumentieren
+- `search_result` als eigener Source Type fuer Suchmaschinen-/SERP-Seiten
+  ergaenzt
+- `job_board` bleibt fuer den Bewerbungs-Use-Case erhalten, ist aber kein
+  OSINT-Leitbegriff mehr
 
 Akzeptanzkriterien:
 
@@ -261,12 +269,17 @@ Akzeptanzkriterien:
 
 ### Slice 18.2: Query Packs
 
+Status: umgesetzt.
+
 Umfang:
 
 - query packs fuer Company OSINT, Open-Source-Projekte und Vendor Research
   definieren
 - Query-Budget pro Pack steuerbar machen
 - Preview fuer Pack-Auswahl anzeigen
+- Use Cases koennen `query_packs` mit eigenem `request_budget` definieren
+- `company_osint` liefert Packs fuer Company OSINT, Open-Source-Projekte und
+  Vendor Research
 
 Akzeptanzkriterien:
 
@@ -276,12 +289,17 @@ Akzeptanzkriterien:
 
 ### Slice 18.3: Evidence-Type-Ausbau
 
+Status: umgesetzt.
+
 Umfang:
 
 - Evidence Types fuer `identity`, `activity`, `reputation`, `contact`,
   `official_claim`, `third_party_claim` einfuehren
 - Extractor- und EvidenceEngine-Mapping erweitern
 - UI-Evidence-Karten danach gruppieren
+- Legacy-`evidence_type` bleibt fuer Rueckwaertskompatibilitaet erhalten
+- neue `evidence_category` unterscheidet Eigenangabe, Drittquelle, Identitaet,
+  Aktivitaet, Reputation und Kontakt
 
 Akzeptanzkriterien:
 
@@ -291,12 +309,16 @@ Akzeptanzkriterien:
 
 ### Slice 18.4: Research-Summary-Varianten
 
+Status: umgesetzt.
+
 Umfang:
 
 - Draft-Varianten fuer `company_summary`, `project_summary`,
   `vendor_risk_note` definieren
 - Pflichtabschnitte und verbotene Aussagen je Variante konfigurieren
 - Validierung wiederverwenden
+- `research_summary`, `company_summary`, `project_summary` und
+  `vendor_risk_note` teilen Grounding- und Section-Validierung
 
 Akzeptanzkriterien:
 

@@ -41,6 +41,7 @@ KNOWN_SOURCE_TYPES = frozenset(
         "news",
         "registry",
         "marketplace",
+        "search_result",
         "unknown",
     }
 )
@@ -66,19 +67,32 @@ KNOWN_EVIDENCE_TYPES = frozenset(
         "context_registry",
         "context_repository",
         "context_source",
+        "identity",
+        "activity",
+        "reputation",
+        "contact",
+        "official_claim",
+        "third_party_claim",
     }
 )
-KNOWN_DRAFT_TYPES = frozenset({"application_email", "research_summary", "none"})
+RESEARCH_DRAFT_SCHEMA = (
+    "title",
+    "summary",
+    "key_findings",
+    "evidence",
+    "risks_or_uncertainties",
+    "next_steps",
+)
+RESEARCH_DRAFT_TYPES = frozenset(
+    {"research_summary", "company_summary", "project_summary", "vendor_risk_note"}
+)
+KNOWN_DRAFT_TYPES = frozenset({"application_email", "none"}) | RESEARCH_DRAFT_TYPES
 DRAFT_OUTPUT_SCHEMAS: dict[str, tuple[str, ...]] = {
     "application_email": ("subject", "body"),
-    "research_summary": (
-        "title",
-        "summary",
-        "key_findings",
-        "evidence",
-        "risks_or_uncertainties",
-        "next_steps",
-    ),
+    "research_summary": RESEARCH_DRAFT_SCHEMA,
+    "company_summary": RESEARCH_DRAFT_SCHEMA,
+    "project_summary": RESEARCH_DRAFT_SCHEMA,
+    "vendor_risk_note": RESEARCH_DRAFT_SCHEMA,
     "none": (),
 }
 KNOWN_REVIEW_ACTIONS = frozenset({"approve", "reject", "blacklist"})
@@ -165,6 +179,47 @@ class AttributeSchema:
 
 
 @dataclass(frozen=True, slots=True)
+class QueryPack:
+    key: str
+    label: str
+    templates: tuple[str, ...]
+    request_budget: int
+    description: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "key", _ensure_identifier(self.key, "query_pack.key"))
+        object.__setattr__(self, "label", _ensure_non_empty(self.label, "query_pack.label"))
+        templates = _clean_tuple(self.templates)
+        if not templates:
+            raise ValueError(f"query_pack {self.key!r} templates must not be empty")
+        object.__setattr__(self, "templates", templates)
+        if self.request_budget <= 0:
+            raise ValueError(f"query_pack {self.key!r} request_budget must be positive")
+        object.__setattr__(self, "description", self.description.strip())
+
+    @classmethod
+    def from_dict(cls, value: Mapping[str, Any]) -> QueryPack:
+        return cls(
+            key=str(value.get("key", "")),
+            label=str(value.get("label", "")),
+            description=str(value.get("description", "")),
+            templates=_tuple_from(value.get("templates", ())),
+            request_budget=int(value.get("request_budget", 1)),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        data: dict[str, Any] = {
+            "key": self.key,
+            "label": self.label,
+            "request_budget": self.request_budget,
+            "templates": list(self.templates),
+        }
+        if self.description:
+            data["description"] = self.description
+        return data
+
+
+@dataclass(frozen=True, slots=True)
 class QueryPolicy:
     templates: tuple[str, ...]
     default_template_set: str
@@ -172,6 +227,7 @@ class QueryPolicy:
     results_per_query_default: int = 5
     variable_map: dict[str, str] = field(default_factory=dict)
     exclude_terms: tuple[str, ...] = ()
+    query_packs: tuple[QueryPack, ...] = ()
 
     def __post_init__(self) -> None:
         templates = _clean_tuple(self.templates)
@@ -187,6 +243,16 @@ class QueryPolicy:
             raise ValueError("query_policy.request_budget_default must be positive")
         if self.results_per_query_default <= 0:
             raise ValueError("query_policy.results_per_query_default must be positive")
+        query_packs = tuple(
+            item if isinstance(item, QueryPack) else QueryPack.from_dict(item)
+            for item in (self.query_packs or ())
+        )
+        seen_packs: set[str] = set()
+        for pack in query_packs:
+            if pack.key in seen_packs:
+                raise ValueError(f"duplicate query_pack: {pack.key}")
+            seen_packs.add(pack.key)
+        object.__setattr__(self, "query_packs", query_packs)
         clean_map: dict[str, str] = {}
         for key, target in dict(self.variable_map).items():
             clean_map[_ensure_identifier(key, "query_policy.variable_map key")] = (
@@ -204,6 +270,10 @@ class QueryPolicy:
             results_per_query_default=int(value.get("results_per_query_default", 5)),
             variable_map=dict(value.get("variable_map", {})),
             exclude_terms=_tuple_from(value.get("exclude_terms", ())),
+            query_packs=tuple(
+                item if isinstance(item, QueryPack) else QueryPack.from_dict(item)
+                for item in (value.get("query_packs") or ())
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -214,6 +284,7 @@ class QueryPolicy:
             "variable_map": dict(self.variable_map),
             "exclude_terms": list(self.exclude_terms),
             "templates": list(self.templates),
+            "query_packs": [pack.to_dict() for pack in self.query_packs],
         }
 
 
@@ -560,7 +631,10 @@ def _validate_query_policy(query_policy: QueryPolicy, field_keys: frozenset[str]
     for alias, target in query_policy.variable_map.items():
         if target not in field_keys:
             raise ValueError(f"query_policy.variable_map[{alias!r}] targets unknown field {target!r}")
-    for template in query_policy.templates:
+    templates = list(query_policy.templates)
+    for pack in query_policy.query_packs:
+        templates.extend(pack.templates)
+    for template in templates:
         for variable in template_variables(template):
             if variable in field_keys:
                 continue
@@ -615,11 +689,13 @@ def _validate_draft_policy(draft_policy: DraftPolicy) -> None:
         raise ValueError(
             f"draft_policy.required_sections contains unknown sections: {sorted(unknown_sections)}"
         )
-    if draft_policy.draft_type == "research_summary":
+    if draft_policy.draft_type in RESEARCH_DRAFT_TYPES:
         required = {"summary", "key_findings", "evidence", "risks_or_uncertainties"}
         missing = required - set(draft_policy.required_sections)
         if missing:
-            raise ValueError(f"research_summary is missing required sections: {sorted(missing)}")
+            raise ValueError(
+                f"{draft_policy.draft_type} is missing required sections: {sorted(missing)}"
+            )
 
 
 def _validate_review_policy(review_policy: ReviewPolicy) -> None:
@@ -712,7 +788,7 @@ APPLICATION_STUDENT_USE_CASE = UseCaseConfig(
     ),
     source_policy=SourcePolicy(
         preferred_source_types=("company_site", "official_site"),
-        blocked_source_types=("job_board", "social", "marketplace"),
+        blocked_source_types=("job_board", "social", "marketplace", "search_result"),
         relevant_path_tokens=("career", "careers", "karriere", "jobs", "kontakt", "about"),
     ),
     rating_policy=RatingPolicy(
@@ -798,6 +874,44 @@ COMPANY_OSINT_USE_CASE = UseCaseConfig(
             "{industry} Unternehmen {region}",
             "{industry} Dienstleister {region}",
         ),
+        query_packs=(
+            QueryPack(
+                key="company_core",
+                label="Company OSINT",
+                description="Direkte Unternehmens-, Kontakt- und Leistungsseiten.",
+                request_budget=4,
+                templates=(
+                    "{topic} Unternehmen {region}",
+                    "{topic} Kontakt {region}",
+                    "{topic} Impressum {region}",
+                    "{topic} Services {region}",
+                ),
+            ),
+            QueryPack(
+                key="open_source_project",
+                label="Open-Source-Projekte",
+                description="Repositories, Dokumentation und Projektaktivitaet.",
+                request_budget=3,
+                templates=(
+                    "{topic} GitHub {region}",
+                    "{topic} repository",
+                    "{topic} documentation",
+                ),
+            ),
+            QueryPack(
+                key="vendor_research",
+                label="Vendor Research",
+                description="Anbieter-, Referenz- und Drittquellenrecherche.",
+                request_budget=5,
+                templates=(
+                    "{topic} Anbieter {region}",
+                    "{topic} Referenzen {region}",
+                    "{industry} Unternehmen {region}",
+                    "{industry} Anbieter {region}",
+                    "{industry} Referenzen {region}",
+                ),
+            ),
+        ),
         exclude_terms=(
             "jobs",
             "stellenangebote",
@@ -809,7 +923,7 @@ COMPANY_OSINT_USE_CASE = UseCaseConfig(
     source_policy=SourcePolicy(
         preferred_source_types=("company_site", "official_site"),
         context_source_types=("registry", "directory", "news"),
-        blocked_source_types=("social",),
+        blocked_source_types=("social", "search_result"),
         relevant_path_tokens=("impressum", "about", "kontakt", "services", "products"),
     ),
     rating_policy=RatingPolicy(
@@ -904,6 +1018,7 @@ __all__ = [
     "AttributeFieldType",
     "AttributeSchema",
     "DraftPolicy",
+    "QueryPack",
     "QueryPolicy",
     "RatingCriterion",
     "RatingEvaluation",

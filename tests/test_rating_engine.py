@@ -17,7 +17,7 @@ from target_radar.engines.rating import (
     RuleRater,
 )
 from target_radar.storage import SQLiteStore
-from target_radar.use_cases import get_default_use_case
+from target_radar.use_cases import UseCaseConfig, get_default_use_case
 
 
 class RatingEngineTests(unittest.TestCase):
@@ -392,7 +392,25 @@ class RatingEngineTests(unittest.TestCase):
                 },
             ),
         ]
-        provider = _RecordingAIRatingProvider()
+        response = AIRatingResponse(
+            ai_score=88,
+            confidence=0.84,
+            recommended_action=RecommendedAction.DRAFT,
+            reasons=[
+                {
+                    "text": "Scoped OSINT context passt.",
+                    "source_url": "https://directory.example/solar",
+                    "evidence": "Solar Services in Essen",
+                }
+            ],
+        )
+        provider = _CriterionAIRatingProvider(
+            {
+                "relevance": response,
+                "credibility": response,
+                "evidence_quality": response,
+            }
+        )
 
         rating = RatingEngine(ai_provider=provider).rate(
             self.target,
@@ -407,6 +425,57 @@ class RatingEngineTests(unittest.TestCase):
             self.assertIn("Solar Services", request.context_text)
             self.assertNotIn("Werkstudent IT", request.context_text)
         self.assertEqual(rating.evidence[1]["evidence_type"], "context_directory")
+
+    def test_use_case_rating_can_scope_to_evidence_category(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "regions": ["Essen"]},
+        )
+        payload = get_default_use_case("company_osint").to_dict()
+        for criterion in payload["rating_policy"]["criteria"]:
+            criterion["evidence_types"] = ["official_claim"]
+        use_case = UseCaseConfig.from_dict(payload)
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/about",
+                text="Example GmbH bietet Solar Services in Essen.",
+                context_type="about",
+            )
+        ]
+        response = AIRatingResponse(
+            ai_score=88,
+            confidence=0.84,
+            recommended_action=RecommendedAction.DRAFT,
+            reasons=[
+                {
+                    "text": "Scoped OSINT context passt.",
+                    "source_url": "https://example.com/about",
+                    "evidence": "Solar Services in Essen",
+                }
+            ],
+        )
+        provider = _CriterionAIRatingProvider(
+            {
+                "relevance": response,
+                "credibility": response,
+                "evidence_quality": response,
+            }
+        )
+
+        rating = RatingEngine(ai_provider=provider).rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=use_case,
+        )
+
+        self.assertEqual(rating.rating_status, "use_case_rated")
+        self.assertGreaterEqual(len(provider.requests), 1)
+        self.assertIn("Solar Services", provider.requests[0].context_text)
+        self.assertEqual(rating.evidence[0]["evidence_category"], "official_claim")
 
     def test_use_case_ungrounded_llm_reason_becomes_partial_review(self) -> None:
         osint_profile = SearchProfile(

@@ -591,6 +591,14 @@ label {
   box-shadow: inset 3px 0 0 var(--blue);
 }
 
+.evidence-group-title {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
 .grounding-panel,
 .draft-body-preview {
   margin: 10px 0;

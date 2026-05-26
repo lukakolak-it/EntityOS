@@ -248,6 +248,9 @@ Auswertung:
   Evidence an Rule-Set oder LLM uebergeben.
 - Alte Evidence ohne explizites `evidence_type` wird aus `context_type`
   abgeleitet, z. B. `career -> target_career`.
+- Neue Evidence kann zusaetzlich `evidence_category` tragen. Kriterien duerfen
+  auch Kategorien wie `official_claim`, `third_party_claim`, `identity`,
+  `activity`, `reputation` oder `contact` in `evidence_types` referenzieren.
 - Wenn weniger als `min_evidence_count` passende Evidence existiert, scored das
   Kriterium `0`.
 - Fehlende Pflicht-Evidence erzeugt ein Risiko `missing_required_evidence`.

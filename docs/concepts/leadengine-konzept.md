@@ -288,6 +288,7 @@ Erste Source Types:
 - `news`
 - `registry`
 - `marketplace`
+- `search_result`
 - `unknown`
 
 Positive Signale:
@@ -302,7 +303,7 @@ Negative Signale:
 - `configured_blocked_domain` (Score `0`): Domain steht in `TARGET_RADAR_BLOCKED_SOURCE_DOMAINS`.
 - `secondary_source` (`-20`): `source_type = directory`.
 - `context_source` (`-10`): `source_type` ist in `context_source_types`, z. B. `repository`, `news`, `registry` oder im OSINT-Use-Case `directory`.
-- `blocked_source_type` (`-40`): `source_type` ist `job_board`, `social` oder `marketplace`.
+- `blocked_source_type` (`-40`): `source_type` ist `job_board`, `social`, `marketplace` oder `search_result`.
 - `listing_or_search_page` (`-25`): Pfad enthaelt `search`, `suche`, `ranking`, `rankings`, `topliste`, `toplisten`, `branchenbuch`, `stellenangebote`, `jobboerse`, `jobsuche`, `vacancies`, `results` oder `listing`; Query-Parameter-Key ist `q`, `query`, `search`, `s` oder `keyword`; oder Titel/Snippet enthalten mindestens 4 Jobboersen-Tokens.
 - `login_or_tracking_page` (`-20`): Pfad enthaelt `login`, `signin`, `signup`, `register` oder `bewerben`; oder Query enthaelt `utm_`, `fbclid=` oder `gclid=`.
 - `deep_url` (`-10`): Pfad hat mindestens 4 Segmente.
@@ -316,6 +317,7 @@ Domain-Klassifizierung:
 - `directory`: bekannte Verzeichnis-/Publisher-Domain oder rankingtypischer Pfad wie `/ranking/`, `/rankings/`, `/topliste/`, `/toplisten/` oder `/branchenbuch/`.
 - `job_board`: bekannte Jobboerse oder Domain-Tokens enthalten `jobs`, `stellen`, `karriere` oder `career`; Tokens entstehen durch Split an `.`, `-` und `_`.
 - `marketplace`: Domain-Tokens enthalten `marketplace`, `shop` oder `store`.
+- `search_result`: bekannte Suchmaschinen-/SERP-Domains wie Google, Bing oder DuckDuckGo.
 - `company_site`: Fallback fuer direkte Domains.
 
 Die LeadEngine nutzt diese Heuristik nur fuer Discovery-Priorisierung und
@@ -380,6 +382,10 @@ Regeln:
   Terme.
 - `company_osint` nutzt direkte Unternehmens-, Kontakt-, Impressum- und
   Services-Templates statt breiter Anbieter-Queries.
+- `company_osint` nutzt zusaetzlich Query Packs:
+  `company_core`, `open_source_project` und `vendor_research`. Jedes Pack hat
+  ein eigenes Budget, der Run bleibt aber durch das globale Request-Budget
+  begrenzt.
 - Topic-Templates werden vor reinen Industrie-Templates priorisiert. Bei
   kleinen Budgets sollen breite Queries wie `{industry} Unternehmen {region}`
   nur als Fallback laufen, nicht vor spezifischen Topic-Queries wie

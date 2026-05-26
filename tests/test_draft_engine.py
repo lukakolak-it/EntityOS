@@ -19,7 +19,7 @@ from target_radar.engines.draft import (
 )
 from target_radar.engines.draft.context import DraftContextBuilder
 from target_radar.storage import SQLiteStore
-from target_radar.use_cases import get_default_use_case
+from target_radar.use_cases import DraftPolicy, get_default_use_case
 
 
 class OversizedResearchSummaryGenerator:
@@ -215,6 +215,43 @@ class DraftEngineTests(unittest.TestCase):
         self.assertEqual(draft.used_context["draft_policy"]["draft_type"], "research_summary")
         self.assertEqual(draft.used_context["claim_refs"][0]["evidence_id"], 1)
         self.assertEqual(draft.used_context["claim_refs"][0]["context_type"], "career")
+
+    def test_draft_policy_creates_company_summary_variant(self) -> None:
+        rating = self.store.save_rating(RatingResult(
+            target_id=self.target.id,
+            recommended_action=RecommendedAction.DRAFT,
+            rule_score=82,
+            ai_score=90,
+            confidence=0.88,
+            rating_status="use_case_rated",
+            rating_version="rules-v1+usecase-v1",
+        ))
+        policy = DraftPolicy(
+            draft_type="company_summary",
+            language="de",
+            max_length_chars=2500,
+            required_sections=(
+                "summary",
+                "key_findings",
+                "evidence",
+                "risks_or_uncertainties",
+            ),
+        )
+
+        draft = DraftEngine().create_draft(
+            profile=self.profile,
+            target=self.target,
+            rating=rating,
+            evidence=self.evidence,
+            draft_policy=policy,
+        )
+
+        self.assertEqual(draft.draft_type, "company_summary")
+        self.assertEqual(draft.draft_version, "company-summary-v1")
+        self.assertIn("Company Summary: example.com", draft.subject)
+        self.assertIn("Key Findings", draft.body)
+        self.assertIn("E1:", draft.body)
+        self.assertEqual(draft.used_context["claim_refs"][0]["ref"], "E1")
 
     def test_research_summary_context_is_budgeted_and_does_not_exceed_policy(self) -> None:
         rating = self.store.save_rating(RatingResult(

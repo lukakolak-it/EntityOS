@@ -11,13 +11,17 @@ BANNED_PHRASES = (
     "as discussed",
     "automatisch versendet",
 )
+_RESEARCH_DRAFT_BANNED_PHRASES = (
+    "guten tag,",
+    "viele gruesse",
+    "ich wuerde mich ueber eine kurze rueckmeldung freuen",
+    "bewerbung / kontaktaufnahme",
+)
 DRAFT_TYPE_BANNED_PHRASES = {
-    "research_summary": (
-        "guten tag,",
-        "viele gruesse",
-        "ich wuerde mich ueber eine kurze rueckmeldung freuen",
-        "bewerbung / kontaktaufnahme",
-    ),
+    "research_summary": _RESEARCH_DRAFT_BANNED_PHRASES,
+    "company_summary": _RESEARCH_DRAFT_BANNED_PHRASES,
+    "project_summary": _RESEARCH_DRAFT_BANNED_PHRASES,
+    "vendor_risk_note": _RESEARCH_DRAFT_BANNED_PHRASES,
 }
 
 

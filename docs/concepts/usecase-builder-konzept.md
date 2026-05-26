@@ -133,6 +133,7 @@ Inhalt:
 - Template-Variablen-Mapping
 - Priorisierung
 - Budget-Defaults
+- Query Packs mit eigenem Budget
 - erlaubte Provider
 - optionale Ausschlussbegriffe
 
@@ -173,6 +174,30 @@ query_policy:
 `-jobs` oder `-"ranking portal"`. Profil-spezifische `exclude_keywords` werden
 zusaetzlich angehaengt. Manuelle Queries bleiben unveraendert.
 
+`query_packs` gruppieren Templates in Suchfamilien. Ein Pack hat `key`,
+`label`, `templates` und `request_budget`. Der QueryBuilder respektiert das
+Pack-Budget und anschliessend das globale Run-Budget. Dadurch kann ein OSINT
+Use Case z. B. direkte Unternehmensseiten, Open-Source-Projekte und
+Vendor-Recherche in einem Lauf kombinieren.
+
+Beispiel:
+
+```yaml
+query_packs:
+  - key: company_core
+    label: Company OSINT
+    request_budget: 4
+    templates:
+      - "{topic} Unternehmen {region}"
+      - "{topic} Kontakt {region}"
+  - key: open_source_project
+    label: Open-Source-Projekte
+    request_budget: 3
+    templates:
+      - "{topic} GitHub {region}"
+      - "{topic} repository"
+```
+
 ### `source_policy`
 
 Definiert, welche Quellen gut, neutral, kontextuell oder blockiert sind.
@@ -189,6 +214,20 @@ Inhalt:
 - Import-Schwellen
 
 `context_source_types` sind Quellen, die fuer Evidence und Orientierung nuetzlich sind, aber nicht automatisch als primaere Targets gelten. Beispiele sind Register, Verzeichnisse oder News-Seiten.
+
+Bekannte Source Types:
+
+- `official_site`
+- `company_site`
+- `directory`
+- `job_board`
+- `social`
+- `repository`
+- `news`
+- `registry`
+- `marketplace`
+- `search_result`
+- `unknown`
 
 MVP-Entscheidung:
 
@@ -260,6 +299,20 @@ Bekannte Evidence Types:
 - `context_registry`
 - `context_repository`
 - `context_source`
+
+Neutrale Evidence-Kategorien fuer allgemeine Research-Use-Cases:
+
+- `identity`
+- `activity`
+- `reputation`
+- `contact`
+- `official_claim`
+- `third_party_claim`
+
+Neue Evidence bekommt beide Angaben: den kompatiblen `evidence_type` und eine
+neutrale `evidence_category`. Kriterien duerfen in `evidence_types` beide
+Varianten verwenden. Damit bleibt alte Evidence nutzbar, waehrend neue OSINT
+Use Cases nicht mehr an Page- oder Job-Wording gebunden sind.
 
 Bekannte Rule-Sets fuer den MVP:
 
@@ -338,9 +391,13 @@ Bekannte Draft Types fuer den Use Case Builder MVP:
 
 - `application_email`: strukturierter Bewerbungsentwurf.
 - `research_summary`: kurze OSINT-/Research-Zusammenfassung.
+- `company_summary`: Research Summary mit Unternehmensfokus.
+- `project_summary`: Research Summary mit Projekt-/Repository-Fokus.
+- `vendor_risk_note`: Anbieter- und Risikonotiz.
 - `none`: keine automatische Draft-Erzeugung, nur Review.
 
-`research_summary` ist kein Placeholder, sondern bekommt ein eigenes Output-Schema:
+Research-Draft-Typen sind keine Placeholder, sondern bekommen ein gemeinsames
+Output-Schema:
 
 ```text
 title
@@ -351,7 +408,7 @@ risks_or_uncertainties
 next_steps
 ```
 
-Validierungsregeln fuer `research_summary`:
+Validierungsregeln fuer Research-Draft-Typen:
 
 - Jede sachliche Kernaussage braucht Evidence-Bezug oder Source-URL.
 - Unsichere Aussagen werden als Unsicherheit markiert.
@@ -872,7 +929,8 @@ Umfang:
 - `query_policy.variable_map`
 - Rating-Kriterien mit `evaluation`, `rule_set`, `llm_instruction`,
   `evidence_types` und `min_evidence_count`
-- bekannte Draft Types `application_email`, `research_summary` und `none`
+- bekannte Draft Types `application_email`, `research_summary`,
+  `company_summary`, `project_summary`, `vendor_risk_note` und `none`
 - Default-Templates als versionierte Dateien oder Python-Konfiguration
 - Tests fuer gueltige und ungueltige Use Cases
 
@@ -899,6 +957,7 @@ LeadEngine nutzt Query- und Source-Policy aus dem Use Case.
 Umfang:
 
 - QueryBuilder liest Templates aus Use Case
+- QueryBuilder liest optionale `query_packs` inklusive Pack-Budget
 - QueryBuilder loest Template-Variablen ueber `variable_map`
 - SourceQualityClassifier bekommt Use-Case-Policy als Konfiguration
 - bestehender Bewerbungs-Use-Case bleibt Default
@@ -916,8 +975,9 @@ Umfang:
 - bekannte Rule-Sets fuer Bewerbungs- und OSINT-Kriterien
 - Draft-Typ aus `draft_policy` inklusive Output-Schema
 - LLM-Modus aus Use Case, weiterhin lokal ueberschreibbar
-- Validierung fuer `research_summary`
-- Tests fuer `application_email` und `research_summary`
+- Validierung fuer Research-Draft-Typen
+- Tests fuer `application_email`, `research_summary` und mindestens eine
+  Research-Variante
 
 ### Slice U5: UI-Basis
 
@@ -1005,8 +1065,12 @@ Umgesetzt:
 - Clone-from-template, Editieren, Import und Export in der lokalen UI
 - Suchprofile koennen einem Use Case zugeordnet werden
 - LeadEngine nutzt Query- und Source-Policies aus dem Use Case
+- Query Packs fuer Company OSINT, Open-Source-Projekte und Vendor Research
 - RatingEngine und DraftEngine nutzen Use-Case-Policies
-- Draft Types `application_email` und `research_summary`
+- neutrale Evidence-Kategorien (`identity`, `activity`, `reputation`,
+  `contact`, `official_claim`, `third_party_claim`)
+- Draft Types `application_email`, `research_summary`, `company_summary`,
+  `project_summary` und `vendor_risk_note`
 - Review Queue mit Use-Case-Badge und Use-Case-Filter
 - UI-Aufteilung in Review, Use Cases, Profile und Runs
 

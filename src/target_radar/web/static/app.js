@@ -30,6 +30,7 @@ const KNOWN_SOURCE_TYPES = new Set([
   "news",
   "registry",
   "marketplace",
+  "search_result",
   "unknown",
 ]);
 const KNOWN_RULE_SETS = new Set([
@@ -51,13 +52,25 @@ const KNOWN_EVIDENCE_TYPES = new Set([
   "context_registry",
   "context_repository",
   "context_source",
+  "identity",
+  "activity",
+  "reputation",
+  "contact",
+  "official_claim",
+  "third_party_claim",
 ]);
 const DRAFT_REQUIRED_SECTIONS = {
   research_summary: ["summary", "key_findings", "evidence", "risks_or_uncertainties"],
+  company_summary: ["summary", "key_findings", "evidence", "risks_or_uncertainties"],
+  project_summary: ["summary", "key_findings", "evidence", "risks_or_uncertainties"],
+  vendor_risk_note: ["summary", "key_findings", "evidence", "risks_or_uncertainties"],
 };
 const DRAFT_ALLOWED_SECTIONS = {
   application_email: ["subject", "body"],
   research_summary: ["title", "summary", "key_findings", "evidence", "risks_or_uncertainties", "next_steps"],
+  company_summary: ["title", "summary", "key_findings", "evidence", "risks_or_uncertainties", "next_steps"],
+  project_summary: ["title", "summary", "key_findings", "evidence", "risks_or_uncertainties", "next_steps"],
+  vendor_risk_note: ["title", "summary", "key_findings", "evidence", "risks_or_uncertainties", "next_steps"],
   none: [],
 };
 
@@ -547,6 +560,8 @@ function renderQueriesTab(useCase) {
     <input id="uc-query-exclude-terms" value="${escapeAttribute((useCase.query_policy.exclude_terms || []).join(", "))}">
     <label>Variable Map</label>
     <textarea id="uc-variable-map" class="code-input">${escapeHtml(jsonText(useCase.query_policy.variable_map))}</textarea>
+    <label>Query Packs</label>
+    <textarea id="uc-query-packs" class="code-input">${escapeHtml(jsonText(useCase.query_policy.query_packs || []))}</textarea>
   `;
 }
 
@@ -654,7 +669,7 @@ function renderOutputTab(useCase) {
       <div>
         <label>Draft Type</label>
         <select id="uc-draft-type">
-          ${selectOptions(["application_email", "research_summary", "none"], useCase.draft_policy.draft_type)}
+          ${selectOptions(["application_email", "research_summary", "company_summary", "project_summary", "vendor_risk_note", "none"], useCase.draft_policy.draft_type)}
         </select>
       </div>
       <div>
@@ -816,6 +831,7 @@ function buildUseCaseConfigFromEditor(useCase) {
     config.query_policy.templates = parseLines(get("uc-query-templates").value);
     config.query_policy.exclude_terms = parseCsv(get("uc-query-exclude-terms").value);
     config.query_policy.variable_map = parseJsonObject("uc-variable-map", "Variable Map");
+    config.query_policy.query_packs = parseJsonField("uc-query-packs", "Query Packs");
   }
   if (get("uc-source-preferred")) {
     config.source_policy.import_threshold = numberValue(get("uc-source-import-threshold").value);
@@ -941,13 +957,27 @@ function validateQueryPolicy(policy, fieldKeys) {
   if (!templates.length) {
     throw new Error("Query policy needs at least one template");
   }
+  const queryPacks = policy.query_packs || [];
   const variableMap = policy.variable_map || {};
   for (const target of Object.values(variableMap)) {
     if (!fieldKeys.has(target)) {
       throw new Error(`Variable map targets unknown field: ${target}`);
     }
   }
-  for (const template of templates) {
+  for (const pack of queryPacks) {
+    requireIdentifier(pack.key, "query pack key");
+    if (!String(pack.label || "").trim()) {
+      throw new Error(`Query pack ${pack.key} needs a label`);
+    }
+    if (!Number.isFinite(Number(pack.request_budget)) || Number(pack.request_budget) <= 0) {
+      throw new Error(`Query pack ${pack.key} needs a positive request budget`);
+    }
+    if (!Array.isArray(pack.templates) || !pack.templates.length) {
+      throw new Error(`Query pack ${pack.key} needs templates`);
+    }
+  }
+  const packTemplates = queryPacks.flatMap((pack) => pack.templates || []);
+  for (const template of templates.concat(packTemplates)) {
     for (const variable of templateVariablesStrict(template)) {
       if (!fieldKeys.has(variable) && !hasOwn(variableMap, variable)) {
         throw new Error(`Unknown query template variable: ${variable}`);
@@ -1045,13 +1075,23 @@ function hasOwn(value, key) {
 
 function queryPreview(config) {
   const exclusions = queryExclusions(config.query_policy.exclude_terms || []);
-  return config.query_policy.templates.slice(0, 6).map((template) => {
+  const packs = config.query_policy.query_packs || [];
+  const rows = packs.length
+    ? packs.flatMap((pack) => {
+        return (pack.templates || []).slice(0, Number(pack.request_budget || 1)).map((template) => ({
+          prefix: `[${pack.key}] `,
+          template,
+        }));
+      })
+    : (config.query_policy.templates || []).slice(0, 6).map((template) => ({ prefix: "", template }));
+  return rows.slice(0, 10).map((row) => {
+    const template = row.template;
     let rendered = template;
     for (const variable of templateVariables(template)) {
       const fieldKey = config.query_policy.variable_map[variable] || variable;
       rendered = rendered.replaceAll(`{${variable}}`, sampleValue(fieldKey));
     }
-    return [rendered, exclusions].filter(Boolean).join(" ");
+    return `${row.prefix}${[rendered, exclusions].filter(Boolean).join(" ")}`;
   });
 }
 
@@ -1578,7 +1618,8 @@ async function loadRunPreview() {
       <div class="split">
         <section>
           <h3>Query Preview</h3>
-          ${renderList(data.queries.slice(0, 8).map((query) => query.text))}
+          ${renderList(data.queries.slice(0, 8).map((query) => query.query_pack ? `[${query.query_pack}] ${query.text}` : query.text))}
+          ${data.query_packs?.length ? `<h3>Query Packs</h3>${renderList(data.query_packs.map((pack) => `${pack.label} (${pack.query_count}/${pack.request_budget})`))}` : ""}
         </section>
         <section>
           <h3>Source Policy</h3>
@@ -1911,16 +1952,30 @@ function renderEvidence(evidence) {
     elements.evidenceList.appendChild(emptyItem("Keine Evidence."));
     return;
   }
+  const groups = new Map();
   for (const entry of evidence) {
+    const metadata = entry.metadata || {};
+    const category = metadata.evidence_category || metadata.evidence_type || entry.context_type || "evidence";
+    if (!groups.has(category)) groups.set(category, []);
+    groups.get(category).push(entry);
+  }
+  for (const [category, entries] of groups) {
+    const title = document.createElement("div");
+    title.className = "evidence-group-title";
+    title.textContent = category;
+    elements.evidenceList.appendChild(title);
+    for (const entry of entries) {
     const item = document.createElement("article");
     item.className = "item";
     const anchorId = evidenceAnchorId(entry.id);
     if (anchorId) item.id = anchorId;
     const metadata = entry.metadata || {};
     const evidenceType = metadata.evidence_type || entry.context_type;
+    const evidenceCategory = metadata.evidence_category || category;
     item.innerHTML = `
       <div class="item-header">
         <span class="item-title">${escapeHtml(evidenceType)}</span>
+        ${pill(evidenceCategory)}
         ${pill(entry.context_type)}
         ${pill(`p${entry.priority}`)}
         ${metadata.source_type ? pill(metadata.source_type) : ""}
@@ -1932,6 +1987,7 @@ function renderEvidence(evidence) {
       ${metadata.emails?.length ? renderFacts("Emails", metadata.emails.map((value) => ({ value }))) : ""}
     `;
     elements.evidenceList.appendChild(item);
+    }
   }
 }
 
@@ -1942,7 +1998,7 @@ function renderDraftGrounding(draft) {
   const rows = claims.map((claim) => {
     const ref = claim.ref || "-";
     const sourceUrl = claim.source_url || "";
-    const evidenceType = claim.evidence_type || claim.context_type || "evidence";
+    const evidenceType = claim.evidence_category || claim.evidence_type || claim.context_type || "evidence";
     const hasFindingRef = hasFindingClaimRef(body, ref);
     const hasSource = !sourceUrl || body.includes(sourceUrl);
     const ok = hasFindingRef && hasSource;
@@ -1973,7 +2029,7 @@ function renderDraftGrounding(draft) {
 }
 
 function renderDraftBodyPreview(draft) {
-  if (draft.draft_type !== "research_summary" || !draftClaimRefs(draft).length) return "";
+  if (!["research_summary", "company_summary", "project_summary", "vendor_risk_note"].includes(draft.draft_type) || !draftClaimRefs(draft).length) return "";
   return `
     <div class="draft-body-preview">
       <div class="grounding-title">Preview</div>
