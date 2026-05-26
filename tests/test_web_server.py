@@ -129,6 +129,19 @@ class WebServerTests(unittest.TestCase):
                 use_case_export_payload = _http_json(
                     f"{base_url}/api/use-cases/application_student/export"
                 )
+                built_in_patch_status = _http_status(
+                    f"{base_url}/api/use-cases/application_student",
+                    method="PATCH",
+                    payload={"config": use_case_export_payload["use_case"]},
+                )
+                built_in_overwrite_status = _http_status(
+                    f"{base_url}/api/use-cases/import",
+                    method="POST",
+                    payload={
+                        "conflict": "overwrite",
+                        "use_case": use_case_export_payload["use_case"],
+                    },
+                )
                 filtered_queue_payload = _http_json(
                     f"{base_url}/api/review-queue?use_case_id={application_use_case['db_id']}"
                 )
@@ -272,8 +285,12 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(ui_run_payload["search_provider"], "mock")
         self.assertGreaterEqual(len(use_cases_payload["use_cases"]), 2)
         self.assertEqual(use_case_detail_payload["use_case"]["slug"], "application_student")
+        self.assertTrue(use_case_detail_payload["use_case"]["is_builtin"])
+        self.assertFalse(use_case_detail_payload["use_case"]["is_editable"])
         self.assertEqual(use_case_export_payload["format"], "target-radar-use-case-v1")
         self.assertNotIn("db_id", use_case_export_payload["use_case"])
+        self.assertEqual(built_in_patch_status, 400)
+        self.assertEqual(built_in_overwrite_status, 400)
         self.assertGreaterEqual(len(filtered_queue_payload["items"]), 1)
         self.assertEqual(filtered_queue_payload["items"][0]["use_case_slug"], "application_student")
         self.assertGreaterEqual(len(search_profiles_payload["search_profiles"]), 1)
@@ -289,6 +306,8 @@ class WebServerTests(unittest.TestCase):
         self.assertEqual(domain_policies_payload["counts"]["blacklisted"], 1)
         self.assertEqual(unblocked_domain_payload["target"]["status"], "rejected")
         self.assertEqual(cloned_use_case_payload["use_case"]["slug"], "application_copy")
+        self.assertFalse(cloned_use_case_payload["use_case"]["is_builtin"])
+        self.assertTrue(cloned_use_case_payload["use_case"]["is_editable"])
         self.assertEqual(updated_use_case_payload["use_case"]["name"], "Application Edited")
         self.assertIn(
             "{role} remote {region}",

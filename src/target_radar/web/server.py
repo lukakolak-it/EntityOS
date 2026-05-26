@@ -46,7 +46,7 @@ from target_radar.pipeline import (
 )
 from target_radar.pipeline.importer import TargetImporter
 from target_radar.storage import NotFoundError, SQLiteStore
-from target_radar.use_cases import UseCaseConfig, validate_use_case_config
+from target_radar.use_cases import UseCaseConfig, UseCaseStatus, validate_use_case_config
 
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -518,7 +518,9 @@ def _make_handler(
 
             store = self._store()
             try:
-                store.get_use_case_by_slug(slug)
+                existing = store.get_use_case_by_slug(slug)
+                if _is_builtin_use_case(existing):
+                    raise ValueError("built-in use case templates are read-only; clone before editing")
                 updated = validate_use_case_config(next_config)
                 store.save_use_case(updated)
                 self._send_json(
@@ -1730,6 +1732,11 @@ def _use_case_payload(store: SQLiteStore, use_case: UseCaseConfig) -> dict[str, 
     payload = use_case.to_dict()
     payload["db_id"] = store.get_use_case_id_by_slug(use_case.id)
     payload["slug"] = use_case.id
+    payload["is_builtin"] = _is_builtin_use_case(use_case)
+    payload["is_editable"] = not payload["is_builtin"]
+    payload["origin"] = use_case.created_from_template or (
+        "built_in" if payload["is_builtin"] else "local"
+    )
     return payload
 
 
@@ -1775,6 +1782,9 @@ def _import_use_case(
         raise UseCaseImportConflict(f"use case already exists: {selected.id}")
 
     if conflict == "overwrite":
+        existing_use_case = store.get_use_case_by_slug(selected.id)
+        if _is_builtin_use_case(existing_use_case):
+            raise ValueError("built-in use case templates cannot be overwritten")
         store.save_use_case(selected)
         return store.get_use_case_by_slug(selected.id), "overwritten"
 
@@ -1837,6 +1847,13 @@ def _use_case_slug_exists(store: SQLiteStore, slug: str) -> bool:
     except NotFoundError:
         return False
     return True
+
+
+def _is_builtin_use_case(use_case: UseCaseConfig) -> bool:
+    return (
+        use_case.status == UseCaseStatus.TEMPLATE
+        and use_case.created_from_template is None
+    )
 
 
 def _slugify(value: str) -> str:

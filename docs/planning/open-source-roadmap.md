@@ -150,12 +150,16 @@ Akzeptanzkriterien:
 
 ## Sprint 17: Use-Case-Builder MVP
 
+Status: umgesetzt als lokales MVP.
+
 Ziel:
 
 Nutzer sollen einfache eigene Use Cases ohne JSON- oder Codebearbeitung
 erstellen koennen.
 
 ### Slice 17.1: Use-Case-Liste und Detailseite
+
+Status: umgesetzt.
 
 Umfang:
 
@@ -171,6 +175,8 @@ Akzeptanzkriterien:
 
 ### Slice 17.2: Formular fuer Attribute und Query Policy
 
+Status: umgesetzt.
+
 Umfang:
 
 - Attribute mit Key, Label, Typ und Pflichtstatus bearbeiten
@@ -184,6 +190,8 @@ Akzeptanzkriterien:
 - ein einfacher eigener Use Case erzeugt valide Run-Eingaben
 
 ### Slice 17.3: Source Policy Editor
+
+Status: umgesetzt.
 
 Umfang:
 
@@ -199,6 +207,8 @@ Akzeptanzkriterien:
 
 ### Slice 17.4: Rating- und Draft-Policy Editor
 
+Status: umgesetzt.
+
 Umfang:
 
 - Kriterien, Gewichte und Mindest-Evidence bearbeiten
@@ -212,6 +222,8 @@ Akzeptanzkriterien:
 - ungueltige Draft-Policies werden vor dem Speichern blockiert
 
 ### Slice 17.5: Import, Export und Template-Kopien
+
+Status: umgesetzt.
 
 Umfang:
 

@@ -16,10 +16,50 @@ const state = {
 };
 
 const USE_CASE_TABS = (
-  ["basis", "fields", "queries", "sources", "rating", "output", "review"]
+  ["basis", "fields", "queries", "sources", "rating", "output", "review", "json"]
 );
 const PAGE_IDS = new Set(["review", "use-cases", "profiles", "runs", "secrets"]);
 const RUN_DEFAULTS_KEY = "target-radar-run-defaults-v1";
+const KNOWN_SOURCE_TYPES = new Set([
+  "official_site",
+  "company_site",
+  "directory",
+  "job_board",
+  "social",
+  "repository",
+  "news",
+  "registry",
+  "marketplace",
+  "unknown",
+]);
+const KNOWN_RULE_SETS = new Set([
+  "role_keyword_match",
+  "tech_keyword_match",
+  "region_keyword_match",
+  "source_quality",
+  "contactability",
+  "evidence_quality",
+]);
+const KNOWN_EVIDENCE_TYPES = new Set([
+  "target_homepage",
+  "target_career",
+  "target_contact",
+  "target_about",
+  "target_page",
+  "context_directory",
+  "context_news",
+  "context_registry",
+  "context_repository",
+  "context_source",
+]);
+const DRAFT_REQUIRED_SECTIONS = {
+  research_summary: ["summary", "key_findings", "evidence", "risks_or_uncertainties"],
+};
+const DRAFT_ALLOWED_SECTIONS = {
+  application_email: ["subject", "body"],
+  research_summary: ["title", "summary", "key_findings", "evidence", "risks_or_uncertainties", "next_steps"],
+  none: [],
+};
 
 const elements = {
   serverStatus: document.querySelector("#serverStatus"),
@@ -265,12 +305,16 @@ function renderUseCases() {
     item.innerHTML = `
       <div class="item-header">
         <span class="item-title">${escapeHtml(useCase.name)}</span>
-        ${pill(useCase.status)}
+        <span>
+          ${pill(useCase.status)}
+          ${pill(useCase.is_builtin ? "built_in" : "local")}
+        </span>
       </div>
       <p>${escapeHtml(useCase.slug)} - v${displayNumber(useCase.version)}</p>
-      <p>${escapeHtml(useCase.draft_policy.draft_type)} - ${useCase.rating_policy.criteria.length} Kriterien</p>
+      <p>${escapeHtml(useCase.draft_policy.draft_type)} - ${useCase.rating_policy.criteria.length} Kriterien - ${useCase.is_editable ? "editierbar" : "read-only"}</p>
       <div class="actions">
         <button type="button" data-use-case-detail="${escapeAttribute(useCase.slug)}">Details</button>
+        <button type="button" data-use-case-run="${escapeAttribute(useCase.slug)}">Use in Run</button>
         <button type="button" data-use-case-clone="${escapeAttribute(useCase.slug)}">Clone</button>
         <button type="button" data-use-case-export="${escapeAttribute(useCase.slug)}">Export</button>
       </div>
@@ -278,6 +322,12 @@ function renderUseCases() {
     item.querySelector("[data-use-case-detail]").addEventListener("click", () => {
       state.selectedUseCaseSlug = useCase.slug;
       renderUseCases();
+    });
+    item.querySelector("[data-use-case-run]").addEventListener("click", () => {
+      elements.runUseCaseSelect.value = String(useCase.db_id);
+      renderRunAttributeFields();
+      scheduleRunPreview();
+      showPage("runs");
     });
     item.querySelector("[data-use-case-clone]").addEventListener("click", async () => {
       const data = await api(`/api/use-cases/${useCase.slug}/clone`, { method: "POST", body: {} });
@@ -299,7 +349,13 @@ function renderUseCases() {
 function renderUseCaseDetail(useCase) {
   elements.useCaseDetail.classList.remove("hidden");
   const selectedTab = USE_CASE_TABS.includes(state.useCaseTab) ? state.useCaseTab : "basis";
+  const editable = useCase.is_editable !== false;
   elements.useCaseDetail.innerHTML = `
+    ${editable ? "" : `
+      <div class="notice">
+        Built-in template. Clone this use case before editing.
+      </div>
+    `}
     <div class="tabbar">
       ${USE_CASE_TABS.map((tab) => `
         <button type="button" class="${tab === selectedTab ? "active-tab" : ""}" data-use-case-tab="${tab}">
@@ -312,11 +368,25 @@ function renderUseCaseDetail(useCase) {
       <div id="useCaseEditorStatus" class="editor-status"></div>
       <div id="useCasePreview" class="item preview-item"></div>
       <div class="actions">
-        <button type="button" class="primary" id="saveUseCaseButton">Save Use Case</button>
+        <button type="button" class="primary" id="saveUseCaseButton" ${editable ? "" : "disabled"}>Save Use Case</button>
+        <button type="button" id="cloneUseCaseDetailButton">Clone</button>
         <button type="button" id="resetUseCaseButton">Reset</button>
       </div>
     </form>
   `;
+
+  if (!editable) {
+    elements.useCaseDetail
+      .querySelectorAll("#useCaseEditor input, #useCaseEditor select, #useCaseEditor textarea")
+      .forEach((control) => {
+        control.disabled = true;
+      });
+    elements.useCaseDetail
+      .querySelectorAll("#saveUseCaseButton, #addAttributeFieldButton, #addCriterionButton, [data-remove-row]")
+      .forEach((button) => {
+        button.disabled = true;
+      });
+  }
 
   elements.useCaseDetail.querySelectorAll("[data-use-case-tab]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -326,6 +396,11 @@ function renderUseCaseDetail(useCase) {
   });
   elements.useCaseDetail.querySelector("#saveUseCaseButton").addEventListener("click", async () => {
     await saveUseCaseFromEditor(useCase);
+  });
+  elements.useCaseDetail.querySelector("#cloneUseCaseDetailButton").addEventListener("click", async () => {
+    const data = await api(`/api/use-cases/${useCase.slug}/clone`, { method: "POST", body: {} });
+    state.selectedUseCaseSlug = data.use_case.slug;
+    await refreshAll();
   });
   elements.useCaseDetail.querySelector("#resetUseCaseButton").addEventListener("click", () => {
     renderUseCaseDetail(useCase);
@@ -376,6 +451,7 @@ function renderUseCaseTab(useCase, tab) {
   if (tab === "sources") return renderSourcesTab(useCase);
   if (tab === "rating") return renderRatingTab(useCase);
   if (tab === "output") return renderOutputTab(useCase);
+  if (tab === "json") return renderJsonTab(useCase);
   return renderReviewTab(useCase);
 }
 
@@ -620,9 +696,19 @@ function renderReviewTab(useCase) {
   `;
 }
 
+function renderJsonTab(useCase) {
+  return `
+    <label>Raw JSON</label>
+    <textarea class="code-input raw-json-view" readonly>${escapeHtml(jsonText(editableUseCaseConfig(useCase)))}</textarea>
+  `;
+}
+
 async function saveUseCaseFromEditor(useCase) {
   const status = elements.useCaseDetail.querySelector("#useCaseEditorStatus");
   try {
+    if (useCase.is_editable === false) {
+      throw new Error("Built-in templates are read-only. Clone before editing.");
+    }
     const config = buildUseCaseConfigFromEditor(useCase);
     const data = await api(`/api/use-cases/${useCase.slug}`, {
       method: "PATCH",
@@ -783,6 +869,7 @@ function buildUseCaseConfigFromEditor(useCase) {
     config.review_policy.actions = parseCsv(get("uc-review-actions").value);
     config.review_policy.columns = parseCsv(get("uc-review-columns").value);
   }
+  validateUseCaseConfigClient(config);
   return config;
 }
 
@@ -831,6 +918,131 @@ function numberValue(value) {
   return parsed;
 }
 
+function validateUseCaseConfigClient(config) {
+  const fieldKeys = new Set();
+  for (const field of config.attribute_schema.fields || []) {
+    requireIdentifier(field.key, "attribute key");
+    if (fieldKeys.has(field.key)) {
+      throw new Error(`Duplicate attribute field: ${field.key}`);
+    }
+    fieldKeys.add(field.key);
+    if (!String(field.label || "").trim()) {
+      throw new Error(`Attribute ${field.key} needs a label`);
+    }
+  }
+  validateQueryPolicy(config.query_policy || {}, fieldKeys);
+  validateSourcePolicy(config.source_policy || {});
+  validateRatingPolicy(config.rating_policy || {});
+  validateDraftPolicy(config.draft_policy || {});
+}
+
+function validateQueryPolicy(policy, fieldKeys) {
+  const templates = policy.templates || [];
+  if (!templates.length) {
+    throw new Error("Query policy needs at least one template");
+  }
+  const variableMap = policy.variable_map || {};
+  for (const target of Object.values(variableMap)) {
+    if (!fieldKeys.has(target)) {
+      throw new Error(`Variable map targets unknown field: ${target}`);
+    }
+  }
+  for (const template of templates) {
+    for (const variable of templateVariablesStrict(template)) {
+      if (!fieldKeys.has(variable) && !hasOwn(variableMap, variable)) {
+        throw new Error(`Unknown query template variable: ${variable}`);
+      }
+    }
+  }
+}
+
+function validateSourcePolicy(policy) {
+  const groups = [
+    policy.preferred_source_types || [],
+    policy.context_source_types || [],
+    policy.blocked_source_types || [],
+  ];
+  const unknown = groups.flat().filter((value) => !KNOWN_SOURCE_TYPES.has(value));
+  if (unknown.length) {
+    throw new Error(`Unknown source type: ${unknown[0]}`);
+  }
+  const preferred = new Set(policy.preferred_source_types || []);
+  const context = new Set(policy.context_source_types || []);
+  const blocked = new Set(policy.blocked_source_types || []);
+  if (intersects(preferred, blocked) || intersects(context, blocked)) {
+    throw new Error("Source policy source type groups must not overlap blocked types");
+  }
+}
+
+function validateRatingPolicy(policy) {
+  const criteria = policy.criteria || [];
+  if (!criteria.length) {
+    throw new Error("Rating policy needs at least one criterion");
+  }
+  const weightSum = criteria.reduce((sum, item) => sum + Number(item.weight || 0), 0);
+  if (weightSum !== 100) {
+    throw new Error(`Criteria weights must sum to 100, currently ${weightSum}`);
+  }
+  const keys = new Set();
+  for (const criterion of criteria) {
+    requireIdentifier(criterion.key, "criterion key");
+    if (keys.has(criterion.key)) {
+      throw new Error(`Duplicate rating criterion: ${criterion.key}`);
+    }
+    keys.add(criterion.key);
+    if (!String(criterion.label || "").trim()) {
+      throw new Error(`Criterion ${criterion.key} needs a label`);
+    }
+    if (["rules", "hybrid"].includes(criterion.evaluation)) {
+      if (!criterion.rule_set) {
+        throw new Error(`Criterion ${criterion.key} needs a rule set`);
+      }
+      if (!KNOWN_RULE_SETS.has(criterion.rule_set)) {
+        throw new Error(`Unknown rule set: ${criterion.rule_set}`);
+      }
+    }
+    if (["llm", "hybrid"].includes(criterion.evaluation) && !criterion.llm_instruction) {
+      throw new Error(`Criterion ${criterion.key} needs an LLM instruction`);
+    }
+    for (const evidenceType of criterion.evidence_types || []) {
+      if (!KNOWN_EVIDENCE_TYPES.has(evidenceType)) {
+        throw new Error(`Unknown evidence type: ${evidenceType}`);
+      }
+    }
+  }
+}
+
+function validateDraftPolicy(policy) {
+  const allowed = DRAFT_ALLOWED_SECTIONS[policy.draft_type];
+  if (!allowed) {
+    throw new Error(`Unknown draft type: ${policy.draft_type}`);
+  }
+  for (const section of policy.required_sections || []) {
+    if (!allowed.includes(section)) {
+      throw new Error(`Unknown required draft section: ${section}`);
+    }
+  }
+  for (const section of DRAFT_REQUIRED_SECTIONS[policy.draft_type] || []) {
+    if (!(policy.required_sections || []).includes(section)) {
+      throw new Error(`Draft type ${policy.draft_type} needs section: ${section}`);
+    }
+  }
+}
+
+function requireIdentifier(value, label) {
+  if (!/^[a-z][a-z0-9_]*$/.test(String(value || ""))) {
+    throw new Error(`${label} must be a lowercase identifier`);
+  }
+}
+
+function intersects(left, right) {
+  return Array.from(left).some((value) => right.has(value));
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
 function queryPreview(config) {
   const exclusions = queryExclusions(config.query_policy.exclude_terms || []);
   return config.query_policy.templates.slice(0, 6).map((template) => {
@@ -870,6 +1082,24 @@ function templateVariables(template) {
   return Array.from(variables);
 }
 
+function templateVariablesStrict(template) {
+  const variables = [];
+  const seen = new Set();
+  for (const match of template.matchAll(/\{([^{}]+)\}/g)) {
+    const variable = match[1];
+    requireIdentifier(variable, "query template variable");
+    if (!seen.has(variable)) {
+      variables.push(variable);
+      seen.add(variable);
+    }
+  }
+  const stripped = template.replace(/\{[^{}]+\}/g, "");
+  if (stripped.includes("{") || stripped.includes("}")) {
+    throw new Error(`Invalid query template braces: ${template}`);
+  }
+  return variables;
+}
+
 function sampleValue(fieldKey) {
   const samples = {
     roles: "Werkstudent IT",
@@ -896,6 +1126,7 @@ function tabLabel(tab) {
     rating: "Rating",
     output: "Output",
     review: "Review",
+    json: "JSON",
   }[tab] || tab;
 }
 

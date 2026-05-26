@@ -402,6 +402,12 @@ label,
   color: var(--green);
 }
 
+.status-pill.built_in,
+.status-pill.local {
+  background: var(--surface-soft);
+  color: var(--muted);
+}
+
 .status-pill.process {
   background: var(--blue-soft);
   color: var(--blue);
@@ -487,6 +493,20 @@ tr.selected td {
 
 .detail {
   padding: 15px;
+}
+
+.notice {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 6px;
+  background: var(--amber-soft);
+  color: var(--text);
+}
+
+.raw-json-view {
+  min-height: 420px;
 }
 
 .detail-grid {
