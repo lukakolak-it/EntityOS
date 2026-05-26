@@ -488,6 +488,36 @@ class RatingEngineTests(unittest.TestCase):
             any(risk.get("type") == "missing_ai_provider" for risk in rating.risks)
         )
 
+    def test_use_case_placeholder_evidence_is_skipped(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Photovoltaik"], "regions": ["Essen"]},
+        )
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/photovoltaik-essen",
+                text="Diese Domain ist unkonfiguriert.",
+                context_type="page",
+                metadata={"evidence_type": "target_page"},
+            )
+        ]
+
+        rating = RatingEngine().rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.SKIP)
+        self.assertEqual(rating.rating_status, "rule_skipped")
+        self.assertTrue(
+            any(risk.get("type") == "unusable_evidence" for risk in rating.risks)
+        )
+
     def test_evidence_can_be_loaded_for_rating(self) -> None:
         saved = self.store.add_evidence(
             Evidence(

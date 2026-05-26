@@ -66,6 +66,21 @@ class FetchExtractTests(unittest.TestCase):
             "contact",
         )
 
+    def test_homepage_is_not_classified_as_career_from_navigation(self) -> None:
+        text = (
+            "Startseite Wissen Loesungen Karriere News Kontakt "
+            "Solartechnik in Essen und Photovoltaikanlagen fuer dein Zuhause"
+        )
+
+        self.assertEqual(
+            classify_page_type(
+                "https://example.com/",
+                "Solartechnik in Essen",
+                text,
+            ),
+            "homepage",
+        )
+
     def test_target_pages_and_evidence_are_persisted(self) -> None:
         store = SQLiteStore.open(":memory:")
         try:

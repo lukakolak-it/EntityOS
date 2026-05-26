@@ -43,19 +43,25 @@ class HtmlExtractor:
 
 
 def classify_page_type(url: str, title: str | None = None, text: str = "") -> str:
-    haystack = " ".join(
-        part
-        for part in (urlparse(url).path, title or "", text[:500])
-        if part
-    ).lower()
+    path = urlparse(url).path
+    normalized_path = path.strip("/").lower()
+    if path in ("", "/"):
+        return "homepage"
+
+    if any(token in normalized_path for token in ("career", "karriere", "jobs", "stellen")):
+        return "career"
+    if any(token in normalized_path for token in ("contact", "kontakt", "impressum")):
+        return "contact"
+    if any(token in normalized_path for token in ("about", "ueber-uns", "uber-uns")):
+        return "about"
+
+    haystack = " ".join(part for part in (title or "", text[:500]) if part).lower()
     if any(token in haystack for token in ("career", "karriere", "jobs", "stellen")):
         return "career"
     if "contact" in haystack or "kontakt" in haystack or "impressum" in haystack:
         return "contact"
     if "about" in haystack or "ueber-uns" in haystack or "uber-uns" in haystack:
         return "about"
-    if urlparse(url).path in ("", "/"):
-        return "homepage"
     return "other"
 
 

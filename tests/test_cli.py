@@ -73,7 +73,7 @@ class CliTests(unittest.TestCase):
         payload = _run_cli("evaluate")
 
         self.assertEqual(payload["status"], "passed")
-        self.assertEqual(payload["total"], 26)
+        self.assertEqual(payload["total"], 29)
         self.assertEqual(payload["sections"]["source_quality"]["failed"], 0)
         self.assertEqual(payload["sections"]["rating"]["failed"], 0)
         self.assertEqual(payload["sections"]["draft"]["failed"], 0)

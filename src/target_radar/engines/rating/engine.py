@@ -196,6 +196,20 @@ class RatingEngine:
     ) -> RatingResult:
         rule_gate = self.rule_rater.rate(target, search_profile, evidence)
         evidence_payload = _evidence_payload(evidence)
+        if _has_only_unusable_evidence(evidence):
+            return RatingResult(
+                target_id=_target_id(target),
+                pipeline_run_id=pipeline_run_id,
+                rule_score=0,
+                recommended_action=RecommendedAction.SKIP,
+                rating_status="rule_skipped",
+                rating_version=f"{self.rating_version}+usecase-v{use_case.version}",
+                reasons=rule_gate.reasons,
+                risks=rule_gate.risks
+                + [{"type": "unusable_evidence", "value": "placeholder_page"}],
+                evidence=evidence_payload,
+                input_snapshot=_input_snapshot(search_profile, evidence, use_case=use_case),
+            )
         if rule_gate.hard_stop:
             return RatingResult(
                 target_id=_target_id(target),
@@ -647,6 +661,24 @@ def _criterion_evidence(
         for item in evidence
         if _evidence_type(item) in accepted
     ]
+
+
+def _has_only_unusable_evidence(evidence: list[Evidence]) -> bool:
+    return bool(evidence) and all(_is_unusable_evidence(item.text) for item in evidence)
+
+
+def _is_unusable_evidence(value: str) -> bool:
+    normalized = _normalize_text(value)
+    if not normalized:
+        return True
+    placeholder_markers = (
+        "diese domain ist unkonfiguriert",
+        "domain ist unkonfiguriert",
+        "this domain is unconfigured",
+        "domain is unconfigured",
+        "this domain is not configured",
+    )
+    return any(marker in normalized for marker in placeholder_markers)
 
 
 def _llm_context(evidence: list[Evidence]) -> str:

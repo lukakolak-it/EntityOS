@@ -115,8 +115,16 @@ Akzeptanzkriterien:
 
 ### Slice 16.4: Erste Fix-Runde aus echten Fehlfaellen
 
-Status: vorbereitet. Die naechste Fix-Runde startet nach einer echten
-Review-Runde mit ausreichenden Entscheidungen.
+Status: umgesetzt fuer die erste Run-26-Review-Runde.
+
+Umgesetzte Fixes:
+
+- Homepage-URLs werden nicht mehr nur wegen Navigationslinks wie `Karriere`
+  als Career-Seiten klassifiziert.
+- Platzhalterseiten wie `Diese Domain ist unkonfiguriert` werden als
+  unbrauchbare Evidence erkannt und auf `skip` gesetzt.
+- Eval-Baseline enthaelt Regressionen fuer die Run-26-Faelle
+  `borowski.de`, `wattmacher.nrw` und `brenner-energie.de`.
 
 Umfang:
 
