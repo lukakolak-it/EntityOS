@@ -2097,3 +2097,6 @@ Danach ist die sinnvolle Reihenfolge:
    erweitern.
 2. Weitere echte Review-Runs ausfuehren und die Eval-Grenzfaelle daraus
    priorisieren.
+
+Die weitere Produkt-Roadmap bis zu einem nuetzlichen Open-Source-Tool steht in
+`docs/planning/open-source-roadmap.md`.

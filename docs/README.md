@@ -17,6 +17,7 @@
 ## Planung
 
 - `planning/sprints-und-slices.md`: Sprint-Planung mit vertikalen Slices fuer den MVP
+- `planning/open-source-roadmap.md`: Roadmap vom aktuellen lokalen MVP zum nuetzlichen Open-Source-Tool
 
 ## Betrieb
 
