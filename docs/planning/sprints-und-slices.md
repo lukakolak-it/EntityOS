@@ -2056,6 +2056,35 @@ Akzeptanzkriterien:
   anspringbar.
 - Tests decken die erweiterten Claim-Ref-Metadaten ab.
 
+### Slice D8: Research-Summary Snippet-Qualitaet
+
+Status: umgesetzt.
+
+Ziel:
+
+Research Summaries sollen keine Website-Navigation, Cookie-/Menue-Texte oder
+doppelte historische Evidence in die `Key Findings` kopieren. Findings sollen
+weiter belegbar bleiben, aber als kompakte Review-Notiz lesbar sein.
+
+Umfang:
+
+- Draft-Kontext dedupliziert Evidence nach `source_url` und `evidence_type`
+- Snippet-Aufbereitung bevorzugt gespeicherte `title`- und
+  `description`-Metadaten
+- bekannte Boilerplate-Phrasen wie `Zum Hauptinhalt wechseln`,
+  Website-Zustimmungen, Menue-/Untermenue-Texte und Powered-by-Fragmente
+  entfernen
+- signalreiche Textstuecke priorisieren und sehr lange Stuecke begrenzen
+- Research-Summary-Findings auf kompakte Snippets kuerzen
+- Eval-Suite um Boilerplate-/Dedupe-Fall erweitern
+
+Akzeptanzkriterien:
+
+- Doppelte Evidence derselben Quelle erzeugt nur eine Claim-Referenz.
+- Boilerplate-Fragmente tauchen nicht im Research-Summary-Body auf.
+- Die Quellenliste und Claim-Refs bleiben vollstaendig validierbar.
+- Eval-Suite deckt Boilerplate-Entfernung und Dedupe ab.
+
 ## Empfohlene Reihenfolge
 
 Die Sprints 0 bis 10 bilden den lokalen MVP-Pfad. Sprint 11 verbessert die

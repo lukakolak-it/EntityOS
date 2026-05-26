@@ -416,6 +416,38 @@
       "required_body_contains": ["- E1:", "- E2:", "https://directory.example/solar-beta"]
     },
     {
+      "id": "dr_osint_boilerplate_cleaned",
+      "use_case": "company_osint",
+      "url": "https://solar-clean.example/",
+      "rating_action": "draft",
+      "evidence": [
+        {
+          "source_url": "https://solar-clean.example/",
+          "context_type": "homepage",
+          "metadata": {
+            "evidence_type": "target_homepage",
+            "title": "Solar Clean GmbH",
+            "description": "Solar Clean bietet Solar Services in Essen mit Photovoltaik-Beratung."
+          },
+          "text": "Website-Zustimmungen bearbeiten Zum Hauptinhalt wechseln Hauptmenue Menue schliessen Startseite Kontakt FAQ Blog Solar Clean GmbH bietet Solar Services in Essen. Das Unternehmen plant Photovoltaik-Anlagen und nennt Kontakt."
+        },
+        {
+          "source_url": "https://solar-clean.example/",
+          "context_type": "homepage",
+          "metadata": {
+            "evidence_type": "target_homepage",
+            "title": "Solar Clean GmbH"
+          },
+          "text": "Website-Zustimmungen bearbeiten Zum Hauptinhalt wechseln Solar Clean GmbH bietet Solar Services in Essen."
+        }
+      ],
+      "expected_status": "generated",
+      "expected_draft_type": "research_summary",
+      "expected_claim_ref_count": 1,
+      "required_body_contains": ["Solar Clean bietet Solar Services", "https://solar-clean.example/"],
+      "forbidden_body_contains": ["Website-Zustimmungen", "Zum Hauptinhalt", "Menue schliessen"]
+    },
+    {
       "id": "dr_application_email",
       "use_case": "application_student",
       "url": "https://alpha.example/jobs",

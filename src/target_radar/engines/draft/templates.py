@@ -37,7 +37,7 @@ def _research_summary(context: DraftContext) -> tuple[str, str]:
     subject = f"Research Summary: {context.target_domain}"
     items = context.evidence_items[:4]
     findings = "\n".join(
-        f"- {item.ref}: [{item.evidence_type}] {item.text}" for item in items
+        _finding_line(item.ref, item.evidence_type, item.text) for item in items
     )
     if not findings:
         findings = "- Keine belastbaren Belege gefunden."
@@ -46,10 +46,7 @@ def _research_summary(context: DraftContext) -> tuple[str, str]:
     )
     if not evidence_lines:
         evidence_lines = "- Keine Quellen gespeichert."
-    risks = "\n".join(
-        f"- {risk.get('type', 'risk')}: {risk.get('value', '')}"
-        for risk in context.risks[:5]
-    )
+    risks = "\n".join(_risk_line(risk) for risk in context.risks[:5])
     if not risks:
         risks = "- Keine expliziten Risiken im Rating."
 
@@ -69,3 +66,24 @@ def _research_summary(context: DraftContext) -> tuple[str, str]:
         ]
     )
     return subject, body
+
+
+def _finding_line(ref: str, evidence_type: str, text: str) -> str:
+    return f"- {ref}: [{evidence_type}] {_clip_text(text, 260)}"
+
+
+def _risk_line(risk: dict[str, object]) -> str:
+    risk_type = str(risk.get("type", "risk"))
+    value = _clip_text(str(risk.get("value") or risk.get("text") or ""), 100)
+    if not value:
+        return f"- {risk_type}"
+    return f"- {risk_type}: {value}"
+
+
+def _clip_text(value: str, max_chars: int) -> str:
+    cleaned = " ".join(value.split()).strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    if max_chars <= 1:
+        return "."
+    return cleaned[: max_chars - 1].rstrip() + "."

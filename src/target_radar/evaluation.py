@@ -181,6 +181,10 @@ def _run_draft_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
                     value: value in draft.body
                     for value in case.get("required_body_contains", [])
                 },
+                "body_excludes": {
+                    value: value not in draft.body
+                    for value in case.get("forbidden_body_contains", [])
+                },
             }
         except DraftSkippedError as exc:
             actual = {
@@ -194,6 +198,9 @@ def _run_draft_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:
                 expected["claim_ref_count"] = case["expected_claim_ref_count"]
             expected["body_contains"] = {
                 value: True for value in case.get("required_body_contains", [])
+            }
+            expected["body_excludes"] = {
+                value: True for value in case.get("forbidden_body_contains", [])
             }
         results.append(_case_result(case["id"], actual, expected))
     return _section_result(results)

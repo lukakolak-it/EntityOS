@@ -15,7 +15,7 @@ Umfang:
 
 - 12 Source-Quality-Faelle
 - 9 Rating-Faelle
-- 4 Draft-Grounding-Faelle
+- 5 Draft-Grounding-Faelle
 
 Ausfuehrung:
 

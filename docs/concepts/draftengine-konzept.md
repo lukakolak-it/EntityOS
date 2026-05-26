@@ -175,6 +175,24 @@ Referenzen mit `evidence_id`, `source_url`, `evidence_type`, `context_type` und
 `priority`. Die UI kann dadurch `E1`, `E2` usw. direkt mit Evidence-Karten
 verknuepfen und fehlende Finding-Refs oder Quellen im Draft sichtbar machen.
 
+### Snippet-Qualitaet
+
+Der Draft Context Builder uebernimmt Evidence nicht mehr als unbereinigten
+Rohtext-Anfang. Vor der Draft-Erzeugung wird die Evidence fuer Review-Drafts
+kompakt vorbereitet:
+
+- gleiche `source_url` plus gleicher `evidence_type` wird nur einmal verwendet
+- Titel und Description aus der gespeicherten Evidence-Metadatenlage werden
+  bevorzugt
+- bekannte Website-Boilerplate wie Cookie-/Menue-/Sprunglink-Texte wird
+  entfernt
+- lange Textstuecke werden in kurze, signalreiche Snippets gekuerzt
+- Key Findings verwenden diese vorbereiteten Snippets und begrenzen die Laenge
+  pro Finding
+
+Damit bleiben Research Summaries belegbar, ohne Navigationsleisten oder
+doppelte historische Evidence in die Review-Notiz zu kopieren.
+
 ## 8. Belegpflicht
 
 Die DraftEngine darf nur Aussagen nutzen, die durch Kontext belegbar sind.

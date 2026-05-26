@@ -26,11 +26,11 @@ class EvaluationTests(unittest.TestCase):
         result = run_evaluation(DEFAULT_EVALUATION_FIXTURE)
 
         self.assertEqual(result["status"], "passed")
-        self.assertEqual(result["total"], 25)
+        self.assertEqual(result["total"], 26)
         self.assertEqual(result["failed"], 0)
         self.assertEqual(result["sections"]["source_quality"]["total"], 12)
         self.assertEqual(result["sections"]["rating"]["total"], 9)
-        self.assertEqual(result["sections"]["draft"]["total"], 4)
+        self.assertEqual(result["sections"]["draft"]["total"], 5)
 
     def test_review_feedback_export_and_eval(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

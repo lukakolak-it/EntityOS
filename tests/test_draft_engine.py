@@ -266,6 +266,65 @@ class DraftEngineTests(unittest.TestCase):
         self.assertIn("context_directory", draft.body)
         self.assertIn("https://directory.example/company", draft.body)
 
+    def test_research_summary_cleans_boilerplate_and_dedupes_evidence(self) -> None:
+        rating = self.store.save_rating(RatingResult(
+            target_id=self.target.id,
+            recommended_action=RecommendedAction.DRAFT,
+            rule_score=86,
+            ai_score=77,
+            confidence=0.74,
+            rating_status="use_case_rated",
+            rating_version="rules-v1+usecase-v1",
+        ))
+        raw_text = (
+            "Website-Zustimmungen bearbeiten Zum Hauptinhalt wechseln "
+            "Hauptmenue Menue schliessen Startseite Kontakt FAQ Blog "
+            "Solar Alpha GmbH bietet Solar Services in Essen. "
+            "Das Unternehmen plant Photovoltaik-Anlagen und nennt Kontakt."
+        )
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://solar-alpha.example/",
+                text=raw_text,
+                context_type="homepage",
+                priority=80,
+                metadata={
+                    "evidence_type": "target_homepage",
+                    "title": "Solar Alpha GmbH",
+                    "description": "Solar Alpha bietet Solar Services in Essen mit Photovoltaik-Beratung.",
+                },
+            ),
+            Evidence(
+                id=2,
+                target_id=self.target.id,
+                source_url="https://solar-alpha.example/",
+                text=raw_text,
+                context_type="homepage",
+                priority=70,
+                metadata={
+                    "evidence_type": "target_homepage",
+                    "title": "Solar Alpha GmbH",
+                },
+            ),
+        ]
+
+        draft = DraftEngine().create_draft(
+            profile=self.profile,
+            target=self.target,
+            rating=rating,
+            evidence=evidence,
+            draft_policy=get_default_use_case("company_osint").draft_policy,
+        )
+
+        self.assertIn("Solar Alpha bietet Solar Services", draft.body)
+        self.assertNotIn("Website-Zustimmungen", draft.body)
+        self.assertNotIn("Zum Hauptinhalt", draft.body)
+        self.assertNotIn("Menue schliessen", draft.body)
+        self.assertEqual(draft.used_context["evidence_count"], 1)
+        self.assertEqual(len(draft.used_context["claim_refs"]), 1)
+
     def test_validator_requires_research_summary_sources_and_refs(self) -> None:
         validator = DraftValidator()
 
