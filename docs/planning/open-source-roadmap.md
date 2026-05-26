@@ -583,11 +583,15 @@ beitragbar sein.
 
 ### Slice 22.1: Projekt-Metadaten
 
+Status: umgesetzt.
+
 Umfang:
 
 - Lizenz finalisieren
 - `CONTRIBUTING.md`, `SECURITY.md`, Issue-Templates und Code of Conduct
 - Support-Grenzen und Nicht-Ziele dokumentieren
+- `README.md` verlinkt Einstieg, Lizenz, Beitragspfad, Security, Changelog und
+  Release Notes
 
 Akzeptanzkriterien:
 
@@ -597,11 +601,15 @@ Akzeptanzkriterien:
 
 ### Slice 22.2: Beispielpaket
 
+Status: umgesetzt.
+
 Umfang:
 
 - Demo-Daten ohne echte Personen oder Secrets
 - Beispiel-Use-Cases fuer Company OSINT und Open-Source-Projekte
 - kurze Walkthrough-Doku
+- importierbare Beispiele unter `examples/use-cases/`
+- synthetisches Demo-Profil unter `examples/demo/`
 
 Akzeptanzkriterien:
 
@@ -611,12 +619,15 @@ Akzeptanzkriterien:
 
 ### Slice 22.3: Release-Kandidat
 
+Status: umgesetzt.
+
 Umfang:
 
 - Version setzen
 - Changelog schreiben
 - Tests, Eval, UI-Smoke, Datenschutz-Check ausfuehren
 - bekannte Limitationen dokumentieren
+- Release Notes fuer `v0.1.0-local-osint` gepflegt
 
 Akzeptanzkriterien:
 
@@ -626,17 +637,31 @@ Akzeptanzkriterien:
 
 ### Slice 22.4: Feedback-Kanal fuer externe Nutzer
 
+Status: umgesetzt.
+
 Umfang:
 
 - Issue-Labels fuer Bug, Eval Case, Use Case, Provider, Docs
 - Vorlage fuer anonymisierte Fehlfaelle
 - Roadmap nach `v0.1.0` pflegen
+- Pull-Request-Template mit lokalen Quality Gates
 
 Akzeptanzkriterien:
 
 - Nutzer koennen schlechte Treffer als reproduzierbare Eval-Faelle melden
 - neue Use-Case-Ideen haben ein klares Format
 - naechste Prioritaeten sind sichtbar
+
+Ergebnis:
+
+- `LICENSE`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md` und
+  GitHub-Templates bilden den Open-Source-Rahmen.
+- `docs/demo/walkthrough.md` beschreibt den secret-freien Fake-Provider-Flow
+  und den zweiten Schritt mit Brave/Ollama.
+- `CHANGELOG.md` und `docs/releases/v0.1.0-local-osint.md` machen den
+  Release-Kandidaten taggbar.
+- `tests/test_release_docs.py` schuetzt Release-Artefakte und Beispiel-Use-Cases
+  gegen Regressionen.
 
 ## Empfohlene Reihenfolge ab jetzt
 

@@ -1,0 +1,39 @@
+name: Eval case
+description: Report a bad result as a reproducible, anonymized eval case.
+labels: ["eval-case"]
+body:
+  - type: input
+    id: section
+    attributes:
+      label: Eval section
+      placeholder: source_quality, rating, draft, review_feedback
+    validations:
+      required: true
+  - type: input
+    id: expected_action
+    attributes:
+      label: Expected action
+      placeholder: import, review_source, block, skip, review, draft
+    validations:
+      required: true
+  - type: input
+    id: actual_action
+    attributes:
+      label: Actual action
+      placeholder: What did Target Radar do?
+    validations:
+      required: true
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Minimal anonymized fixture
+      description: Replace real names and secrets. Keep short evidence snippets only.
+      render: json
+    validations:
+      required: true
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Why is the expected action correct?
+    validations:
+      required: true

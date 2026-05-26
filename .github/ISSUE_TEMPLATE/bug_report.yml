@@ -1,0 +1,34 @@
+name: Bug report
+description: Report a reproducible local bug.
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Keep provider secrets and private data out of the report.
+      placeholder: |
+        1. Start local UI
+        2. Run fake provider
+        3. Open review queue
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      description: Paste the redacted diagnostics from /#secrets if relevant.
+      render: json

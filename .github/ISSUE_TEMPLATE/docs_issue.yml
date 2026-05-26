@@ -1,0 +1,21 @@
+name: Docs issue
+description: Report missing or confusing documentation.
+labels: ["docs"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or file
+      placeholder: README.md, docs/demo/walkthrough.md
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+    validations:
+      required: true
+  - type: textarea
+    id: suggested
+    attributes:
+      label: Suggested change

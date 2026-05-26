@@ -1,0 +1,107 @@
+{
+  "format": "target-radar-use-case-v1",
+  "use_case": {
+    "id": "open_source_project_research",
+    "name": "Open-Source Project Research",
+    "description": "Research repositories, documentation and project activity for a technical topic.",
+    "version": 1,
+    "status": "template",
+    "created_from_template": "company_osint",
+    "attribute_schema": {
+      "fields": [
+        {"key": "topics", "label": "Topics", "type": "list", "required": true},
+        {"key": "languages", "label": "Languages", "type": "list", "required": false},
+        {"key": "ecosystems", "label": "Ecosystems", "type": "list", "required": false},
+        {"key": "exclude_keywords", "label": "Exclude terms", "type": "list", "required": false}
+      ]
+    },
+    "query_policy": {
+      "default_template_set": "open_source_project_research",
+      "request_budget_default": 10,
+      "results_per_query_default": 5,
+      "variable_map": {"topic": "topics", "language": "languages", "ecosystem": "ecosystems"},
+      "exclude_terms": ["jobs", "hiring", "course", "tutorial"],
+      "templates": [
+        "{topic} GitHub",
+        "{topic} repository {language}",
+        "{topic} documentation {ecosystem}",
+        "{topic} changelog",
+        "{topic} release notes"
+      ],
+      "query_packs": [
+        {
+          "key": "repository_core",
+          "label": "Repository Core",
+          "description": "Repositories and project documentation.",
+          "request_budget": 5,
+          "templates": [
+            "{topic} GitHub",
+            "{topic} repository {language}",
+            "{topic} documentation {ecosystem}",
+            "{topic} changelog",
+            "{topic} release notes"
+          ]
+        }
+      ]
+    },
+    "source_policy": {
+      "preferred_source_types": ["repository", "official_site"],
+      "context_source_types": ["news", "directory"],
+      "blocked_source_types": ["social", "search_result", "marketplace", "job_board"],
+      "blocked_domains": [],
+      "preferred_domains": ["github.com", "gitlab.com"],
+      "relevant_path_tokens": ["readme", "docs", "documentation", "releases", "changelog", "issues"],
+      "listing_path_tokens": [],
+      "import_threshold": 60,
+      "review_threshold": 35
+    },
+    "rating_policy": {
+      "llm_mode": "light",
+      "min_score_for_review": 45,
+      "min_score_for_draft": 65,
+      "criteria": [
+        {
+          "key": "topic_fit",
+          "label": "Topic Fit",
+          "weight": 40,
+          "evaluation": "llm",
+          "llm_instruction": "Assess whether the project matches the requested technical topic.",
+          "evidence_types": ["target_homepage", "target_about", "target_page", "context_repository", "context_news", "context_source"],
+          "min_evidence_count": 1
+        },
+        {
+          "key": "project_activity",
+          "label": "Project Activity",
+          "weight": 30,
+          "evaluation": "hybrid",
+          "rule_set": "evidence_quality",
+          "llm_instruction": "Assess whether available evidence suggests an active and inspectable project.",
+          "evidence_types": ["target_page", "context_repository", "context_news", "context_source"],
+          "min_evidence_count": 1
+        },
+        {
+          "key": "source_credibility",
+          "label": "Source Credibility",
+          "weight": 30,
+          "evaluation": "hybrid",
+          "rule_set": "source_quality",
+          "llm_instruction": "Assess whether source quality is good enough for a research summary.",
+          "evidence_types": ["target_homepage", "target_page", "context_repository", "context_source"]
+        }
+      ]
+    },
+    "draft_policy": {
+      "draft_type": "project_summary",
+      "language": "de",
+      "max_length_chars": 2500,
+      "include_sources": true,
+      "required_sections": ["summary", "key_findings", "evidence", "risks_or_uncertainties"],
+      "forbidden_claims": ["unverified maintainer identity", "guaranteed security posture"]
+    },
+    "review_policy": {
+      "default_scope": "use_case",
+      "actions": ["approve", "reject", "blacklist"],
+      "columns": ["domain", "source_type", "score", "recommended_action", "main_reason"]
+    }
+  }
+}

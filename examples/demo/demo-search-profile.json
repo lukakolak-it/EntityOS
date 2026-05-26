@@ -1,0 +1,13 @@
+{
+  "profile_name": "Demo Research Profile",
+  "search_name": "Synthetic Solar OSINT Demo",
+  "use_case_slug": "company_osint",
+  "attributes": {
+    "topics": ["Solar Services"],
+    "industries": ["Energy"],
+    "regions": ["Essen"]
+  },
+  "regions": ["Essen"],
+  "draft_language": "de",
+  "notes": "Synthetic demo profile. Contains no secrets and no personal data."
+}

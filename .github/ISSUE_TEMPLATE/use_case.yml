@@ -1,0 +1,27 @@
+name: Use case idea
+description: Propose a new local research use case.
+labels: ["use-case"]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Use case name
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Local workflow
+      description: What should a local user research and review?
+    validations:
+      required: true
+  - type: textarea
+    id: attributes
+    attributes:
+      label: Needed user inputs
+      placeholder: topics, regions, repositories, industries, exclude terms
+  - type: textarea
+    id: output
+    attributes:
+      label: Desired output
+      placeholder: research summary, risk note, project summary, none

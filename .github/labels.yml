@@ -1,0 +1,18 @@
+- name: bug
+  color: cc3333
+  description: Something does not work as expected.
+- name: eval-case
+  color: 7a5cff
+  description: Reproducible quality issue that should become an eval case.
+- name: use-case
+  color: 2f80ed
+  description: Use-case schema, templates, criteria or example packs.
+- name: provider
+  color: f2994a
+  description: Brave, Ollama, OpenAI or local provider behavior.
+- name: docs
+  color: 27ae60
+  description: Documentation, setup or release notes.
+- name: privacy
+  color: 111111
+  description: Local data, secrets, exports or redaction.

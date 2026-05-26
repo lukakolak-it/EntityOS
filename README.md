@@ -7,6 +7,16 @@ regel- und LLM-gestuetzt und legt Ergebnisse in einer lokalen Review UI ab.
 Die Anwendung bindet standardmaessig nur an `127.0.0.1`. Secrets, lokale
 Datenbanken, Logs und Exporte bleiben ausserhalb von Git.
 
+## Open-Source Einstieg
+
+- Demo ohne Provider: [docs/demo/walkthrough.md](docs/demo/walkthrough.md)
+- Beitragspfad: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Sicherheits- und Datenschutzgrenzen: [SECURITY.md](SECURITY.md)
+- Verhaltensregeln: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- Lizenz: [LICENSE](LICENSE)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Release Notes: [docs/releases/v0.1.0-local-osint.md](docs/releases/v0.1.0-local-osint.md)
+
 ## Schnellstart
 
 ### Windows
@@ -135,5 +145,6 @@ git diff --check
 - `src/target_radar/pipeline/`: Orchestrierung und Statusfluss
 - `src/target_radar/storage/`: SQLite-Schema und Repository
 - `src/target_radar/web/static/`: lokale UI
+- `examples/`: synthetische Demo-Daten und importierbare Use Cases
 - `docs/`: Konzepte, Architektur, Planung und Betrieb
 - `tests/`: automatisierte Regressionstests

@@ -1,0 +1,29 @@
+name: Provider issue
+description: Report Brave, Ollama, OpenAI or local provider behavior.
+labels: ["provider"]
+body:
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - fake
+        - brave
+        - ollama
+        - openai
+        - local-openai-compatible
+        - other
+    validations:
+      required: true
+  - type: textarea
+    id: issue
+    attributes:
+      label: Issue
+      description: Do not include provider tokens or private prompts.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Redacted diagnostics
+      render: json

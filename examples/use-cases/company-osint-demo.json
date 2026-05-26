@@ -1,0 +1,105 @@
+{
+  "format": "target-radar-use-case-v1",
+  "use_case": {
+    "id": "demo_company_osint",
+    "name": "Demo Company OSINT",
+    "description": "Synthetic local demo for company research without provider secrets.",
+    "version": 1,
+    "status": "template",
+    "created_from_template": "company_osint",
+    "attribute_schema": {
+      "fields": [
+        {"key": "topics", "label": "Topics", "type": "list", "required": true},
+        {"key": "industries", "label": "Industries", "type": "list", "required": false},
+        {"key": "regions", "label": "Regions", "type": "list", "required": false},
+        {"key": "exclude_keywords", "label": "Exclude terms", "type": "list", "required": false}
+      ]
+    },
+    "query_policy": {
+      "default_template_set": "demo_company_osint",
+      "request_budget_default": 8,
+      "results_per_query_default": 3,
+      "variable_map": {"topic": "topics", "industry": "industries", "region": "regions"},
+      "exclude_terms": ["jobs", "stellenangebote", "karriere", "praktikum", "werkstudent"],
+      "templates": [
+        "{topic} Unternehmen {region}",
+        "{topic} Kontakt {region}",
+        "{topic} Impressum {region}",
+        "{industry} Anbieter {region}"
+      ],
+      "query_packs": [
+        {
+          "key": "demo_core",
+          "label": "Demo Core",
+          "description": "Synthetic company, contact and imprint queries.",
+          "request_budget": 4,
+          "templates": [
+            "{topic} Unternehmen {region}",
+            "{topic} Kontakt {region}",
+            "{topic} Impressum {region}",
+            "{industry} Anbieter {region}"
+          ]
+        }
+      ]
+    },
+    "source_policy": {
+      "preferred_source_types": ["company_site", "official_site"],
+      "context_source_types": ["registry", "directory", "news"],
+      "blocked_source_types": ["social", "search_result"],
+      "blocked_domains": [],
+      "preferred_domains": [],
+      "relevant_path_tokens": ["impressum", "about", "kontakt", "services", "products"],
+      "listing_path_tokens": [],
+      "import_threshold": 65,
+      "review_threshold": 35
+    },
+    "rating_policy": {
+      "llm_mode": "light",
+      "min_score_for_review": 45,
+      "min_score_for_draft": 65,
+      "criteria": [
+        {
+          "key": "relevance",
+          "label": "Relevance",
+          "weight": 40,
+          "evaluation": "llm",
+          "llm_instruction": "Assess whether the target matches the research topic.",
+          "evidence_types": ["target_homepage", "target_about", "target_contact", "target_page", "context_directory", "context_news", "context_registry", "context_source"],
+          "min_evidence_count": 1
+        },
+        {
+          "key": "credibility",
+          "label": "Credibility",
+          "weight": 30,
+          "evaluation": "hybrid",
+          "rule_set": "source_quality",
+          "llm_instruction": "Assess whether the source and target are credible enough for review.",
+          "evidence_types": ["target_homepage", "target_about", "target_contact", "context_directory", "context_news", "context_registry", "context_source"]
+        },
+        {
+          "key": "evidence_quality",
+          "label": "Evidence Quality",
+          "weight": 30,
+          "evaluation": "hybrid",
+          "rule_set": "evidence_quality",
+          "llm_instruction": "Assess whether the evidence is concrete and useful.",
+          "evidence_types": ["target_homepage", "target_about", "target_contact", "target_page", "context_directory", "context_news", "context_registry", "context_source"],
+          "min_evidence_count": 1
+        }
+      ]
+    },
+    "draft_policy": {
+      "draft_type": "research_summary",
+      "language": "de",
+      "max_length_chars": 2500,
+      "include_sources": true,
+      "required_sections": ["summary", "key_findings", "evidence", "risks_or_uncertainties"],
+      "forbidden_claims": []
+    },
+    "review_policy": {
+      "default_scope": "use_case",
+      "actions": ["approve", "reject", "blacklist"],
+      "columns": ["domain", "source_type", "score", "recommended_action", "main_reason"]
+    }
+  }
+}
