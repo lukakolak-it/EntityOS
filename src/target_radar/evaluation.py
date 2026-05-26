@@ -831,20 +831,42 @@ def _evidence(case: dict[str, Any]) -> list[Evidence]:
     return evidence_items
 
 
-def _ai_provider(case: dict[str, Any]) -> FakeAIRatingProvider:
+def _ai_provider(case: dict[str, Any]):
+    by_criterion = case.get("ai_responses_by_criterion")
+    if isinstance(by_criterion, dict):
+        return _CriterionFakeAIRatingProvider(
+            {
+                str(key): _ai_response_from_payload(value)
+                for key, value in by_criterion.items()
+                if isinstance(value, dict)
+            }
+        )
     ai_response = case.get("ai_response")
     if not isinstance(ai_response, dict):
         return FakeAIRatingProvider()
-    return FakeAIRatingProvider(
-        AIRatingResponse(
-            ai_score=int(ai_response["ai_score"]),
-            confidence=float(ai_response["confidence"]),
-            recommended_action=RecommendedAction(ai_response["recommended_action"]),
-            reasons=list(ai_response.get("reasons") or []),
-            risks=list(ai_response.get("risks") or []),
-            model_name=str(ai_response.get("model_name") or "eval-fake-ai"),
-        )
+    return FakeAIRatingProvider(_ai_response_from_payload(ai_response))
+
+
+def _ai_response_from_payload(payload: dict[str, Any]) -> AIRatingResponse:
+    return AIRatingResponse(
+        ai_score=int(payload["ai_score"]),
+        confidence=float(payload["confidence"]),
+        recommended_action=RecommendedAction(payload["recommended_action"]),
+        reasons=list(payload.get("reasons") or []),
+        risks=list(payload.get("risks") or []),
+        model_name=str(payload.get("model_name") or "eval-fake-ai"),
     )
+
+
+class _CriterionFakeAIRatingProvider:
+    def __init__(self, responses: dict[str, AIRatingResponse]) -> None:
+        self._responses = responses
+
+    def rate(self, request) -> AIRatingResponse:
+        try:
+            return self._responses[str(request.criterion_key)]
+        except KeyError as exc:
+            raise ValueError(f"missing eval AI response for {request.criterion_key}") from exc
 
 
 def _tuple(value: object) -> tuple[str, ...]:

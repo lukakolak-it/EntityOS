@@ -96,6 +96,92 @@ class LLMRouterTests(unittest.TestCase):
         self.assertEqual(response.recommended_action, RecommendedAction.DRAFT)
         self.assertEqual(response.model_name, "fake-light")
 
+    def test_llm_ai_rating_provider_normalizes_label_and_percent_scores(self) -> None:
+        router = LLMRouter(
+            heavy=FakeLLMClient(text="{}"),
+            light=FakeLLMClient(
+                text=(
+                    '{"score": "88/100", "confidence": "high", '
+                    '"recommended_action": "recommended", '
+                    '"reasons": [{"text": "fit", "source_url": "https://example.com", '
+                    '"evidence": "Solar Services"}], "risks": []}'
+                )
+            ),
+        )
+        provider = LLMAIRatingProvider(router=router)
+
+        response = provider.rate(
+            AIRatingRequest(
+                target_domain="example.com",
+                search_terms=("Solar",),
+                context_text="Solar Services",
+                rule_score=80,
+            )
+        )
+
+        self.assertEqual(response.ai_score, 88)
+        self.assertEqual(response.confidence, 0.85)
+        self.assertEqual(response.recommended_action, RecommendedAction.DRAFT)
+
+    def test_llm_ai_rating_provider_normalizes_comma_and_percentage_confidence(self) -> None:
+        router = LLMRouter(
+            heavy=FakeLLMClient(text="{}"),
+            light=FakeLLMClient(
+                text=(
+                    '{"ai_score": "0,82", "confidence": "76%", '
+                    '"recommended_action": "needs_review", '
+                    '"reasons": [], "risks": []}'
+                )
+            ),
+        )
+        provider = LLMAIRatingProvider(router=router)
+
+        response = provider.rate(
+            AIRatingRequest(
+                target_domain="example.com",
+                search_terms=("Solar",),
+                context_text="Solar Services",
+                rule_score=80,
+            )
+        )
+
+        self.assertEqual(response.ai_score, 82)
+        self.assertEqual(response.confidence, 0.76)
+        self.assertEqual(response.recommended_action, RecommendedAction.REVIEW)
+
+    def test_llm_ai_rating_provider_normalizes_small_scale_and_string_reasons(self) -> None:
+        router = LLMRouter(
+            heavy=FakeLLMClient(text="{}"),
+            light=FakeLLMClient(
+                text=(
+                    '{"ai_score": 4, "confidence": "high", '
+                    '"recommended_action": "Include in OSINT collection", '
+                    '"reasons": ["Solar Services in Essen are relevant."], '
+                    '"risks": ["Potentially outdated information."]}'
+                )
+            ),
+        )
+        provider = LLMAIRatingProvider(router=router)
+
+        response = provider.rate(
+            AIRatingRequest(
+                target_domain="example.com",
+                search_terms=("Solar",),
+                context_text=(
+                    "Source: https://example.com\n"
+                    "Evidence: Example GmbH bietet Solar Services in Essen mit Kontakt."
+                ),
+                rule_score=80,
+            )
+        )
+
+        self.assertEqual(response.ai_score, 80)
+        self.assertEqual(response.confidence, 0.85)
+        self.assertEqual(response.recommended_action, RecommendedAction.DRAFT)
+        self.assertEqual(response.reasons[0]["source_url"], "https://example.com")
+        self.assertIn("Solar Services in Essen", response.reasons[0]["evidence"])
+        self.assertEqual(response.risks[0]["type"], "llm_risk")
+
     def test_llm_ai_rating_provider_normalizes_invalid_action(self) -> None:
         router = LLMRouter(
             heavy=FakeLLMClient(text="{}"),

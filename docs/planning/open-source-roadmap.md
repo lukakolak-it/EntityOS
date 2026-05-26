@@ -127,6 +127,12 @@ Umgesetzte Fixes:
   derselben Domain einen leicht abweichenden Pfad nennt oder ein Zitat mit
   Ellipsen kuerzt. Der Quote-Text muss weiterhin in gespeicherter Evidence
   belegbar sein.
+- LLM-Rating normalisiert Label-, Prozent- und Kleinskalenwerte wie `high`,
+  `88/100`, `76%` oder `4/5` robust, statt daraus `ai_provider_error` oder
+  falsch niedrige Scores zu machen. String-Reasons werden deterministisch an
+  passende Context-Evidence gebunden.
+- Hybrid-Kriterien blockieren nur noch wegen fehlender AI-Evidence, wenn der
+  AI-Score den Rule-Score fuer das Kriterium tatsaechlich anhebt.
 - Eval-Baseline enthaelt Regressionen fuer die Run-26-Faelle
   `borowski.de`, `wattmacher.nrw` und `brenner-energie.de`.
 

@@ -1748,7 +1748,7 @@ Umfang:
 - deterministische Eval-Fixture unter `docs/evaluation/engine-eval-baseline.json`
 - 12 Source-Quality-Faelle fuer Company Sites, Directories, News, Official
   Sites, Job Boards, Social und Listing-Grenzfaelle
-- 14 Rating-Faelle fuer `application_student` und `company_osint`
+- 16 Rating-Faelle fuer `application_student` und `company_osint`
 - 5 Draft-Faelle fuer Research-Summary-Grounding, Application Draft und
   Skip-Verhalten
 - CLI-Befehl `evaluate` mit JSON-Metriken

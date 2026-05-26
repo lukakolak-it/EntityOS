@@ -425,20 +425,41 @@ class RatingEngine:
                     )
                     ai_score = response.ai_score
                     confidence = response.confidence
-                    reasons.extend(
-                        _criterion_payload(reason, criterion.key)
-                        for reason in response.reasons
-                    )
                     risks.extend(
                         _criterion_payload(risk, criterion.key)
                         for risk in response.risks
                     )
-                    if not _ai_reasons_are_grounded(response, scoped_evidence):
+                    grounded_reasons = [
+                        reason
+                        for reason in response.reasons
+                        if _reason_is_grounded(reason, scoped_evidence)
+                    ]
+                    reasons.extend(
+                        _criterion_payload(reason, criterion.key)
+                        for reason in grounded_reasons
+                    )
+                    all_ai_reasons_grounded = bool(response.reasons) and len(
+                        grounded_reasons
+                    ) == len(response.reasons)
+                    grounding_required = _criterion_requires_grounded_ai(
+                        criterion,
+                        rule_score=rule_score,
+                        ai_score=ai_score,
+                    )
+                    if grounding_required and not all_ai_reasons_grounded:
                         confidence = min(confidence, 0.4)
                         risks.append(
                             {
                                 "type": "missing_ai_evidence",
                                 "value": criterion.key,
+                            }
+                        )
+                    elif response.reasons and not all_ai_reasons_grounded:
+                        reasons.append(
+                            {
+                                "type": "optional_ai_evidence_ignored",
+                                "criterion": criterion.key,
+                                "value": len(response.reasons) - len(grounded_reasons),
                             }
                         )
                 except Exception as exc:
@@ -521,6 +542,19 @@ def _ai_reasons_are_grounded(
     return all(_reason_is_grounded(reason, evidence) for reason in response.reasons)
 
 
+def _criterion_requires_grounded_ai(
+    criterion: RatingCriterion,
+    *,
+    rule_score: int | None,
+    ai_score: int | None,
+) -> bool:
+    if criterion.evaluation == RatingEvaluation.LLM:
+        return True
+    if criterion.evaluation == RatingEvaluation.HYBRID and ai_score is not None:
+        return ai_score > (rule_score or 0)
+    return False
+
+
 def _reason_is_grounded(
     reason: dict[str, object],
     evidence: list[Evidence],
@@ -574,7 +608,7 @@ def _quote_matches_evidence(quote: str, evidence_text: str) -> bool:
 
     segments = [
         _normalize_text(segment)
-        for segment in re.split(r"\.\.\.|…", quote)
+        for segment in re.split(r"\.\.\.|\u2026", quote)
         if _normalize_text(segment)
     ]
     meaningful_segments = [segment for segment in segments if len(segment) >= 20]
@@ -606,7 +640,7 @@ _GROUNDING_STOPWORDS = frozenset(
         "for",
         "from",
         "fuer",
-        "für",
+        "\u00fcr",
         "in",
         "ist",
         "mit",
@@ -623,7 +657,7 @@ _GROUNDING_STOPWORDS = frozenset(
 def _meaningful_grounding_tokens(value: str) -> tuple[str, ...]:
     return tuple(
         token
-        for token in re.findall(r"[0-9a-zA-ZäöüÄÖÜß]+", value.casefold())
+        for token in re.findall(r"\w+", value.casefold(), flags=re.UNICODE)
         if len(token) >= 3 and token not in _GROUNDING_STOPWORDS
     )
 

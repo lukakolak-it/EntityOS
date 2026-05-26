@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -76,14 +77,22 @@ class LLMAIRatingProvider:
             temperature=0.1,
         )
         payload = _load_json_object(response.text)
-        ai_score = _int_between(payload.get("ai_score"), 0, 100)
-        confidence = _float_between(payload.get("confidence"), 0, 1)
+        ai_score = _int_between(
+            _first_present(payload, ("ai_score", "score", "rating_score")),
+            0,
+            100,
+        )
+        confidence = _float_between(
+            _first_present(payload, ("confidence", "certainty", "confidence_score")),
+            0,
+            1,
+        )
         return AIRatingResponse(
             ai_score=ai_score,
             confidence=confidence,
             recommended_action=_recommended_action(payload.get("recommended_action")),
-            reasons=_list_of_dicts(payload.get("reasons")),
-            risks=_list_of_dicts(payload.get("risks")),
+            reasons=_reason_dicts(payload.get("reasons"), request.context_text),
+            risks=_risk_dicts(payload.get("risks")),
             model_name=response.model,
         )
 
@@ -160,20 +169,40 @@ def _load_json_object(text: str) -> dict[str, object]:
 def _int_between(value: object, minimum: int, maximum: int) -> int:
     if value is None:
         raise ValueError("LLM rating response missing integer value")
-    parsed = int(value)
+    parsed = round(_coerce_numeric(value, maximum=maximum))
     return max(minimum, min(maximum, parsed))
 
 
 def _float_between(value: object, minimum: float, maximum: float) -> float:
     if value is None:
         raise ValueError("LLM rating response missing numeric value")
-    parsed = float(value)
+    parsed = _coerce_numeric(value, maximum=maximum)
     return max(minimum, min(maximum, parsed))
 
 
 def _recommended_action(value: object) -> RecommendedAction:
+    normalized = str(value or "review").strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "accept": RecommendedAction.DRAFT,
+        "approve": RecommendedAction.DRAFT,
+        "approved": RecommendedAction.DRAFT,
+        "go": RecommendedAction.DRAFT,
+        "include_in_osint_collection": RecommendedAction.DRAFT,
+        "recommended": RecommendedAction.DRAFT,
+        "yes": RecommendedAction.DRAFT,
+        "maybe": RecommendedAction.REVIEW,
+        "needs_context": RecommendedAction.REVIEW,
+        "needs_review": RecommendedAction.REVIEW,
+        "review_needed": RecommendedAction.REVIEW,
+        "not_relevant": RecommendedAction.SKIP,
+        "no": RecommendedAction.SKIP,
+        "reject": RecommendedAction.SKIP,
+        "rejected": RecommendedAction.SKIP,
+    }
+    if normalized in aliases:
+        return aliases[normalized]
     try:
-        return RecommendedAction(str(value or "review").strip().lower())
+        return RecommendedAction(normalized)
     except ValueError:
         return RecommendedAction.REVIEW
 
@@ -182,3 +211,177 @@ def _list_of_dicts(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+def _reason_dicts(value: object, context_text: str) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    reasons: list[dict[str, object]] = []
+    for item in value:
+        if isinstance(item, dict):
+            reasons.append(item)
+        elif isinstance(item, str) and item.strip():
+            reasons.append(_ground_reason_text(item, context_text))
+    return reasons
+
+
+def _risk_dicts(value: object) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    risks: list[dict[str, object]] = []
+    for item in value:
+        if isinstance(item, dict):
+            risks.append(item)
+        elif isinstance(item, str) and item.strip():
+            risks.append({"type": "llm_risk", "value": item.strip()})
+    return risks
+
+
+def _first_present(payload: dict[str, object], keys: tuple[str, ...]) -> object:
+    for key in keys:
+        if key in payload and payload[key] is not None:
+            return payload[key]
+    return None
+
+
+_LABEL_VALUES = {
+    "very_high": 0.95,
+    "excellent": 0.95,
+    "certain": 0.95,
+    "high": 0.85,
+    "good": 0.8,
+    "hoch": 0.85,
+    "medium": 0.55,
+    "moderate": 0.55,
+    "average": 0.55,
+    "mittel": 0.55,
+    "low": 0.25,
+    "weak": 0.25,
+    "niedrig": 0.25,
+    "very_low": 0.1,
+    "uncertain": 0.35,
+}
+_FRACTION_RE = re.compile(r"(-?\d+(?:[\.,]\d+)?)\s*/\s*(-?\d+(?:[\.,]\d+)?)")
+_NUMBER_RE = re.compile(r"-?\d+(?:[\.,]\d+)?")
+
+
+def _coerce_numeric(value: object, *, maximum: float) -> float:
+    if isinstance(value, bool):
+        raise ValueError("LLM rating response numeric value must not be boolean")
+    if isinstance(value, (int, float)):
+        return _scale_number(float(value), maximum=maximum)
+    text = str(value).strip().lower()
+    if not text:
+        raise ValueError("LLM rating response numeric value is empty")
+    normalized_label = re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+    if normalized_label in _LABEL_VALUES:
+        return _LABEL_VALUES[normalized_label] * maximum
+
+    fraction = _FRACTION_RE.search(text)
+    if fraction is not None:
+        numerator = float(fraction.group(1).replace(",", "."))
+        denominator = float(fraction.group(2).replace(",", "."))
+        if denominator == 0:
+            raise ValueError("LLM rating response numeric fraction denominator is zero")
+        return (numerator / denominator) * maximum
+
+    match = _NUMBER_RE.search(text)
+    if match is None:
+        raise ValueError(f"LLM rating response numeric value is not parseable: {value!r}")
+    number = float(match.group(0).replace(",", "."))
+    if "%" in text:
+        return (number / 100) * maximum
+    return _scale_number(number, maximum=maximum)
+
+
+def _scale_number(number: float, *, maximum: float) -> float:
+    if maximum <= 1 and number > 1:
+        return number / 100
+    if maximum > 1 and 0 < number < 1:
+        return number * maximum
+    if maximum > 1 and 1 <= number <= 5:
+        return (number / 5) * maximum
+    return number
+
+
+_CONTEXT_ENTRY_RE = re.compile(
+    r"Source:\s*(?P<source>.*?)\nEvidence:\s*(?P<evidence>.*?)(?=\n\nSource:|\Z)",
+    re.DOTALL,
+)
+_REASON_STOPWORDS = frozenset(
+    {
+        "about",
+        "and",
+        "are",
+        "der",
+        "die",
+        "for",
+        "from",
+        "has",
+        "ist",
+        "mit",
+        "not",
+        "oder",
+        "the",
+        "this",
+        "und",
+        "with",
+    }
+)
+
+
+def _ground_reason_text(reason_text: str, context_text: str) -> dict[str, object]:
+    reason = reason_text.strip()
+    entries = _context_entries(context_text)
+    if not entries:
+        return {"text": reason}
+    reason_tokens = _reason_tokens(reason)
+    source_url, evidence = max(
+        entries,
+        key=lambda item: _token_overlap(reason_tokens, _reason_tokens(item[1])),
+    )
+    return {
+        "text": reason,
+        "source_url": source_url,
+        "evidence": _evidence_excerpt(evidence, reason_tokens),
+    }
+
+
+def _context_entries(context_text: str) -> list[tuple[str, str]]:
+    entries = []
+    for match in _CONTEXT_ENTRY_RE.finditer(context_text):
+        source = match.group("source").strip()
+        evidence = match.group("evidence").strip()
+        if source and evidence:
+            entries.append((source, evidence))
+    return entries
+
+
+def _reason_tokens(value: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"\w+", value.casefold(), flags=re.UNICODE)
+        if len(token) >= 4 and token not in _REASON_STOPWORDS
+    }
+
+
+def _token_overlap(left: set[str], right: set[str]) -> int:
+    if not left or not right:
+        return 0
+    return len(left & right)
+
+
+def _evidence_excerpt(evidence: str, reason_tokens: set[str], *, max_chars: int = 220) -> str:
+    cleaned = " ".join(evidence.split())
+    if len(cleaned) <= max_chars:
+        return cleaned
+    lowered = cleaned.casefold()
+    positions = [
+        lowered.find(token)
+        for token in reason_tokens
+        if lowered.find(token) >= 0
+    ]
+    center = min(positions) if positions else 0
+    start = max(0, center - max_chars // 3)
+    end = min(len(cleaned), start + max_chars)
+    return cleaned[start:end].strip()

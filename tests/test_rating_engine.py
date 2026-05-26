@@ -459,6 +459,162 @@ class RatingEngineTests(unittest.TestCase):
             any(risk.get("type") == "missing_ai_evidence" for risk in rating.risks)
         )
 
+    def test_use_case_hybrid_ignores_ungrounded_ai_when_rules_hold_score(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "regions": ["Essen"]},
+        )
+        self.target.metadata["lead_metadata"] = {
+            "source_quality": {
+                "source_type": "company_site",
+                "source_quality_score": 90,
+            }
+        }
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/",
+                text=(
+                    "Example Solar GmbH bietet Solar Services in Essen mit Kontakt. "
+                    "Das Unternehmen beschreibt Photovoltaik, Beratung und Service. "
+                    * 8
+                ),
+                context_type="homepage",
+                metadata={"evidence_type": "target_homepage"},
+            ),
+            Evidence(
+                id=2,
+                target_id=self.target.id,
+                source_url="https://example.com/kontakt",
+                text="Kontakt fuer Solar Services in Essen ist vorhanden.",
+                context_type="contact",
+                metadata={"evidence_type": "target_contact"},
+            ),
+        ]
+        engine = RatingEngine(
+            ai_provider=_CriterionAIRatingProvider(
+                {
+                    "relevance": AIRatingResponse(
+                        ai_score=85,
+                        confidence=0.86,
+                        recommended_action=RecommendedAction.DRAFT,
+                        reasons=[
+                            {
+                                "text": "Solar Services in Essen sind belegt.",
+                                "source_url": "https://example.com/",
+                                "evidence": "Solar Services in Essen",
+                            }
+                        ],
+                    ),
+                    "credibility": AIRatingResponse(
+                        ai_score=80,
+                        confidence=0.82,
+                        recommended_action=RecommendedAction.DRAFT,
+                        reasons=[{"text": "Serioeser Eindruck ohne Beleg."}],
+                    ),
+                    "evidence_quality": AIRatingResponse(
+                        ai_score=90,
+                        confidence=0.84,
+                        recommended_action=RecommendedAction.DRAFT,
+                        reasons=[{"text": "Gute Beleglage ohne Quote."}],
+                    ),
+                }
+            )
+        )
+
+        rating = engine.rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.DRAFT)
+        self.assertEqual(rating.rating_status, "use_case_rated")
+        self.assertFalse(
+            any(risk.get("type") == "missing_ai_evidence" for risk in rating.risks)
+        )
+        self.assertTrue(
+            any(
+                reason.get("type") == "optional_ai_evidence_ignored"
+                for reason in rating.reasons
+            )
+        )
+
+    def test_use_case_hybrid_requires_grounding_when_ai_lifts_score(self) -> None:
+        osint_profile = SearchProfile(
+            profile_id=self.profile.id,
+            name="Company OSINT",
+            attributes={"topics": ["Solar"], "regions": ["Essen"]},
+        )
+        self.target.metadata["lead_metadata"] = {
+            "source_quality": {
+                "source_type": "company_site",
+                "source_quality_score": 40,
+            }
+        }
+        evidence = [
+            Evidence(
+                id=1,
+                target_id=self.target.id,
+                source_url="https://example.com/",
+                text="Example Solar GmbH bietet Solar Services in Essen mit Kontakt.",
+                context_type="homepage",
+                metadata={"evidence_type": "target_homepage"},
+            )
+        ]
+        engine = RatingEngine(
+            ai_provider=_CriterionAIRatingProvider(
+                {
+                    "relevance": AIRatingResponse(
+                        ai_score=85,
+                        confidence=0.86,
+                        recommended_action=RecommendedAction.DRAFT,
+                        reasons=[
+                            {
+                                "text": "Solar Services in Essen sind belegt.",
+                                "source_url": "https://example.com/",
+                                "evidence": "Solar Services in Essen",
+                            }
+                        ],
+                    ),
+                    "credibility": AIRatingResponse(
+                        ai_score=95,
+                        confidence=0.9,
+                        recommended_action=RecommendedAction.DRAFT,
+                        reasons=[{"text": "Sehr serioes ohne belegte Quelle."}],
+                    ),
+                    "evidence_quality": AIRatingResponse(
+                        ai_score=65,
+                        confidence=0.75,
+                        recommended_action=RecommendedAction.REVIEW,
+                        reasons=[
+                            {
+                                "text": "Basisbeleg liegt vor.",
+                                "source_url": "https://example.com/",
+                                "evidence": "Solar Services in Essen",
+                            }
+                        ],
+                    ),
+                }
+            )
+        )
+
+        rating = engine.rate(
+            self.target,
+            osint_profile,
+            evidence,
+            use_case=get_default_use_case("company_osint"),
+        )
+
+        self.assertEqual(rating.recommended_action, RecommendedAction.REVIEW)
+        self.assertEqual(rating.rating_status, "rating_partial")
+        self.assertTrue(
+            any(risk.get("type") == "missing_ai_evidence" for risk in rating.risks)
+        )
+
     def test_use_case_grounding_accepts_same_domain_quote_path_mismatch(self) -> None:
         osint_profile = SearchProfile(
             profile_id=self.profile.id,
@@ -683,6 +839,19 @@ class _RecordingAIRatingProvider:
                 }
             ],
         )
+
+
+class _CriterionAIRatingProvider:
+    def __init__(self, responses):
+        self.responses = responses
+        self.requests = []
+
+    def rate(self, request):
+        self.requests.append(request)
+        try:
+            return self.responses[request.criterion_key]
+        except KeyError as exc:
+            raise AssertionError(f"missing response for {request.criterion_key}") from exc
 
 
 if __name__ == "__main__":

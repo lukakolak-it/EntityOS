@@ -547,6 +547,119 @@
       },
       "expected_action": "draft",
       "expected_status": "use_case_rated"
+    },
+    {
+      "id": "rt_osint_hybrid_optional_ungrounded_ai",
+      "use_case": "company_osint",
+      "url": "https://solar-hybrid.example/",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 90}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Solar"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://solar-hybrid.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "Solar Hybrid GmbH bietet Solar Services in Essen mit Kontakt und Photovoltaik Beratung."
+        },
+        {
+          "source_url": "https://solar-hybrid.example/kontakt",
+          "context_type": "contact",
+          "metadata": {"evidence_type": "target_contact"},
+          "text": "Kontakt fuer Solar Services in Essen ist vorhanden."
+        }
+      ],
+      "ai_responses_by_criterion": {
+        "relevance": {
+          "ai_score": 85,
+          "confidence": 0.86,
+          "recommended_action": "draft",
+          "reasons": [
+            {
+              "text": "Solar Services in Essen sind belegt.",
+              "source_url": "https://solar-hybrid.example/",
+              "evidence": "Solar Services in Essen"
+            }
+          ],
+          "risks": []
+        },
+        "credibility": {
+          "ai_score": 80,
+          "confidence": 0.82,
+          "recommended_action": "draft",
+          "reasons": [{"text": "Serioeser Eindruck ohne Beleg."}],
+          "risks": []
+        },
+        "evidence_quality": {
+          "ai_score": 70,
+          "confidence": 0.84,
+          "recommended_action": "draft",
+          "reasons": [{"text": "Gute Beleglage ohne Quote."}],
+          "risks": []
+        }
+      },
+      "expected_action": "draft",
+      "expected_status": "use_case_rated"
+    },
+    {
+      "id": "rt_osint_hybrid_ai_lift_requires_grounding",
+      "use_case": "company_osint",
+      "url": "https://solar-hybrid-lift.example/",
+      "target_metadata": {
+        "source_quality": {"source_quality_score": 40}
+      },
+      "search_profile": {
+        "attributes": {"topics": ["Solar"], "regions": ["Essen"]}
+      },
+      "evidence": [
+        {
+          "source_url": "https://solar-hybrid-lift.example/",
+          "context_type": "homepage",
+          "metadata": {"evidence_type": "target_homepage"},
+          "text": "Solar Hybrid Lift GmbH bietet Solar Services in Essen mit Kontakt."
+        }
+      ],
+      "ai_responses_by_criterion": {
+        "relevance": {
+          "ai_score": 85,
+          "confidence": 0.86,
+          "recommended_action": "draft",
+          "reasons": [
+            {
+              "text": "Solar Services in Essen sind belegt.",
+              "source_url": "https://solar-hybrid-lift.example/",
+              "evidence": "Solar Services in Essen"
+            }
+          ],
+          "risks": []
+        },
+        "credibility": {
+          "ai_score": 95,
+          "confidence": 0.9,
+          "recommended_action": "draft",
+          "reasons": [{"text": "Sehr serioes ohne belegte Quelle."}],
+          "risks": []
+        },
+        "evidence_quality": {
+          "ai_score": 65,
+          "confidence": 0.75,
+          "recommended_action": "review",
+          "reasons": [
+            {
+              "text": "Basisbeleg liegt vor.",
+              "source_url": "https://solar-hybrid-lift.example/",
+              "evidence": "Solar Services in Essen"
+            }
+          ],
+          "risks": []
+        }
+      },
+      "expected_action": "review",
+      "expected_status": "rating_partial",
+      "expected_risk_types": ["missing_ai_evidence"]
     }
   ],
   "draft": [
