@@ -96,6 +96,36 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["output_path"], str(output_path))
         self.assertTrue(output_exists)
 
+    def test_export_run_report_command_writes_fixture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database_url = f"sqlite:///{Path(tmpdir) / 'target-radar.sqlite3'}"
+            output_path = Path(tmpdir) / "run-report.json"
+            _run_cli("--database-url", database_url, "init-db")
+            run_payload = _run_cli(
+                "--database-url",
+                database_url,
+                "run-fake",
+                "--request-budget",
+                "1",
+                "--results-per-query",
+                "1",
+            )
+            payload = _run_cli(
+                "--database-url",
+                database_url,
+                "export-run-report",
+                "--run-id",
+                str(run_payload["run_id"]),
+                "--output",
+                str(output_path),
+            )
+            output_exists = output_path.exists()
+
+        self.assertEqual(payload["run"]["id"], run_payload["run_id"])
+        self.assertEqual(payload["review_backlog"]["total"], 1)
+        self.assertEqual(payload["output_path"], str(output_path))
+        self.assertTrue(output_exists)
+
 
 def _run_cli(*args: str) -> dict[str, object]:
     buffer = io.StringIO()

@@ -27,6 +27,7 @@ from target_radar.use_cases import get_default_use_case
 
 DEFAULT_EVALUATION_FIXTURE = "docs/evaluation/engine-eval-baseline.json"
 DEFAULT_REVIEW_EVALUATION_OUTPUT = "exports/local-review-eval.json"
+DEFAULT_RUN_REPORT_OUTPUT = "exports/local-run-report.json"
 _REVIEW_EXPECTED_ACTION = {
     "approved": "draft",
     "rejected": "skip",
@@ -92,6 +93,297 @@ def export_review_feedback_fixture(
         )
         payload["output_path"] = str(path)
     return payload
+
+
+def export_pipeline_run_report(
+    database_url: str,
+    *,
+    run_id: int | None = None,
+    output_path: str | Path | None = None,
+    review_limit: int = 100,
+) -> dict[str, Any]:
+    store = SQLiteStore.open(database_url)
+    try:
+        run = (
+            store.get_pipeline_run(run_id)
+            if run_id is not None
+            else _latest_pipeline_run(store)
+        )
+        if run is None or run.id is None:
+            raise ValueError("no pipeline run found")
+        review_cases = _review_feedback_cases(store, limit=review_limit)
+        review_section = _run_review_feedback_cases(review_cases)
+        payload = {
+            "name": "local_pipeline_run_report",
+            "source": "local SQLite pipeline run",
+            "run": _run_report_run(run),
+            "queries": _run_report_queries(store, run.id),
+            "targets": _run_report_targets(store, run.id),
+            "review_backlog": _run_review_backlog(store, run.id),
+            "review_feedback": {
+                "summary": {
+                    "total": len(review_cases),
+                    "approved": sum(
+                        1 for case in review_cases if case["review_status"] == "approved"
+                    ),
+                    "rejected": sum(
+                        1 for case in review_cases if case["review_status"] == "rejected"
+                    ),
+                    "blacklisted": sum(
+                        1
+                        for case in review_cases
+                        if case["review_status"] == "blacklisted"
+                    ),
+                },
+                "evaluation": review_section,
+            },
+        }
+    finally:
+        store.close()
+
+    if output_path is not None:
+        path = Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(payload, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        payload["output_path"] = str(path)
+    return payload
+
+
+def _latest_pipeline_run(store: SQLiteStore):
+    runs = store.list_pipeline_runs(limit=1)
+    return runs[0] if runs else None
+
+
+def _run_report_run(run) -> dict[str, Any]:
+    return {
+        "id": run.id,
+        "search_profile_id": run.search_profile_id,
+        "use_case_id": run.use_case_id,
+        "use_case_version": run.use_case_version,
+        "use_case_slug": run.use_case_snapshot.get("id"),
+        "use_case_name": run.use_case_snapshot.get("name"),
+        "mode": run.mode,
+        "status": run.status.value,
+        "phases": [phase.value for phase in run.phases],
+        "request_budget": run.request_budget,
+        "results_per_query": run.results_per_query,
+        "stats": dict(run.stats),
+        "error_message": run.error_message,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "finished_at": run.finished_at.isoformat() if run.finished_at else None,
+        "created_at": run.created_at.isoformat(),
+    }
+
+
+def _run_report_queries(store: SQLiteStore, run_id: int) -> list[dict[str, Any]]:
+    rows = store.connection.execute(
+        """
+        SELECT
+            source_queries.id,
+            source_queries.provider,
+            source_queries.query_text,
+            source_queries.query_template,
+            source_queries.template_set,
+            source_queries.query_score,
+            source_queries.status,
+            COUNT(serp_results.id) AS result_count,
+            SUM(CASE WHEN serp_results.status = 'candidate' THEN 1 ELSE 0 END)
+                AS candidate_count,
+            SUM(CASE WHEN serp_results.status = 'duplicate_domain' THEN 1 ELSE 0 END)
+                AS duplicate_domain_count,
+            SUM(CASE WHEN serp_results.status = 'review_source' THEN 1 ELSE 0 END)
+                AS review_source_status_count,
+            SUM(CASE WHEN serp_results.status = 'blocked_source' THEN 1 ELSE 0 END)
+                AS blocked_source_status_count,
+            SUM(CASE WHEN serp_results.status = 'blacklisted' THEN 1 ELSE 0 END)
+                AS blacklisted_status_count,
+            SUM(CASE WHEN serp_results.status = 'invalid' THEN 1 ELSE 0 END)
+                AS invalid_status_count,
+            SUM(CASE WHEN serp_results.import_status = 'imported' THEN 1 ELSE 0 END)
+                AS imported_count,
+            SUM(CASE WHEN serp_results.import_status = 'existing' THEN 1 ELSE 0 END)
+                AS existing_count,
+            SUM(CASE WHEN serp_results.import_status = 'duplicate_input' THEN 1 ELSE 0 END)
+                AS duplicate_count,
+            SUM(CASE WHEN serp_results.import_status = 'review_source' THEN 1 ELSE 0 END)
+                AS review_source_count,
+            SUM(CASE WHEN serp_results.import_status = 'blocked_source' THEN 1 ELSE 0 END)
+                AS blocked_source_count,
+            SUM(CASE WHEN serp_results.import_status = 'blacklisted' THEN 1 ELSE 0 END)
+                AS blacklisted_count
+        FROM source_queries
+        LEFT JOIN serp_results
+            ON serp_results.source_query_id = source_queries.id
+        WHERE source_queries.pipeline_run_id = ?
+        GROUP BY source_queries.id
+        ORDER BY source_queries.id ASC
+        """,
+        (run_id,),
+    ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "provider": row["provider"],
+            "query_text": row["query_text"],
+            "query_template": row["query_template"],
+            "template_set": row["template_set"],
+            "query_score": row["query_score"],
+            "status": row["status"],
+            "result_count": row["result_count"],
+            "result_status_counts": {
+                "candidate": row["candidate_count"] or 0,
+                "duplicate_domain": row["duplicate_domain_count"] or 0,
+                "review_source": row["review_source_status_count"] or 0,
+                "blocked_source": row["blocked_source_status_count"] or 0,
+                "blacklisted": row["blacklisted_status_count"] or 0,
+                "invalid": row["invalid_status_count"] or 0,
+            },
+            "import_status_counts": {
+                "imported": row["imported_count"] or 0,
+                "existing": row["existing_count"] or 0,
+                "duplicate_input": row["duplicate_count"] or 0,
+                "review_source": row["review_source_count"] or 0,
+                "blocked_source": row["blocked_source_count"] or 0,
+                "blacklisted": row["blacklisted_count"] or 0,
+            },
+        }
+        for row in rows
+    ]
+
+
+def _run_report_targets(store: SQLiteStore, run_id: int) -> list[dict[str, Any]]:
+    rows = store.connection.execute(
+        """
+        WITH run_targets AS (
+            SELECT DISTINCT target_id
+            FROM target_scores
+            WHERE pipeline_run_id = ?
+            UNION
+            SELECT DISTINCT target_id
+            FROM target_status_log
+            WHERE pipeline_run_id = ?
+            UNION
+            SELECT DISTINCT serp_results.target_id
+            FROM serp_results
+            INNER JOIN source_queries
+                ON source_queries.id = serp_results.source_query_id
+            WHERE source_queries.pipeline_run_id = ?
+              AND serp_results.target_id IS NOT NULL
+        )
+        SELECT
+            targets.id,
+            targets.domain,
+            targets.base_url,
+            targets.source,
+            targets.status,
+            scores.recommended_action,
+            scores.rating_status,
+            scores.rule_score,
+            scores.ai_score,
+            scores.confidence,
+            scores.risks_json,
+            latest_review.to_status AS review_status,
+            latest_review.reason AS review_reason,
+            (
+                SELECT COUNT(*)
+                FROM evidence
+                WHERE evidence.target_id = targets.id
+            ) AS evidence_count,
+            (
+                SELECT COUNT(*)
+                FROM action_drafts
+                WHERE action_drafts.target_id = targets.id
+            ) AS draft_count
+        FROM run_targets
+        INNER JOIN targets
+            ON targets.id = run_targets.target_id
+        LEFT JOIN target_scores AS scores
+            ON scores.id = (
+                SELECT id
+                FROM target_scores
+                WHERE target_scores.target_id = targets.id
+                  AND target_scores.pipeline_run_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+            )
+        LEFT JOIN target_status_log AS latest_review
+            ON latest_review.id = (
+                SELECT id
+                FROM target_status_log
+                WHERE target_status_log.target_id = targets.id
+                  AND target_status_log.phase = 'review'
+                  AND target_status_log.to_status IN (
+                      'approved',
+                      'rejected',
+                      'blacklisted'
+                  )
+                ORDER BY id DESC
+                LIMIT 1
+            )
+        ORDER BY
+            CASE scores.recommended_action
+                WHEN 'draft' THEN 0
+                WHEN 'review' THEN 1
+                WHEN 'skip' THEN 2
+                ELSE 3
+            END,
+            COALESCE(scores.ai_score, scores.rule_score, 0) DESC,
+            targets.domain ASC
+        """,
+        (run_id, run_id, run_id, run_id),
+    ).fetchall()
+    return [
+        {
+            "target_id": row["id"],
+            "domain": row["domain"],
+            "base_url": row["base_url"],
+            "source": row["source"],
+            "status": row["status"],
+            "recommended_action": row["recommended_action"],
+            "rating_status": row["rating_status"],
+            "rule_score": row["rule_score"],
+            "ai_score": row["ai_score"],
+            "confidence": row["confidence"],
+            "risk_types": _risk_types(row["risks_json"]),
+            "evidence_count": row["evidence_count"],
+            "draft_count": row["draft_count"],
+            "review_status": row["review_status"],
+            "review_reason": row["review_reason"],
+        }
+        for row in rows
+    ]
+
+
+def _run_review_backlog(store: SQLiteStore, run_id: int) -> dict[str, Any]:
+    targets = _run_report_targets(store, run_id)
+    reviewable_statuses = {
+        "needs_review",
+        "rating_partial",
+        "draft_pending",
+        "draft_failed",
+    }
+    backlog = [
+        item
+        for item in targets
+        if item["status"] in reviewable_statuses and item["review_status"] is None
+    ]
+    by_action: dict[str, int] = {}
+    by_status: dict[str, int] = {}
+    for item in backlog:
+        action = str(item["recommended_action"] or "unknown")
+        status = str(item["status"] or "unknown")
+        by_action[action] = by_action.get(action, 0) + 1
+        by_status[status] = by_status.get(status, 0) + 1
+    return {
+        "total": len(backlog),
+        "by_recommended_action": by_action,
+        "by_status": by_status,
+        "target_ids": [item["target_id"] for item in backlog],
+        "domains": [item["domain"] for item in backlog],
+    }
 
 
 def _run_source_quality_cases(cases: list[dict[str, Any]]) -> dict[str, Any]:

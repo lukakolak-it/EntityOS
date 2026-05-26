@@ -15,6 +15,7 @@ from target_radar.domain import (
 )
 from target_radar.evaluation import (
     DEFAULT_EVALUATION_FIXTURE,
+    export_pipeline_run_report,
     export_review_feedback_fixture,
     run_evaluation,
 )
@@ -127,6 +128,60 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(review["conflict_summary"]["by_type"]["blacklist_miss"], 1)
         self.assertEqual(review["action_items"][0]["severity"], "high")
         self.assertIn("source policy", review["action_items"][0]["suggested_action"])
+
+    def test_pipeline_run_report_exports_review_backlog(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database_url = f"sqlite:///{Path(tmpdir) / 'report.sqlite3'}"
+            output_path = Path(tmpdir) / "run-report.json"
+            store = SQLiteStore.open(database_url)
+            try:
+                profile = store.create_profile(Profile(name="Report User"))
+                use_case_id = store.get_use_case_id_by_slug("company_osint")
+                search_profile = store.create_search_profile(
+                    SearchProfile(
+                        profile_id=profile.id,
+                        use_case_id=use_case_id,
+                        name="Report Search",
+                    )
+                )
+                run = store.create_pipeline_run(
+                    _pipeline_run(search_profile.id, use_case_id)
+                )
+                target = store.create_target(
+                    Target(
+                        domain="review.example",
+                        base_url="https://review.example",
+                        status=TargetStatus.NEEDS_REVIEW,
+                    )
+                )
+                store.save_rating(
+                    RatingResult(
+                        target_id=target.id,
+                        pipeline_run_id=run.id,
+                        recommended_action=RecommendedAction.REVIEW,
+                        rating_status="rating_partial",
+                        rule_score=55,
+                        ai_score=45,
+                        confidence=0.5,
+                    )
+                )
+            finally:
+                store.close()
+
+            report = export_pipeline_run_report(
+                database_url,
+                run_id=run.id,
+                output_path=output_path,
+            )
+            output_exists = output_path.exists()
+
+        self.assertEqual(report["run"]["id"], run.id)
+        self.assertEqual(report["run"]["use_case_slug"], "company_osint")
+        self.assertEqual(report["review_backlog"]["total"], 1)
+        self.assertEqual(report["review_backlog"]["domains"], ["review.example"])
+        self.assertEqual(report["targets"][0]["recommended_action"], "review")
+        self.assertEqual(report["output_path"], str(output_path))
+        self.assertTrue(output_exists)
 
 
 def _pipeline_run(search_profile_id: int, use_case_id: int):

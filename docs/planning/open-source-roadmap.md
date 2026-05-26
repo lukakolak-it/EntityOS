@@ -54,7 +54,18 @@ Ziel:
 Die Engine-Verbesserung soll ab jetzt gegen echte lokale Review-Entscheidungen
 laufen, nicht gegen Bauchgefuehl.
 
+Status:
+
+- Sprint-16-Infrastruktur ist umgesetzt.
+- Ein lokaler Referenzlauf wurde als Run `#26` ausgefuehrt.
+- `export-run-report` erzeugt einen lokalen Run-Report mit Queries, Targets,
+  Review-Backlog und Review-Feedback-Triage.
+- Die echte manuelle Review-Runde bleibt bewusst ein Human-in-the-loop-Schritt
+  und wird nicht automatisch simuliert.
+
 ### Slice 16.1: Neuer Referenzlauf
+
+Status: umgesetzt fuer den aktuellen lokalen Pilotlauf.
 
 Umfang:
 
@@ -69,6 +80,8 @@ Akzeptanzkriterien:
 - Provider-Status und Run-Parameter sind nachvollziehbar
 
 ### Slice 16.2: Manuelle Review-Runde
+
+Status: offen fuer Nutzer-Review in der UI.
 
 Umfang:
 
@@ -85,6 +98,9 @@ Akzeptanzkriterien:
 
 ### Slice 16.3: Review-Feedback als Eval-Fixture
 
+Status: umgesetzt als `export-review-eval`, `evaluate --fixture` und
+`export-run-report`.
+
 Umfang:
 
 - Review-Feedback exportieren
@@ -98,6 +114,9 @@ Akzeptanzkriterien:
 - Triage-Ausgabe nennt konkrete naechste Engine-Fixes
 
 ### Slice 16.4: Erste Fix-Runde aus echten Fehlfaellen
+
+Status: vorbereitet. Die naechste Fix-Runde startet nach einer echten
+Review-Runde mit ausreichenden Entscheidungen.
 
 Umfang:
 

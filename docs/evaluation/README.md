@@ -65,7 +65,27 @@ Die lokale Review-Fixture kann direkt gegen den Eval-Runner laufen:
 py -m target_radar.cli evaluate --fixture exports/local-review-eval.json
 ```
 
-Mapping:
+## Lokaler Run-Report
+
+Fuer Pilotlaeufe kann ein einzelner Pipeline Run als lokaler Report exportiert
+werden:
+
+```powershell
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 export-run-report --run-id 26 --output exports/sprint16-run-26-report.json
+```
+
+Der Report verbindet:
+
+- Run-Metadaten und Stats
+- Query-Liste mit Import-Status-Zaehlern
+- Targets mit letzter Run-Bewertung
+- offenen Review-Backlog fuer den Run
+- aktuelle Review-Feedback-Evaluation und Triage
+
+Der Report ist fuer Sprint-16-Pilotlaeufe gedacht und bleibt unter `exports/`
+lokal.
+
+## Review-Feedback-Mapping
 
 - `approved` erwartet `draft`
 - `rejected` erwartet `skip`

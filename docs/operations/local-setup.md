@@ -143,6 +143,17 @@ py -m target_radar.cli evaluate --fixture exports/local-review-eval.json
 Der Export landet standardmaessig unter `exports/local-review-eval.json` und
 wird nicht versioniert.
 
+Fuer Pilotlaeufe kann zusaetzlich ein Run-Report exportiert werden:
+
+```powershell
+$env:PYTHONPATH='src'
+py -m target_radar.cli --database-url sqlite:///data/target-radar.local.sqlite3 export-run-report --run-id 26 --output exports/sprint16-run-26-report.json
+```
+
+Der Report enthaelt Run-Metadaten, Query-Zusammenfassung, Targets,
+Review-Backlog und die aktuelle Review-Feedback-Triage. Auch dieser Export
+bleibt lokal unter `exports/`.
+
 ## Datenschutz-Check
 
 ```powershell

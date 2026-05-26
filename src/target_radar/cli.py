@@ -17,7 +17,9 @@ from target_radar.engines.lead import (
 from target_radar.engines.rating import FakeAIRatingProvider, RatingEngine, create_rating_engine
 from target_radar.evaluation import (
     DEFAULT_EVALUATION_FIXTURE,
+    DEFAULT_RUN_REPORT_OUTPUT,
     DEFAULT_REVIEW_EVALUATION_OUTPUT,
+    export_pipeline_run_report,
     export_review_feedback_fixture,
     run_evaluation,
 )
@@ -95,6 +97,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         return 0
 
+    if args.command == "export-run-report":
+        _print_json(
+            export_pipeline_run_report(
+                database_url,
+                run_id=args.run_id,
+                output_path=args.output,
+                review_limit=args.review_limit,
+            )
+        )
+        return 0
+
     if args.command == "privacy-check":
         result = run_privacy_check(args.root)
         _print_json(result)
@@ -141,6 +154,14 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     export_review_eval.add_argument("--output", default=DEFAULT_REVIEW_EVALUATION_OUTPUT)
     export_review_eval.add_argument("--limit", type=int, default=50)
+
+    export_run_report = subparsers.add_parser(
+        "export-run-report",
+        help="Export a pipeline run report with review backlog and feedback triage",
+    )
+    export_run_report.add_argument("--run-id", type=int)
+    export_run_report.add_argument("--output", default=DEFAULT_RUN_REPORT_OUTPUT)
+    export_run_report.add_argument("--review-limit", type=int, default=100)
 
     privacy = subparsers.add_parser("privacy-check", help="Check local privacy guardrails")
     privacy.add_argument("--root", default=".")
