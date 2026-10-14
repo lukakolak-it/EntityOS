@@ -16,6 +16,7 @@ Datenbanken, Logs und Exporte bleiben ausserhalb von Git.
 - Lizenz: [LICENSE](LICENSE)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Release Notes: [docs/releases/v0.1.0-local-osint.md](docs/releases/v0.1.0-local-osint.md)
+- Website: [IT-Botschafter](https://it-botschafter.de/)
 
 ## Schnellstart
 
